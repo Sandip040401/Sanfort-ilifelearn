@@ -77,6 +77,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    packagingOptions {
+        pickFirst 'lib/arm64-v8a/libworklets.so'
+        pickFirst 'lib/armeabi-v7a/libworklets.so'
+        pickFirst 'lib/x86/libworklets.so'
+        pickFirst 'lib/x86_64/libworklets.so'
+    }
+
     namespace "com.ilifelearn"
     defaultConfig {
         applicationId "com.ilifelearn"
@@ -110,6 +117,11 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.2.0")
+    implementation("com.google.ar:core:1.31.0")
+    implementation("com.gorisse.thomas.sceneform:sceneform:1.23.0")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

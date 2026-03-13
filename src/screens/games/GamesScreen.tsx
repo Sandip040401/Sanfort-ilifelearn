@@ -1,0 +1,1192 @@
+import React, {startTransition, useDeferredValue, useMemo, useState} from 'react';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
+import LinearGradient from 'react-native-linear-gradient';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {CompositeNavigationProp, useNavigation} from '@react-navigation/native';
+import type {BottomTabNavigationProp} from '@react-navigation/bottom-tabs';
+import type {StackNavigationProp} from '@react-navigation/stack';
+import {useQuery} from '@tanstack/react-query';
+import {
+  BookOpenText,
+  Calculator,
+  FlaskConical,
+  Gamepad2,
+  Music4,
+  Play,
+  RefreshCcw,
+  Search,
+  Sparkles,
+  TriangleAlert,
+} from 'lucide-react-native';
+import {ScreenErrorBoundary, Skeleton} from '@/components/ui';
+import {useScreenReady} from '@/hooks/useScreenReady';
+import {GamesService} from '@/services';
+import {useTheme} from '@/theme';
+import type {BottomTabParamList, MainStackParamList} from '@/types';
+import {
+  GAME_CATEGORIES,
+  GAME_CATEGORY_META,
+  SCIENCE_FALLBACK_GAMES,
+  type GameCatalogItem,
+  type GameCategory,
+} from './games.data';
+
+const H_PAD = scale(20);
+const CONTENT_CATEGORIES = GAME_CATEGORIES.filter(
+  (category): category is Exclude<GameCategory, 'All Games'> => category !== 'All Games',
+);
+
+type GamesNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<BottomTabParamList, 'Games'>,
+  StackNavigationProp<MainStackParamList>
+>;
+
+const CATEGORY_ICONS = {
+  Literacy: BookOpenText,
+  Numeracy: Calculator,
+  Science: FlaskConical,
+  'Rhymes and Stories': Music4,
+} as const;
+
+function normalizeText(value: unknown) {
+  return String(value ?? '').trim();
+}
+
+function inferCategory(raw: any): Exclude<GameCategory, 'All Games'> {
+  const haystack = [
+    raw?.category,
+    raw?.title,
+    raw?.name,
+    raw?.topicName,
+    ...(Array.isArray(raw?.skills) ? raw.skills : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (
+    haystack.includes('math') ||
+    haystack.includes('number') ||
+    haystack.includes('numeracy') ||
+    haystack.includes('count')
+  ) {
+    return 'Numeracy';
+  }
+
+  if (
+    haystack.includes('rhyme') ||
+    haystack.includes('story') ||
+    haystack.includes('poem')
+  ) {
+    return 'Rhymes and Stories';
+  }
+
+  if (
+    haystack.includes('science') ||
+    haystack.includes('animal') ||
+    haystack.includes('food') ||
+    haystack.includes('physics') ||
+    haystack.includes('nature')
+  ) {
+    return 'Science';
+  }
+
+  return 'Literacy';
+}
+
+function normalizeApiGames(rawGames: any[]): GameCatalogItem[] {
+  return rawGames.reduce<GameCatalogItem[]>((games, raw, index) => {
+      const title = normalizeText(raw?.title || raw?.name || `Game ${index + 1}`);
+      const url = normalizeText(raw?.url || raw?.gameUrl || raw?.link);
+
+      if (!url) {
+        return games;
+      }
+
+      const category = inferCategory(raw);
+      const skills = Array.isArray(raw?.skills)
+        ? raw.skills.map((skill: unknown) => normalizeText(skill)).filter(Boolean)
+        : [];
+      const shortSkills = skills.slice(0, 3);
+
+      games.push({
+        id: normalizeText(raw?.id || raw?._id || raw?.slug || `api-game-${index}`),
+        title,
+        category,
+        url,
+        icon: normalizeText(raw?.topicIcon || raw?.icon) || undefined,
+        thumbnail:
+          normalizeText(raw?.thumbnail || raw?.image || raw?.coverImage || raw?.previewImage) || undefined,
+        skills: shortSkills.length ? shortSkills : [category, 'Interactive'],
+        description:
+          normalizeText(raw?.description) ||
+          `${title} is ready for quick-play learning with ${category.toLowerCase()} activities.`,
+        source: 'api' as const,
+      });
+
+      return games;
+    }, []);
+}
+
+function mergeGames(liveGames: GameCatalogItem[]) {
+  const merged = new Map<string, GameCatalogItem>();
+
+  [...SCIENCE_FALLBACK_GAMES, ...liveGames].forEach(game => {
+    const key = normalizeText(game.url).toLowerCase() || normalizeText(game.id).toLowerCase();
+    if (!key) {
+      return;
+    }
+
+    const existing = merged.get(key);
+    if (!existing || existing.source === 'fallback') {
+      merged.set(key, game);
+    }
+  });
+
+  return [...merged.values()].sort((left, right) => {
+    if (left.category !== right.category) {
+      return GAME_CATEGORIES.indexOf(left.category) - GAME_CATEGORIES.indexOf(right.category);
+    }
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function GamesSkeleton() {
+  return (
+    <View style={styles.skeletonRoot}>
+      <View style={styles.skeletonHero}>
+        <LinearGradient
+          colors={['#25135F', '#39187A', '#4C1D95', '#5C35CA', '#6C4CFF']}
+          locations={[0, 0.25, 0.5, 0.75, 1]}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 1}}
+          style={StyleSheet.absoluteFill} />
+        <Skeleton width="40%" height={18} borderRadius={999} />
+        <Skeleton width="66%" height={34} borderRadius={16} style={styles.skeletonTopSpace} />
+        <Skeleton width="82%" height={16} borderRadius={8} style={styles.skeletonTopSpace} />
+        <View style={styles.skeletonStatsRow}>
+          <Skeleton width="30%" height={74} borderRadius={22} />
+          <Skeleton width="30%" height={74} borderRadius={22} />
+          <Skeleton width="30%" height={74} borderRadius={22} />
+        </View>
+        <Skeleton width="100%" height={54} borderRadius={20} style={styles.skeletonTopSpace} />
+      </View>
+
+      <View style={styles.skeletonContent}>
+        <Skeleton width="100%" height={178} borderRadius={28} />
+        <View style={styles.skeletonTabsRow}>
+          <Skeleton width={96} height={40} borderRadius={999} />
+          <Skeleton width={112} height={40} borderRadius={999} />
+          <Skeleton width={124} height={40} borderRadius={999} />
+        </View>
+        <View style={styles.skeletonGrid}>
+          <Skeleton width="48%" height={214} borderRadius={24} />
+          <Skeleton width="48%" height={214} borderRadius={24} />
+          <Skeleton width="48%" height={214} borderRadius={24} />
+          <Skeleton width="48%" height={214} borderRadius={24} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function GamesScreenContent() {
+  const {colors} = useTheme();
+  const insets = useSafeAreaInsets();
+  const {width} = useWindowDimensions();
+  const navigation = useNavigation<GamesNavigationProp>();
+  const screenReady = useScreenReady();
+  const [selectedCategory, setSelectedCategory] = useState<GameCategory>('All Games');
+  const [searchValue, setSearchValue] = useState('');
+  const deferredSearchValue = useDeferredValue(searchValue);
+  const isTablet = width >= 768;
+  const queueVisualStyle = useMemo(
+    () => ({width: isTablet ? scale(148) : scale(112)}),
+    [isTablet],
+  );
+  const queueCardMinHeightStyle = useMemo(
+    () => ({minHeight: isTablet ? verticalScale(188) : verticalScale(172)}),
+    [isTablet],
+  );
+
+  const liveGamesQuery = useQuery({
+    queryKey: ['games-catalog'],
+    queryFn: async () => {
+      const response = await GamesService.getAllGames({page: 1, limit: 200});
+      return normalizeApiGames(response.data?.data?.data ?? []);
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const allGames = useMemo(
+    () => mergeGames(liveGamesQuery.data ?? []),
+    [liveGamesQuery.data],
+  );
+  const trimmedSearch = deferredSearchValue.trim().toLowerCase();
+
+  const filteredGames = useMemo(() => {
+    return allGames.filter(game => {
+      const categoryPass =
+        selectedCategory === 'All Games' || game.category === selectedCategory;
+      const searchPass =
+        !trimmedSearch ||
+        game.title.toLowerCase().includes(trimmedSearch) ||
+        game.category.toLowerCase().includes(trimmedSearch) ||
+        game.description.toLowerCase().includes(trimmedSearch) ||
+        (game.skills || []).some(skill => skill.toLowerCase().includes(trimmedSearch));
+
+      return categoryPass && searchPass;
+    });
+  }, [allGames, selectedCategory, trimmedSearch]);
+
+  const featuredGame = useMemo(() => {
+    if (selectedCategory !== 'All Games' || trimmedSearch) {
+      return null;
+    }
+
+    return allGames[0] ?? null;
+  }, [allGames, selectedCategory, trimmedSearch]);
+
+  const gridGames = useMemo(
+    () =>
+      featuredGame
+        ? filteredGames.filter(game => game.id !== featuredGame.id)
+        : filteredGames,
+    [featuredGame, filteredGames],
+  );
+
+  const categoryCounts = useMemo(
+    () =>
+      CONTENT_CATEGORIES.map(category => ({
+        category,
+        count: allGames.filter(game => game.category === category).length,
+      })),
+    [allGames],
+  );
+
+  const liveCount = useMemo(
+    () => allGames.filter(game => game.source === 'api').length,
+    [allGames],
+  );
+
+  const syncState = liveGamesQuery.isPending
+    ? {label: 'Syncing live catalog', tone: colors.info}
+    : liveGamesQuery.isError
+      ? {label: 'Fallback catalog active', tone: colors.warning}
+      : {label: 'Live catalog updated', tone: colors.success};
+  const topRefreshLabel =
+    liveGamesQuery.isPending || liveGamesQuery.isRefetching
+      ? 'Refreshing'
+      : liveGamesQuery.isError
+        ? 'Retry sync'
+        : 'Refresh catalog';
+  const chipIdleStyle = useMemo(
+    () => ({backgroundColor: colors.surface, borderColor: colors.border}),
+    [colors.border, colors.surface],
+  );
+  const chipTextIdleStyle = useMemo(
+    () => ({color: colors.textSecondary}),
+    [colors.textSecondary],
+  );
+
+  const handleCategoryPress = (category: GameCategory) => {
+    if (category === selectedCategory) {
+      return;
+    }
+
+    startTransition(() => {
+      setSelectedCategory(category);
+    });
+  };
+
+  const handleOpenGame = (game: GameCatalogItem) => {
+    navigation.navigate('GamePlayer', {
+      gameId: game.id,
+      gameTitle: game.title,
+      gameUrl: game.url,
+    });
+  };
+
+  const handleRefresh = () => {
+    if (liveGamesQuery.isPending || liveGamesQuery.isRefetching) {
+      return;
+    }
+
+    liveGamesQuery.refetch();
+  };
+
+  if (!screenReady) {
+    return <GamesSkeleton />;
+  }
+
+  const renderGameCard = ({item}: {item: GameCatalogItem}) => {
+    const meta = GAME_CATEGORY_META[item.category];
+    const Icon = CATEGORY_ICONS[item.category];
+
+    return (
+      <Pressable onPress={() => handleOpenGame(item)} style={styles.cardWrap}>
+        <View
+          style={[
+            styles.queueCard,
+            queueCardMinHeightStyle,
+            {backgroundColor: colors.surface, borderColor: colors.border},
+          ]}>
+          <View style={[styles.queueVisual, queueVisualStyle]}>
+            <LinearGradient
+              colors={meta.gradient}
+              locations={[0, 1]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={StyleSheet.absoluteFill} />
+            <View style={styles.queueVisualTop}>
+              <View style={styles.queueIconBubble}>
+                {item.icon ? (
+                  <Text style={styles.cardEmoji}>{item.icon}</Text>
+                ) : (
+                  <Icon size={moderateScale(22)} color="#fff" strokeWidth={2} />
+                )}
+              </View>
+              <View style={[styles.sourcePill, item.source === 'api' && styles.sourcePillLive]}>
+                <Text style={styles.sourcePillText}>
+                  {item.source === 'api' ? 'Live' : 'Classic'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.queueVisualBottom}>
+              <Text style={styles.queueMetaLabel}>Collection</Text>
+              <Text numberOfLines={2} style={styles.queueMetaTitle}>
+                {meta.chipLabel}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.queueContent}>
+            <View style={[styles.categoryBadge, {backgroundColor: meta.accentSoft, borderColor: meta.border}]}>
+              <Text style={[styles.categoryBadgeText, {color: meta.text}]}>{item.category}</Text>
+            </View>
+
+            <Text numberOfLines={2} style={[styles.queueTitle, {color: colors.text}]}>
+              {item.title}
+            </Text>
+            <Text numberOfLines={3} style={[styles.queueDesc, {color: colors.textSecondary}]}>
+              {item.description}
+            </Text>
+
+            <View style={styles.queueSkillRow}>
+              {(item.skills || []).slice(0, 3).map(skill => (
+                <View key={`${item.id}-${skill}`} style={[styles.queueSkillPill, {backgroundColor: colors.primarySurface}]}>
+                  <Text style={[styles.queueSkillText, {color: colors.primaryDark}]}>{skill}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.queueFooter}>
+              <Text style={[styles.queueFooterText, {color: colors.textSecondary}]}>
+                Tap to play instantly
+              </Text>
+              <View style={[styles.queuePlayButton, {backgroundColor: meta.accentSoft}]}>
+                <Play size={moderateScale(14)} color={meta.accent} fill={meta.accent} strokeWidth={0} />
+                <Text style={[styles.queuePlayText, {color: meta.accent}]}>Open</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={[styles.root, {backgroundColor: colors.background}]}>
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle="light-content"
+      />
+
+      <FlatList
+        data={gridGames}
+        keyExtractor={item => item.id}
+        renderItem={renderGameCard}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(96)}}
+        refreshControl={
+          <RefreshControl
+            refreshing={liveGamesQuery.isRefetching}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary, colors.secondary]}
+            progressViewOffset={insets.top + verticalScale(8)}
+          />
+        }
+        ListHeaderComponent={
+          <>
+            <View style={[styles.hero, {paddingTop: insets.top + verticalScale(14)}]}>
+              <LinearGradient
+                colors={['#25135F', '#39187A', '#4C1D95', '#5C35CA', '#6C4CFF']}
+                locations={[0, 0.25, 0.5, 0.75, 1]}
+                start={{x: 0, y: 0}}
+                end={{x: 1, y: 1}}
+                style={StyleSheet.absoluteFill} />
+              <View style={styles.heroGlowOne} />
+              <View style={styles.heroGlowTwo} />
+
+              <View style={styles.heroTopRow}>
+                <View style={styles.heroBadge}>
+                  <Sparkles size={moderateScale(15)} color="#fff" strokeWidth={2.4} />
+                  <Text style={styles.heroBadgeText}>Arcade Lab</Text>
+                </View>
+                <Pressable
+                  disabled={liveGamesQuery.isPending || liveGamesQuery.isRefetching}
+                  onPress={handleRefresh}
+                  style={styles.syncPill}>
+                  {liveGamesQuery.isPending || liveGamesQuery.isRefetching ? (
+                    <RefreshCcw size={moderateScale(12)} color="#fff" strokeWidth={2} />
+                  ) : liveGamesQuery.isError ? (
+                    <TriangleAlert size={moderateScale(12)} color="#fff" strokeWidth={2} />
+                  ) : (
+                    <RefreshCcw size={moderateScale(12)} color="#fff" strokeWidth={2} />
+                  )}
+                  <Text style={styles.syncPillText}>{topRefreshLabel}</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.heroTitle}>Instant-play learning games</Text>
+              <Text style={styles.heroSubtitle}>
+                Live API catalog plus classic science missions from the previous app, rebuilt into one faster arcade flow.
+              </Text>
+
+              <View style={styles.statRow}>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue}>{allGames.length}</Text>
+                  <Text style={styles.statLabel}>Total games</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue}>{liveCount}</Text>
+                  <Text style={styles.statLabel}>Live from API</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue}>{categoryCounts.filter(item => item.count > 0).length}</Text>
+                  <Text style={styles.statLabel}>Collections</Text>
+                </View>
+              </View>
+
+              <View style={styles.searchShell}>
+                <Search size={moderateScale(18)} color="rgba(255,255,255,0.72)" strokeWidth={2} />
+                <TextInput
+                  value={searchValue}
+                  onChangeText={setSearchValue}
+                  placeholder="Search missions, skills or categories"
+                  placeholderTextColor="rgba(255,255,255,0.52)"
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                />
+              </View>
+
+              <View style={[styles.heroCurve, {backgroundColor: colors.background}]} />
+            </View>
+
+            <View style={styles.content}>
+              {liveGamesQuery.isError && (
+                <View style={[styles.noticeCard, {backgroundColor: colors.accentSurface, borderColor: colors.border}]}>
+                  <Text style={[styles.noticeTitle, {color: colors.text}]}>
+                    Live games couldn’t sync right now
+                  </Text>
+                  <Text style={[styles.noticeCopy, {color: colors.textSecondary}]}>
+                    Catalog stays usable through the fallback science collection while the API recovers.
+                  </Text>
+                </View>
+              )}
+
+              {featuredGame && (
+                <Pressable onPress={() => handleOpenGame(featuredGame)} style={styles.featuredWrap}>
+                  <View style={styles.featuredCard}>
+                    <LinearGradient
+                      colors={GAME_CATEGORY_META[featuredGame.category].gradient}
+                      locations={[0, 1]}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 1}}
+                      style={StyleSheet.absoluteFill} />
+                    <View style={styles.featuredNoise} />
+                    <View style={styles.featuredTopRow}>
+                      <View style={styles.featuredEyebrow}>
+                        <Gamepad2 size={moderateScale(14)} color="#fff" strokeWidth={2.2} />
+                        <Text style={styles.featuredEyebrowText}>Featured Launch</Text>
+                      </View>
+                      <View style={styles.featuredIconBubble}>
+                        <Text style={styles.featuredIconText}>
+                          {featuredGame.icon || GAME_CATEGORY_META[featuredGame.category].icon}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.featuredTitle}>{featuredGame.title}</Text>
+                    <Text style={styles.featuredCopy} numberOfLines={2}>
+                      {featuredGame.description}
+                    </Text>
+
+                    <View style={styles.featuredSkillRow}>
+                      {(featuredGame.skills || []).slice(0, 3).map(skill => (
+                        <View key={`${featuredGame.id}-${skill}`} style={styles.featuredSkillPill}>
+                          <Text style={styles.featuredSkillText}>{skill}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={styles.featuredFooter}>
+                      <Text style={styles.featuredMeta}>{GAME_CATEGORY_META[featuredGame.category].chipLabel}</Text>
+                      <View style={styles.featuredPlay}>
+                        <Play size={moderateScale(16)} color="#0F172A" fill="#0F172A" strokeWidth={0} />
+                        <Text style={styles.featuredPlayText}>Play now</Text>
+                      </View>
+                    </View>
+                  </View>
+                </Pressable>
+              )}
+
+              <View style={styles.sectionRow}>
+                <Text style={[styles.sectionTitle, {color: colors.text}]}>Collections</Text>
+                <Text style={[styles.sectionMeta, {color: syncState.tone}]}>
+                  {filteredGames.length} ready
+                </Text>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabsContent}>
+                {GAME_CATEGORIES.map(category => {
+                  const active = selectedCategory === category;
+                  const categoryMeta =
+                    category === 'All Games' ? null : GAME_CATEGORY_META[category];
+
+                  return (
+                    <Pressable
+                      key={category}
+                      onPress={() => handleCategoryPress(category)}
+                      style={[
+                        styles.tabChip,
+                        active
+                          ? styles.tabChipActive
+                          : chipIdleStyle,
+                      ]}>
+                      {categoryMeta ? (
+                        <Text style={styles.tabChipEmoji}>{categoryMeta.icon}</Text>
+                      ) : (
+                        <Gamepad2 size={moderateScale(14)} color={active ? '#fff' : colors.textSecondary} strokeWidth={2} />
+                      )}
+                      <Text
+                        style={[
+                          styles.tabChipText,
+                          active ? styles.tabChipTextActive : chipTextIdleStyle,
+                        ]}>
+                        {category}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.subStatsRow}>
+                {categoryCounts.map(({category, count}) => {
+                  const meta = GAME_CATEGORY_META[category];
+                  return (
+                    <View
+                      key={category}
+                      style={[
+                        styles.subStatCard,
+                        {backgroundColor: colors.surface, borderColor: colors.border},
+                      ]}>
+                      <View style={[styles.subStatOrb, {backgroundColor: meta.accentSoft}]}>
+                        <Text style={styles.subStatOrbText}>{meta.icon}</Text>
+                      </View>
+                      <Text style={[styles.subStatValue, {color: colors.text}]}>{count}</Text>
+                      <Text style={[styles.subStatLabel, {color: colors.textSecondary}]}>
+                        {category}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={styles.sectionRow}>
+                <Text style={[styles.sectionTitle, {color: colors.text}]}>Play Queue</Text>
+                <Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>
+                  {trimmedSearch
+                    ? `Results for "${deferredSearchValue.trim()}"`
+                    : selectedCategory}
+                </Text>
+              </View>
+            </View>
+          </>
+        }
+        ListEmptyComponent={
+          <View style={[styles.emptyState, {backgroundColor: colors.surface, borderColor: colors.border}]}>
+            <View style={[styles.emptyIconWrap, {backgroundColor: colors.primarySurface}]}>
+              <Search size={moderateScale(24)} color={colors.primaryDark} strokeWidth={2.2} />
+            </View>
+            <Text style={[styles.emptyTitle, {color: colors.text}]}>No games matched</Text>
+            <Text style={[styles.emptyCopy, {color: colors.textSecondary}]}>
+              Try another keyword or switch to a different collection.
+            </Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+export default function GamesScreen() {
+  return (
+    <ScreenErrorBoundary>
+      <GamesScreenContent />
+    </ScreenErrorBoundary>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  hero: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: verticalScale(26),
+    overflow: 'hidden',
+  },
+  heroGlowOne: {
+    position: 'absolute',
+    top: verticalScale(40),
+    right: -scale(30),
+    width: scale(150),
+    height: scale(150),
+    borderRadius: moderateScale(75),
+    backgroundColor: 'rgba(45,212,191,0.22)',
+  },
+  heroGlowTwo: {
+    position: 'absolute',
+    bottom: verticalScale(28),
+    left: -scale(18),
+    width: scale(116),
+    height: scale(116),
+    borderRadius: moderateScale(58),
+    backgroundColor: 'rgba(251,191,36,0.18)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(12),
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(999),
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  heroBadgeText: {
+    fontSize: moderateScale(11),
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.4,
+  },
+  syncPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(999),
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  syncPillText: {
+    fontSize: moderateScale(10),
+    fontWeight: '700',
+    color: '#fff',
+  },
+  heroTitle: {
+    marginTop: verticalScale(18),
+    maxWidth: '88%',
+    fontSize: moderateScale(30),
+    lineHeight: moderateScale(36),
+    fontWeight: '900',
+    color: '#fff',
+  },
+  heroSubtitle: {
+    marginTop: verticalScale(10),
+    maxWidth: '92%',
+    fontSize: moderateScale(14),
+    lineHeight: moderateScale(21),
+    color: 'rgba(255,255,255,0.74)',
+  },
+  statRow: {
+    flexDirection: 'row',
+    gap: scale(12),
+    marginTop: verticalScale(20),
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: moderateScale(22),
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(14),
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  statValue: {
+    fontSize: moderateScale(22),
+    fontWeight: '900',
+    color: '#fff',
+  },
+  statLabel: {
+    marginTop: verticalScale(4),
+    fontSize: moderateScale(11),
+    color: 'rgba(255,255,255,0.7)',
+  },
+  searchShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+    marginTop: verticalScale(18),
+    paddingHorizontal: scale(16),
+    borderRadius: moderateScale(20),
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: verticalScale(52),
+    fontSize: moderateScale(14),
+    color: '#fff',
+  },
+  heroCurve: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -1,
+    height: verticalScale(14),
+    borderTopLeftRadius: moderateScale(20),
+    borderTopRightRadius: moderateScale(20),
+  },
+  content: {
+    paddingHorizontal: H_PAD,
+    paddingTop: verticalScale(14),
+  },
+  noticeCard: {
+    borderWidth: 1,
+    borderRadius: moderateScale(22),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(14),
+    marginBottom: verticalScale(16),
+  },
+  noticeTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: '800',
+  },
+  noticeCopy: {
+    marginTop: verticalScale(4),
+    fontSize: moderateScale(12),
+    lineHeight: moderateScale(18),
+  },
+  featuredWrap: {
+    marginBottom: verticalScale(18),
+  },
+  featuredCard: {
+    overflow: 'hidden',
+    borderRadius: moderateScale(28),
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(18),
+    minHeight: verticalScale(200),
+  },
+  featuredNoise: {
+    position: 'absolute',
+    top: verticalScale(18),
+    right: scale(18),
+    width: scale(112),
+    height: scale(112),
+    borderRadius: moderateScale(56),
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  featuredTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(12),
+  },
+  featuredEyebrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(999),
+    backgroundColor: 'rgba(15,23,42,0.16)',
+  },
+  featuredEyebrowText: {
+    fontSize: moderateScale(11),
+    fontWeight: '800',
+    color: '#fff',
+  },
+  featuredIconBubble: {
+    width: scale(52),
+    height: scale(52),
+    borderRadius: moderateScale(26),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  featuredIconText: {
+    fontSize: moderateScale(24),
+  },
+  featuredTitle: {
+    marginTop: verticalScale(18),
+    maxWidth: '82%',
+    fontSize: moderateScale(24),
+    lineHeight: moderateScale(29),
+    fontWeight: '900',
+    color: '#fff',
+  },
+  featuredCopy: {
+    marginTop: verticalScale(10),
+    maxWidth: '88%',
+    fontSize: moderateScale(13),
+    lineHeight: moderateScale(20),
+    color: 'rgba(255,255,255,0.76)',
+  },
+  featuredSkillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(8),
+    marginTop: verticalScale(14),
+  },
+  featuredSkillPill: {
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(6),
+    borderRadius: moderateScale(999),
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  featuredSkillText: {
+    fontSize: moderateScale(11),
+    fontWeight: '700',
+    color: '#fff',
+  },
+  featuredFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(12),
+    marginTop: verticalScale(18),
+  },
+  featuredMeta: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.82)',
+  },
+  featuredPlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(10),
+    borderRadius: moderateScale(999),
+    backgroundColor: '#fff',
+  },
+  featuredPlayText: {
+    fontSize: moderateScale(12),
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  sectionRow: {
+    marginBottom: verticalScale(12),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(12),
+  },
+  sectionTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: '900',
+  },
+  sectionMeta: {
+    fontSize: moderateScale(12),
+    fontWeight: '800',
+  },
+  sectionSubtitle: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+  },
+  tabsContent: {
+    gap: scale(10),
+    paddingBottom: verticalScale(14),
+  },
+  tabChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(11),
+    borderRadius: moderateScale(999),
+    borderWidth: 1,
+  },
+  tabChipActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  tabChipEmoji: {
+    fontSize: moderateScale(14),
+  },
+  tabChipText: {
+    fontSize: moderateScale(12),
+    fontWeight: '800',
+  },
+  tabChipTextActive: {
+    color: '#fff',
+  },
+  subStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(10),
+    marginBottom: verticalScale(18),
+  },
+  subStatCard: {
+    minWidth: '47%',
+    flexGrow: 1,
+    borderRadius: moderateScale(22),
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(14),
+    borderWidth: 1,
+  },
+  subStatOrb: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: moderateScale(18),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subStatOrbText: {
+    fontSize: moderateScale(16),
+  },
+  subStatValue: {
+    marginTop: verticalScale(12),
+    fontSize: moderateScale(20),
+    fontWeight: '900',
+  },
+  subStatLabel: {
+    marginTop: verticalScale(4),
+    fontSize: moderateScale(11),
+    fontWeight: '700',
+  },
+  cardWrap: {
+    marginHorizontal: H_PAD,
+    marginBottom: verticalScale(14),
+  },
+  queueCard: {
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderRadius: moderateScale(24),
+  },
+  queueVisual: {
+    paddingHorizontal: scale(14),
+    paddingTop: verticalScale(14),
+    paddingBottom: verticalScale(14),
+    justifyContent: 'space-between',
+  },
+  queueVisualTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  queueVisualBottom: {
+    gap: verticalScale(4),
+  },
+  queueIconBubble: {
+    width: scale(42),
+    height: scale(42),
+    borderRadius: moderateScale(21),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  cardEmoji: {
+    fontSize: moderateScale(20),
+  },
+  sourcePill: {
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(6),
+    borderRadius: moderateScale(999),
+    backgroundColor: 'rgba(15,23,42,0.16)',
+  },
+  sourcePillLive: {
+    backgroundColor: 'rgba(15,23,42,0.22)',
+  },
+  sourcePillText: {
+    fontSize: moderateScale(10),
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  queueMetaLabel: {
+    fontSize: moderateScale(10),
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.62)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  queueMetaTitle: {
+    fontSize: moderateScale(11),
+    lineHeight: moderateScale(16),
+    fontWeight: '800',
+    color: '#fff',
+  },
+  queueContent: {
+    flex: 1,
+    paddingLeft: scale(16),
+    paddingRight: scale(34),
+    paddingTop: verticalScale(16),
+    paddingBottom: verticalScale(16),
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: moderateScale(999),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(6),
+  },
+  categoryBadgeText: {
+    fontSize: moderateScale(10),
+    fontWeight: '800',
+  },
+  queueTitle: {
+    marginTop: verticalScale(10),
+    fontSize: moderateScale(17),
+    lineHeight: moderateScale(22),
+    fontWeight: '900',
+  },
+  queueDesc: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(12),
+    lineHeight: moderateScale(18),
+    minHeight: verticalScale(44),
+  },
+  queueSkillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(8),
+    marginTop: verticalScale(12),
+  },
+  queueSkillPill: {
+    borderRadius: moderateScale(999),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(6),
+  },
+  queueSkillText: {
+    fontSize: moderateScale(10),
+    fontWeight: '800',
+  },
+  queueFooter: {
+    marginTop: verticalScale(14),
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: scale(12),
+  },
+  queueFooterText: {
+    fontSize: moderateScale(11),
+    fontWeight: '700',
+    flex: 1,
+    flexShrink: 1,
+    marginRight: scale(10),
+  },
+  queuePlayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    minHeight: scale(34),
+    borderRadius: moderateScale(18),
+    paddingHorizontal: scale(10),
+    justifyContent: 'center',
+    marginLeft: 'auto',
+  },
+  queuePlayText: {
+    fontSize: moderateScale(11),
+    fontWeight: '900',
+  },
+  emptyState: {
+    marginHorizontal: H_PAD,
+    marginTop: verticalScale(10),
+    borderWidth: 1,
+    borderRadius: moderateScale(28),
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(28),
+    alignItems: 'center',
+  },
+  emptyIconWrap: {
+    width: scale(54),
+    height: scale(54),
+    borderRadius: moderateScale(27),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(18),
+    fontWeight: '900',
+  },
+  emptyCopy: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(13),
+    lineHeight: moderateScale(20),
+    textAlign: 'center',
+  },
+  skeletonRoot: {
+    flex: 1,
+    backgroundColor: '#F4F7FF',
+  },
+  skeletonHero: {
+    paddingHorizontal: H_PAD,
+    paddingTop: verticalScale(56),
+    paddingBottom: verticalScale(28),
+  },
+  skeletonTopSpace: {
+    marginTop: verticalScale(14),
+  },
+  skeletonStatsRow: {
+    flexDirection: 'row',
+    gap: scale(12),
+    marginTop: verticalScale(18),
+  },
+  skeletonContent: {
+    paddingHorizontal: H_PAD,
+    paddingTop: verticalScale(16),
+  },
+  skeletonTabsRow: {
+    flexDirection: 'row',
+    gap: scale(10),
+    marginTop: verticalScale(18),
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(14),
+    marginTop: verticalScale(18),
+  },
+});
