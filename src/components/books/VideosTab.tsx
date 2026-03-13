@@ -19,6 +19,7 @@ import MediaViewer, {type MediaViewerPayload} from '@/components/MediaViewer';
 import {withAlpha} from '@/screens/books/books.data';
 import {getTotalVideoCount} from '@/screens/books/books.utils';
 import {getYouTubeThumbnailUrl, isYouTubeUrl} from '@/utils/video';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 
 const PAGE_SIZE = 8;
 
@@ -38,6 +39,7 @@ export default function VideosTab({
   onRefresh: () => void;
 }) {
   const {colors} = useTheme();
+  const {onScroll} = useTabBarHideOnScroll();
   const {width} = useWindowDimensions();
   const [selectedVolumeId, setSelectedVolumeId] = useState<'all' | string>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -103,6 +105,8 @@ export default function VideosTab({
         keyExtractor={item => item.id}
         numColumns={isTablet ? 2 : 1}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={7}

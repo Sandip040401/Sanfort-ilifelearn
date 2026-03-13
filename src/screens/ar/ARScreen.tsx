@@ -1,9 +1,10 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   PermissionsAndroid,
   Platform,
   RefreshControl,
@@ -13,6 +14,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -32,6 +34,8 @@ import {
 import {ScreenErrorBoundary} from '@/components/ui';
 import {useScreenReady} from '@/hooks/useScreenReady';
 import {ARService} from '@/services';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
+import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
 import type {
   ARFolder,
   ARModel,
@@ -48,8 +52,41 @@ import {
 } from './ar.data';
 import {ARScannerModule} from './ARScannerModule';
 
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
-const CARD_WIDTH = (SCREEN_WIDTH - scale(48)) / 2;
+function useResponsiveLayout() {
+  const {width, height} = useWindowDimensions();
+  const isLandscape = width > height;
+  const isTablet = width >= 768;
+  const isLargeTablet = width >= 1024;
+  const horizontalPadding = isTablet
+    ? (isLandscape ? 18 : (isLargeTablet ? 28 : 24))
+    : scale(16);
+  const maxContentWidth = isLargeTablet ? 980 : isTablet ? 820 : width;
+  const availableWidth = width - horizontalPadding * 2;
+  const contentWidth = isLandscape ? availableWidth : Math.min(availableWidth, maxContentWidth);
+  const gap = isTablet ? 16 : scale(12);
+  const numColumns = isLandscape ? 2 : (isLargeTablet ? 3 : isTablet ? 2 : 2);
+  const cardWidth = (contentWidth - gap * (numColumns - 1)) / numColumns;
+  const isCompactCard = cardWidth < 240;
+  const worldCardHeight = isTablet
+    ? (isLandscape
+      ? Math.max(Math.min(cardWidth * 0.72, 360), 260)
+      : Math.max(Math.min(cardWidth * 0.9, 380), 280))
+    : Math.max(cardWidth * 1.28, 220);
+  const modelPreviewHeight = isTablet ? Math.min(cardWidth * 0.55, 170) : verticalScale(100);
+  return {
+    isTablet,
+    isLargeTablet,
+    isLandscape,
+    contentWidth,
+    horizontalPadding,
+    gap,
+    numColumns,
+    cardWidth,
+    isCompactCard,
+    worldCardHeight,
+    modelPreviewHeight,
+  };
+}
 
 const LEGACY_GRADIENT_MAP: Record<string, [string, string]> = {
   'from-coral to-coral/70': ['#FF6B6B', '#FF8E8E'],
@@ -124,6 +161,8 @@ function EnvironmentGallery({
   refreshing,
   onRefresh,
   topInset,
+  bottomInset,
+  onScroll,
 }: {
   environments: AREnvironmentView[];
   models: ARModel[];
@@ -131,11 +170,23 @@ function EnvironmentGallery({
   refreshing: boolean;
   onRefresh: () => void;
   topInset: number;
+  bottomInset: number;
+  onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) {
+  const {isTablet, contentWidth, gap, cardWidth, worldCardHeight, isCompactCard} = useResponsiveLayout();
+  const emojiSize = isCompactCard ? scale(54) : scale(64);
+  const emojiRadius = isCompactCard ? moderateScale(16) : moderateScale(20);
+
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.screenContent}
+      contentContainerStyle={[
+        styles.screenContent,
+        {paddingBottom: bottomInset},
+        isTablet && {alignItems: 'center'},
+      ]}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -146,7 +197,7 @@ function EnvironmentGallery({
           progressViewOffset={topInset + verticalScale(8)}
         />
       }>
-      <View style={[styles.worldHeroShadow, {marginTop: topInset + verticalScale(8)}]}>
+      <View style={[styles.worldHeroShadow, {marginTop: topInset + verticalScale(8), width: contentWidth, alignSelf: 'center'}]}>
         <View style={styles.worldHero}>
           <LinearGradient
             colors={['#FF6B6B', '#FF8557', '#FF9F43', '#87A274', '#3DAA8E', '#0EA5A4']}
@@ -165,7 +216,7 @@ function EnvironmentGallery({
         </View>
       </View>
 
-      <View style={styles.worldGrid}>
+      <View style={[styles.worldGrid, {width: contentWidth, alignSelf: 'center', gap}]}>
         {environments.map(environment => {
           const modelCount = getModelsForEnvironment(environment, models).length;
           return (
@@ -173,8 +224,8 @@ function EnvironmentGallery({
               key={environment._id}
               activeOpacity={0.85}
               onPress={() => onEnvironmentSelect(environment)}
-              style={styles.worldCardWrap}>
-              <View style={styles.worldCard}>
+              style={[styles.worldCardWrap, {width: cardWidth, height: worldCardHeight}]}>
+              <View style={[styles.worldCard, isCompactCard && {padding: moderateScale(14)}]}>
                 <LinearGradient
                   colors={getEnvironmentColors(environment)}
                   locations={getEnvironmentColors(environment).length === 2 ? [0, 1] : [0, 0.5, 1]}
@@ -186,15 +237,19 @@ function EnvironmentGallery({
                   <Text style={styles.worldCountText}>📦 {modelCount}</Text>
                 </View>
 
-                <View style={styles.worldEmojiBubble}>
+                <View style={[styles.worldEmojiBubble, {width: emojiSize, height: emojiSize, borderRadius: emojiRadius}]}>
                   <Text style={styles.worldEmoji}>{environment.emoji || '📦'}</Text>
                 </View>
 
-                <Text style={styles.worldName} numberOfLines={2}>
+                <Text
+                  style={[styles.worldName, isCompactCard && {fontSize: moderateScale(14)}]}
+                  numberOfLines={1}>
                   {environment.name || environment.folderName}
                 </Text>
 
-                <Text style={styles.worldDescription} numberOfLines={2}>
+                <Text
+                  style={[styles.worldDescription, isCompactCard && {fontSize: moderateScale(10), lineHeight: moderateScale(14)}]}
+                  numberOfLines={isCompactCard ? 1 : 2}>
                   {environment.description || `Explore ${modelCount} amazing 3D models`}
                 </Text>
               </View>
@@ -215,6 +270,8 @@ function ModelGallery({
   refreshing,
   onRefresh,
   topInset,
+  bottomInset,
+  onScroll,
 }: {
   environment: AREnvironmentView;
   models: ARModel[];
@@ -224,13 +281,22 @@ function ModelGallery({
   refreshing: boolean;
   onRefresh: () => void;
   topInset: number;
+  bottomInset: number;
+  onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) {
   const gradientColors = getEnvironmentColors(environment);
+  const {isTablet, contentWidth, gap, cardWidth, modelPreviewHeight} = useResponsiveLayout();
 
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.modelScreenContent}
+      contentContainerStyle={[
+        styles.modelScreenContent,
+        {paddingBottom: bottomInset},
+        isTablet && {alignItems: 'center'},
+      ]}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -241,7 +307,7 @@ function ModelGallery({
           progressViewOffset={topInset + verticalScale(8)}
         />
       }>
-      <View style={[styles.modelsHeroShadow, {marginTop: topInset + verticalScale(8)}]}>
+      <View style={[styles.modelsHeroShadow, {marginTop: topInset + verticalScale(8), width: contentWidth, alignSelf: 'center'}]}>
         <View style={styles.modelsHero}>
           <LinearGradient
             colors={['#DA70D6', '#A35EEA', '#6C4CFF', '#5B6EEC', '#4A90D9']}
@@ -288,12 +354,12 @@ function ModelGallery({
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.modelsContent}>
+        <View style={[styles.modelsContent, {width: contentWidth, alignSelf: 'center'}]}>
           <Text style={styles.modelsCountText}>
             <Text style={styles.modelsCountStrong}>{models.length}</Text> models available
           </Text>
 
-          <View style={styles.modelsGrid}>
+          <View style={[styles.modelsGrid, {gap}]}>
             {models.map((model, index) => {
               const previewUri = getPreviewUri(model);
               const level = getModelLevel(model);
@@ -302,7 +368,7 @@ function ModelGallery({
               return (
                 <View
                   key={getModelStableId(model, index)}
-                  style={styles.modelCardWrap}>
+                  style={[styles.modelCardWrap, {width: cardWidth}]}>
                   <View style={styles.modelGradient}>
                     <LinearGradient
                       colors={gradientColors}
@@ -311,7 +377,7 @@ function ModelGallery({
                       end={{x: 1, y: 1}}
                       style={StyleSheet.absoluteFill}
                     />
-                    <View style={styles.modelPreviewShell}>
+                    <View style={[styles.modelPreviewShell, {height: modelPreviewHeight}]}>
                       {previewUri ? (
                         <Image
                           source={{uri: previewUri}}
@@ -380,6 +446,8 @@ function ARScreenContent() {
   const navigation = useNavigation<ARNavigationProp>();
   const screenReady = useScreenReady();
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
+  const {tabBarTranslateY} = useTabBarScroll();
+  const lastScrollY = useRef(0);
 
   const modelsQuery = useQuery({
     queryKey: ['ar-models'],
@@ -416,6 +484,26 @@ function ARScreenContent() {
   const loading = !screenReady || modelsQuery.isPending || foldersQuery.isPending;
   const refreshing = modelsQuery.isRefetching || foldersQuery.isRefetching;
   const hasError = modelsQuery.isError || foldersQuery.isError;
+  const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
+  const bottomInset = tabBarHeight + verticalScale(12);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      const diff = y - lastScrollY.current;
+      lastScrollY.current = y;
+      if (y <= 0) {
+        tabBarTranslateY.value = 0;
+        return;
+      }
+      if (diff > 0) {
+        tabBarTranslateY.value = Math.min(tabBarTranslateY.value + diff, tabBarHeight);
+      } else {
+        tabBarTranslateY.value = Math.max(tabBarTranslateY.value + diff, 0);
+      }
+    },
+    [tabBarTranslateY, tabBarHeight],
+  );
 
   useEffect(() => {
     if (
@@ -524,6 +612,8 @@ function ARScreenContent() {
           refreshing={refreshing}
           onRefresh={refreshAll}
           topInset={insets.top}
+          bottomInset={bottomInset}
+          onScroll={handleScroll}
         />
       ) : (
         <EnvironmentGallery
@@ -533,6 +623,8 @@ function ARScreenContent() {
           refreshing={refreshing}
           onRefresh={refreshAll}
           topInset={insets.top}
+          bottomInset={bottomInset}
+          onScroll={handleScroll}
         />
       )}
     </SafeAreaView>
@@ -553,7 +645,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4F7FF',
   },
   screenContent: {
-    paddingBottom: verticalScale(24),
+    paddingBottom: 0,
   },
   loadingRoot: {
     flex: 1,
@@ -615,7 +707,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   worldHeroShadow: {
-    marginHorizontal: scale(16),
     borderRadius: moderateScale(20),
     shadowColor: '#000',
     shadowOffset: {width: 0, height: verticalScale(4)},
@@ -651,13 +742,10 @@ const styles = StyleSheet.create({
   worldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: scale(16),
     marginTop: verticalScale(20),
     gap: scale(12),
   },
   worldCardWrap: {
-    width: CARD_WIDTH,
-    height: verticalScale(215),
     borderRadius: moderateScale(20),
     overflow: 'hidden',
     shadowColor: '#000',
@@ -668,12 +756,12 @@ const styles = StyleSheet.create({
   },
   worldCard: {
     flex: 1,
-    padding: moderateScale(16),
+    padding: moderateScale(18),
   },
   worldCountBadge: {
     position: 'absolute',
-    top: verticalScale(10),
-    right: scale(10),
+    top: moderateScale(12),
+    right: moderateScale(12),
     backgroundColor: 'rgba(255,255,255,0.3)',
     borderRadius: moderateScale(20),
     paddingHorizontal: scale(10),
@@ -694,8 +782,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
-    marginTop: verticalScale(20),
-    marginBottom: verticalScale(16),
+    marginTop: 0,
+    marginBottom: verticalScale(12),
   },
   worldEmoji: {
     fontSize: moderateScale(30),
@@ -705,19 +793,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
     textAlign: 'center',
-    marginBottom: verticalScale(4),
+    marginBottom: verticalScale(6),
   },
   worldDescription: {
     fontSize: moderateScale(11),
     lineHeight: moderateScale(15),
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
+    marginBottom: verticalScale(4),
   },
   modelScreenContent: {
-    paddingBottom: verticalScale(24),
+    paddingBottom: 0,
   },
   modelsHeroShadow: {
-    marginHorizontal: scale(16),
     borderRadius: moderateScale(20),
     shadowColor: '#000',
     shadowOffset: {width: 0, height: verticalScale(4)},
@@ -783,7 +871,6 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   modelsContent: {
-    paddingHorizontal: scale(16),
     paddingTop: verticalScale(16),
   },
   modelsCountText: {
@@ -801,7 +888,6 @@ const styles = StyleSheet.create({
     gap: scale(12),
   },
   modelCardWrap: {
-    width: CARD_WIDTH,
     borderRadius: moderateScale(20),
     overflow: 'hidden',
     shadowColor: '#000',

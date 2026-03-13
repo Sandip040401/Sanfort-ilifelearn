@@ -22,6 +22,7 @@ import {
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {GRADE_OPTIONS} from './books.data';
 
 const H_PAD = scale(20);
@@ -44,14 +45,20 @@ const rootBackgroundStyle = {backgroundColor: '#3D2799'} as const;
 function BooksScreenContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation<StackNavigationProp<BooksStackParamList>>();
-  const {width} = useWindowDimensions();
+  const {width, height} = useWindowDimensions();
 
   const isTablet = width >= 768;
-  const contentWidth = isTablet ? Math.min(width - scale(48), scale(760)) : width;
-  const cardWidth = isTablet
+  const isLandscape = width > height;
+  const isTabletLandscape = isTablet && isLandscape;
+  const isCompact = !isLandscape;
+  const showTwoColumn = isTabletLandscape;
+  const contentWidth = isTablet ? Math.min(width - scale(32), scale(920)) : width;
+  const singleCardWidth = contentWidth - H_PAD * 2;
+  const cardWidth = showTwoColumn
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
-    : contentWidth - H_PAD * 2;
+    : singleCardWidth;
 
   const handleGradePress = (grade: typeof GRADE_OPTIONS[number]) => {
     navigation.navigate('Subjects', {
@@ -65,6 +72,8 @@ function BooksScreenContent() {
     <View style={[styles.root, rootBackgroundStyle]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scrollContent,
           {
@@ -136,7 +145,7 @@ function BooksScreenContent() {
                 </Text>
               </View>
 
-              <View style={styles.featureCard}>
+                <View style={[styles.featureCard, isCompact && styles.featureCardCompact]}>
                 <LinearGradient
                   colors={['#FFFFFF', '#FBF8FF', '#F6F1FF']}
                   locations={[0, 0.5, 1]}
@@ -144,7 +153,12 @@ function BooksScreenContent() {
                   end={{x: 1, y: 1}}
                   style={StyleSheet.absoluteFill}
                 />
-                <View style={[styles.featureTopRow, isTablet && styles.featureTopRowTablet]}>
+                <View
+                  style={[
+                    styles.featureTopRow,
+                    isTabletLandscape && styles.featureTopRowTablet,
+                    isCompact && styles.featureTopRowCompact,
+                  ]}>
                   <View style={styles.featureLead}>
                     <View style={styles.featureIconWrap}>
                       <LinearGradient
@@ -162,39 +176,63 @@ function BooksScreenContent() {
                         <View style={styles.featureBadgeDot} />
                         <Text style={styles.featureBadgeText}>Guided Flow</Text>
                       </View>
-                      <Text style={styles.featureTitle}>Move from level to library without friction</Text>
-                      <Text style={styles.featureSub}>
+                      <Text style={[styles.featureTitle, isCompact && styles.featureTitleCompact]}>
+                        Move from level to library without friction
+                      </Text>
+                      <Text style={[styles.featureSub, isCompact && styles.featureSubCompact]}>
                         Start with the right grade, open a subject, then browse every learning format from the
                         same connected experience.
                       </Text>
                     </View>
                   </View>
 
-                  <View style={[styles.featureMetaCard, isTablet ? styles.featureMetaCardTablet : styles.featureMetaCardMobile]}>
+                  <View
+                    style={[
+                      styles.featureMetaCard,
+                      isTabletLandscape ? styles.featureMetaCardTablet : styles.featureMetaCardMobile,
+                    ]}>
                     <Text style={styles.featureMetaLabel}>Live content path</Text>
                     <Text style={styles.featureMetaValue}>3 steps</Text>
                     <Text style={styles.featureMetaSub}>Structured for fast navigation</Text>
                   </View>
                 </View>
 
-                <View style={styles.featureStepsRow}>
+                <View style={[styles.featureStepsRow, isCompact && styles.featureStepsRowCompact]}>
                   {FLOW_STEPS.map(step => (
-                    <View key={step.id} style={styles.featureStepCard}>
-                      <View style={styles.featureStepIconWrap}>
+                    <View
+                      key={step.id}
+                      style={[styles.featureStepCard, isCompact && styles.featureStepCardCompact]}>
+                      <View
+                        style={[
+                          styles.featureStepIconWrap,
+                          isCompact && styles.featureStepIconWrapCompact,
+                        ]}>
                         <step.Icon size={moderateScale(14)} color="#5B34F2" strokeWidth={2.1} />
                       </View>
                       <View style={styles.featureStepCopy}>
-                        <Text style={styles.featureStepTitle}>{step.title}</Text>
-                        <Text style={styles.featureStepCaption}>{step.caption}</Text>
+                        <Text
+                          style={[
+                            styles.featureStepTitle,
+                            isCompact && styles.featureStepTitleCompact,
+                          ]}>
+                          {step.title}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.featureStepCaption,
+                            isCompact && styles.featureStepCaptionCompact,
+                          ]}>
+                          {step.caption}
+                        </Text>
                       </View>
                       <Text style={styles.featureStepNumber}>{step.id}</Text>
                     </View>
                   ))}
                 </View>
 
-                <View style={styles.featureFooter}>
+                <View style={[styles.featureFooter, isCompact && styles.featureFooterCompact]}>
                   <Text style={styles.featureFooterLabel}>Included formats</Text>
-                  <View style={styles.featurePillsRow}>
+                  <View style={[styles.featurePillsRow, isCompact && styles.featurePillsRowCompact]}>
                     {RESOURCE_PILLS.map(item => {
                       const Icon = item.Icon;
 
@@ -220,7 +258,7 @@ function BooksScreenContent() {
               Start with the right learning stage and open the matching subject library.
             </Text>
 
-            <View style={[styles.gradeGrid, isTablet && styles.gradeGridTablet]}>
+            <View style={[styles.gradeGrid, showTwoColumn && styles.gradeGridTablet]}>
               {GRADE_OPTIONS.map(grade => {
                 const Icon = grade.icon;
 
@@ -253,7 +291,13 @@ function BooksScreenContent() {
                         </View>
                       </View>
 
-                      <Text style={styles.gradeName}>{grade.name}</Text>
+                      <Text
+                        style={styles.gradeName}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.85}>
+                        {grade.name}
+                      </Text>
                       <Text style={styles.gradeSubtitle}>{grade.subtitle}</Text>
                       <Text style={styles.gradeDescription}>{grade.description}</Text>
 
@@ -261,7 +305,14 @@ function BooksScreenContent() {
                         <View style={styles.subjectPill}>
                           <Text style={styles.subjectPillText}>{grade.subjects} Subjects</Text>
                         </View>
-                        <Text style={styles.gradeStatsLabel}>{grade.statsLabel}</Text>
+                        <Text
+                          style={styles.gradeStatsLabel}
+                          numberOfLines={2}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.8}
+                          ellipsizeMode="tail">
+                          {grade.statsLabel}
+                        </Text>
                       </View>
 
                       <View style={styles.decorCircle1} />
@@ -417,9 +468,17 @@ const styles = StyleSheet.create({
     shadowRadius: moderateScale(18),
     shadowOffset: {width: 0, height: verticalScale(10)},
   },
+  featureCardCompact: {
+    padding: moderateScale(16),
+    borderRadius: moderateScale(20),
+  },
   featureTopRow: {
     gap: verticalScale(14),
     marginBottom: verticalScale(16),
+  },
+  featureTopRowCompact: {
+    gap: verticalScale(10),
+    marginBottom: verticalScale(12),
   },
   featureTopRowTablet: {
     flexDirection: 'row',
@@ -476,11 +535,18 @@ const styles = StyleSheet.create({
     lineHeight: moderateScale(28),
     marginBottom: verticalScale(6),
   },
+  featureTitleCompact: {
+    fontSize: moderateScale(20),
+    lineHeight: moderateScale(26),
+  },
   featureSub: {
     color: '#6B6485',
     fontSize: moderateScale(12),
     lineHeight: moderateScale(18),
     maxWidth: '94%',
+  },
+  featureSubCompact: {
+    maxWidth: '100%',
   },
   featureMetaCard: {
     alignSelf: 'flex-start',
@@ -520,6 +586,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
     gap: verticalScale(10),
   },
+  featureStepsRowCompact: {
+    gap: verticalScale(8),
+  },
   featureStepCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -530,6 +599,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     paddingVertical: verticalScale(12),
   },
+  featureStepCardCompact: {
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(10),
+  },
   featureStepIconWrap: {
     width: scale(38),
     height: scale(38),
@@ -538,6 +611,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: scale(12),
+  },
+  featureStepIconWrapCompact: {
+    width: scale(34),
+    height: scale(34),
+    borderRadius: moderateScale(12),
+    marginRight: scale(8),
   },
   featureStepCopy: {
     flex: 1,
@@ -548,10 +627,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: verticalScale(2),
   },
+  featureStepTitleCompact: {
+    fontSize: moderateScale(12),
+  },
   featureStepCaption: {
     color: '#7A7393',
     fontSize: moderateScale(11),
     lineHeight: moderateScale(16),
+  },
+  featureStepCaptionCompact: {
+    fontSize: moderateScale(10),
+    lineHeight: moderateScale(14),
   },
   featureStepNumber: {
     color: '#7C3AED',
@@ -567,6 +653,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#EEE8FB',
   },
+  featureFooterCompact: {
+    marginTop: verticalScale(12),
+  },
   featureFooterLabel: {
     color: '#6D5BAA',
     fontSize: moderateScale(10),
@@ -579,6 +668,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: scale(8),
+  },
+  featurePillsRowCompact: {
+    gap: scale(6),
   },
   featurePill: {
     flexDirection: 'row',

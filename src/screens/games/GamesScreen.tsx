@@ -35,6 +35,7 @@ import {useScreenReady} from '@/hooks/useScreenReady';
 import {GamesService} from '@/services';
 import {useTheme} from '@/theme';
 import type {BottomTabParamList, MainStackParamList} from '@/types';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {
   GAME_CATEGORIES,
   GAME_CATEGORY_META,
@@ -205,6 +206,7 @@ function GamesSkeleton() {
 function GamesScreenContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
   const {width} = useWindowDimensions();
   const navigation = useNavigation<GamesNavigationProp>();
   const screenReady = useScreenReady();
@@ -420,6 +422,8 @@ function GamesScreenContent() {
         keyExtractor={item => item.id}
         renderItem={renderGameCard}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(96)}}
         refreshControl={
           <RefreshControl

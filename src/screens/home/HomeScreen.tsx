@@ -1,10 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
@@ -24,6 +27,8 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '@/store';
 import { useTheme } from '@/theme';
+import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
+import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import type { BottomTabParamList, MainStackParamList } from '@/types';
 
 const H_PAD    = scale(20);
@@ -52,6 +57,38 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const tabNav = useNavigation<TabNav>();
   const mainNav = useNavigation<MainNav>();
+  const { width, height } = useWindowDimensions();
+  const { tabBarTranslateY } = useTabBarScroll();
+  const lastScrollY = useRef(0);
+  const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
+
+  const isTablet = width >= 768;
+  const isLandscape = width > height;
+  const outerHPad = isTablet && isLandscape ? scale(12) : H_PAD;
+  const maxContentWidth = isTablet && !isLandscape ? width - 48 : undefined;
+  const gridGap = isTablet ? 14 : CARD_GAP;
+  const containerStyle = [
+    styles.container,
+    { paddingHorizontal: outerHPad },
+    maxContentWidth ? { width: maxContentWidth, alignSelf: 'center' } : null,
+  ];
+
+  const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const diff = y - lastScrollY.current;
+    lastScrollY.current = y;
+    if (y <= 0) {
+      tabBarTranslateY.value = 0;
+      return;
+    }
+    if (diff > 0) {
+      // scrolling down — hide
+      tabBarTranslateY.value = Math.min(tabBarTranslateY.value + diff, tabBarHeight);
+    } else {
+      // scrolling up — show
+      tabBarTranslateY.value = Math.max(tabBarTranslateY.value + diff, 0);
+    }
+  }, [tabBarTranslateY, tabBarHeight]);
 
   const firstName = useMemo(() => {
     const n = user?.name?.split(' ')[0] ?? 'Learner';
@@ -65,8 +102,10 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         style={[styles.scroll, { backgroundColor: colors.background }]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={{
-          paddingBottom: insets.bottom + 90,
+          paddingBottom: tabBarHeight + 24,
           backgroundColor: colors.background,
           flexGrow: 1,
         }}>
@@ -81,38 +120,40 @@ export default function HomeScreen() {
             style={StyleSheet.absoluteFill}
           />
 
-          <View style={styles.headerRow}>
-            <View style={styles.greetCol}>
-              <Text style={styles.greetLine}>{greeting} 👋</Text>
-              {isUserLoaded ? (
-                <Text style={styles.greetName}>{firstName}</Text>
-              ) : (
-                <View style={styles.skeletonName} />
-              )}
-              <Text style={styles.greetSub}>Ready to explore today?</Text>
+          <View style={[styles.headerContent, containerStyle]}>
+            <View style={styles.headerRow}>
+              <View style={styles.greetCol}>
+                <Text style={styles.greetLine}>{greeting} 👋</Text>
+                {isUserLoaded ? (
+                  <Text style={styles.greetName}>{firstName}</Text>
+                ) : (
+                  <View style={styles.skeletonName} />
+                )}
+                <Text style={styles.greetSub}>Ready to explore today?</Text>
+              </View>
+              <View style={styles.headerBtns}>
+                <TouchableOpacity style={styles.iconBtn}>
+                  <Bell size={19} color="#fff" strokeWidth={2} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.avatarBtn}
+                  onPress={() => mainNav.navigate('Profile')}>
+                  <User size={19} color="#6C4CFF" strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.headerBtns}>
-              <TouchableOpacity style={styles.iconBtn}>
-                <Bell size={19} color="#fff" strokeWidth={2} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.avatarBtn}
-                onPress={() => mainNav.navigate('Profile')}>
-                <User size={19} color="#6C4CFF" strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-          </View>
 
-          <View style={styles.statsBar}>
-            {[{ v: '12+', l: 'Books' }, { v: '50+', l: 'AR Models' }, { v: '30+', l: 'Games' }].map((s, i) => (
-              <React.Fragment key={s.l}>
-                {i > 0 && <View style={styles.statDiv} />}
-                <View style={styles.statItem}>
-                  <Text style={styles.statVal}>{s.v}</Text>
-                  <Text style={styles.statLbl}>{s.l}</Text>
-                </View>
-              </React.Fragment>
-            ))}
+            <View style={styles.statsBar}>
+              {[{ v: '12+', l: 'Books' }, { v: '50+', l: 'AR Models' }, { v: '30+', l: 'Games' }].map((s, i) => (
+                <React.Fragment key={s.l}>
+                  {i > 0 && <View style={styles.statDiv} />}
+                  <View style={styles.statItem}>
+                    <Text style={styles.statVal}>{s.v}</Text>
+                    <Text style={styles.statLbl}>{s.l}</Text>
+                  </View>
+                </React.Fragment>
+              ))}
+            </View>
           </View>
 
           <View style={[styles.curve, { backgroundColor: colors.background }]} />
@@ -120,80 +161,82 @@ export default function HomeScreen() {
 
         {/* ── Content ── */}
         <View style={[styles.content, { backgroundColor: colors.background }]}>
+          <View style={[containerStyle]}>
 
-          {/* Featured — Books */}
-          <Text style={[styles.section, { color: colors.text }]}>Featured</Text>
-          <TouchableOpacity onPress={() => tabNav.navigate('Books')} activeOpacity={0.88}>
-            <View style={styles.heroCard}>
-              <LinearGradient
-                colors={['#4F46E5', '#5D49F2', '#6C4CFF', '#8354FF', '#9B5CFF']}
-                locations={[0, 0.25, 0.5, 0.75, 1]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.heroInner}>
-                <View style={styles.heroIconWrap}>
-                  <BookOpen size={32} color="#fff" strokeWidth={1.8} />
+            {/* Featured — Books */}
+          <Text style={[styles.section, styles.sectionFirst, { color: colors.text }]}>Featured</Text>
+            <TouchableOpacity onPress={() => tabNav.navigate('Books')} activeOpacity={0.88}>
+              <View style={styles.heroCard}>
+                <LinearGradient
+                  colors={['#4F46E5', '#5D49F2', '#6C4CFF', '#8354FF', '#9B5CFF']}
+                  locations={[0, 0.25, 0.5, 0.75, 1]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.heroInner}>
+                  <View style={styles.heroIconWrap}>
+                    <BookOpen size={32} color="#fff" strokeWidth={1.8} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.heroTitle}>Grade Books</Text>
+                    <Text style={styles.heroSub}>Curriculum-aligned ebooks{'\n'}for every grade level</Text>
+                  </View>
+                </View>
+                <View style={styles.decor1} /><View style={styles.decor2} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Grid — 2x2 on all devices */}
+            <Text style={[styles.section, { color: colors.text }]}>Learning Tools</Text>
+            <View style={[styles.gridRow, { gap: gridGap, marginBottom: gridGap }]}>
+              {GRID_ITEMS.slice(0, 2).map(({ key, label, sub, Icon, colors: c }) => (
+                <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
+                  <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
+                    <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+                    <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}><Icon size={isTablet ? 30 : 26} color="#fff" strokeWidth={1.8} /></View>
+                    <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{label}</Text>
+                    <Text style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{sub}</Text>
+                    <View style={styles.gridDecor} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={[styles.gridRow, { gap: gridGap, marginBottom: gridGap }]}>
+              {GRID_ITEMS.slice(2, 4).map(({ key, label, sub, Icon, colors: c }) => (
+                <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
+                  <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
+                    <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+                    <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}><Icon size={isTablet ? 30 : 26} color="#fff" strokeWidth={1.8} /></View>
+                    <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{label}</Text>
+                    <Text style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{sub}</Text>
+                    <View style={styles.gridDecor} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* AR Sheets */}
+            <Text style={[styles.section, { color: colors.text }]}>Worksheets</Text>
+            <TouchableOpacity onPress={() => tabNav.navigate('ARSheets')} activeOpacity={0.88}>
+              <View style={styles.wideCard}>
+                <LinearGradient
+                  colors={['#0D9488', '#10AE9A', '#14B8A6']}
+                  locations={[0, 0.5, 1]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={styles.wideIcon}>
+                  <FileText size={28} color="#fff" strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.heroTitle}>Grade Books</Text>
-                  <Text style={styles.heroSub}>Curriculum-aligned ebooks{'\n'}for every grade level</Text>
+                  <Text style={styles.wideTitle}>AR Sheets</Text>
+                  <Text style={styles.wideSub}>Scan worksheets with AR camera to see 3D animations live</Text>
                 </View>
+                <View style={styles.wideDecor} />
               </View>
-              <View style={styles.decor1} /><View style={styles.decor2} />
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
 
-          {/* Grid — 4 tools */}
-          <Text style={[styles.section, { color: colors.text }]}>Learning Tools</Text>
-          <View style={styles.gridRow}>
-            {GRID_ITEMS.slice(0, 2).map(({ key, label, sub, Icon, colors: c }) => (
-              <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
-                <View style={styles.gridCard}>
-                  <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                  <View style={styles.gridIcon}><Icon size={26} color="#fff" strokeWidth={1.8} /></View>
-                  <Text style={styles.gridLabel}>{label}</Text>
-                  <Text style={styles.gridSub}>{sub}</Text>
-                  <View style={styles.gridDecor} />
-                </View>
-              </TouchableOpacity>
-            ))}
           </View>
-          <View style={styles.gridRow}>
-            {GRID_ITEMS.slice(2, 4).map(({ key, label, sub, Icon, colors: c }) => (
-              <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
-                <View style={styles.gridCard}>
-                  <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                  <View style={styles.gridIcon}><Icon size={26} color="#fff" strokeWidth={1.8} /></View>
-                  <Text style={styles.gridLabel}>{label}</Text>
-                  <Text style={styles.gridSub}>{sub}</Text>
-                  <View style={styles.gridDecor} />
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* AR Sheets */}
-          <Text style={[styles.section, { color: colors.text }]}>Worksheets</Text>
-          <TouchableOpacity onPress={() => tabNav.navigate('ARSheets')} activeOpacity={0.88}>
-            <View style={styles.wideCard}>
-              <LinearGradient
-                colors={['#0D9488', '#10AE9A', '#14B8A6']}
-                locations={[0, 0.5, 1]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.wideIcon}>
-                <FileText size={28} color="#fff" strokeWidth={1.8} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.wideTitle}>AR Sheets</Text>
-                <Text style={styles.wideSub}>Scan worksheets with AR camera to see 3D animations live</Text>
-              </View>
-              <View style={styles.wideDecor} />
-            </View>
-          </TouchableOpacity>
-
         </View>
       </ScrollView>
     </View>
@@ -204,7 +247,9 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
 
-  headerOuter: { paddingHorizontal: H_PAD, paddingBottom: verticalScale(24) },
+  headerOuter: { paddingBottom: verticalScale(24), overflow: 'hidden' },
+  headerContent: {},
+  container: { width: '100%' },
   headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   greetCol:   { flex: 1, gap: verticalScale(2) },
   greetLine:  { fontSize: moderateScale(12), color: 'rgba(255,255,255,0.75)' },
@@ -235,8 +280,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: moderateScale(24),
   },
 
-  content: { paddingTop: verticalScale(6), paddingHorizontal: H_PAD },
+  content: { paddingTop: verticalScale(2) },
   section: { fontSize: moderateScale(15), fontWeight: '700', marginBottom: verticalScale(10), marginTop: verticalScale(4) },
+  sectionFirst: { marginTop: 0 },
 
   heroCard: {
     borderRadius: moderateScale(20), padding: moderateScale(22), marginBottom: verticalScale(8), overflow: 'hidden',
@@ -248,13 +294,17 @@ const styles = StyleSheet.create({
   decor1:       { position: 'absolute', top: verticalScale(-30), right: scale(-30), width: scale(100), height: scale(100), borderRadius: scale(50), backgroundColor: 'rgba(255,255,255,0.08)' },
   decor2:       { position: 'absolute', bottom: verticalScale(-20), right: scale(50), width: scale(60), height: scale(60), borderRadius: scale(30), backgroundColor: 'rgba(255,255,255,0.06)' },
 
-  gridRow:       { flexDirection: 'row', gap: CARD_GAP, marginBottom: CARD_GAP },
+  gridRow:       { flexDirection: 'row', marginBottom: CARD_GAP },
   gridTouchable: { flex: 1 },
-  gridCard:      { height: verticalScale(150), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
-  gridIcon:  { width: scale(44), height: scale(44), borderRadius: moderateScale(13), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  gridLabel: { fontSize: moderateScale(13), fontWeight: '700', color: '#fff', marginBottom: verticalScale(2), lineHeight: moderateScale(18) },
-  gridSub:   { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.75)', lineHeight: moderateScale(14) },
-  gridDecor: { position: 'absolute', bottom: verticalScale(-20), right: scale(-20), width: scale(70), height: scale(70), borderRadius: scale(35), backgroundColor: 'rgba(255,255,255,0.1)' },
+  gridCard:        { minHeight: verticalScale(150), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
+  gridCardTablet:  { minHeight: 170, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 16, borderRadius: 20 },
+  gridIcon:        { width: scale(44), height: scale(44), borderRadius: moderateScale(13), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  gridIconTablet:  { width: 52, height: 52, borderRadius: 16, marginBottom: 10 },
+  gridLabel:       { fontSize: moderateScale(13), fontWeight: '700', color: '#fff', marginBottom: verticalScale(2), lineHeight: moderateScale(18) },
+  gridLabelTablet: { fontSize: 16, lineHeight: 22 },
+  gridSub:         { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.75)', lineHeight: moderateScale(14) },
+  gridSubTablet:   { fontSize: 13, lineHeight: 18 },
+  gridDecor:       { position: 'absolute', bottom: verticalScale(-20), right: scale(-20), width: scale(70), height: scale(70), borderRadius: scale(35), backgroundColor: 'rgba(255,255,255,0.1)' },
 
   wideCard:  { flexDirection: 'row', alignItems: 'center', padding: moderateScale(18), borderRadius: moderateScale(18), overflow: 'hidden', gap: scale(14) },
   wideIcon:  { width: scale(52), height: scale(52), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', flexShrink: 0 },

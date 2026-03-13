@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
@@ -18,6 +19,7 @@ import {ArrowLeft, Play, Glasses} from 'lucide-react-native';
 import {useNavigation, useRoute, type RouteProp} from '@react-navigation/native';
 import {useTheme} from '@/theme';
 import {Skeleton} from '@/components/ui';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {WebVRService} from '@/services/webvr.service';
 import type {WebVRAsset} from '@/components/WebVRViewerModal';
 import type {WebVRStackParamList} from '@/types';
@@ -249,9 +251,13 @@ const TopicCard = React.memo(function TopicCard({
 export default function WebVRFolderScreen() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation();
   const route = useRoute<RouteParams>();
   const {folderId, folderName, gradientColors} = route.params;
+  const {width: screenWidth} = useWindowDimensions();
+  const isTablet = screenWidth >= 768;
+  const contentMaxWidth = isTablet ? Math.min(screenWidth * 0.85, 720) : undefined;
 
   const [topics, setTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -396,7 +402,7 @@ export default function WebVRFolderScreen() {
 
       {/* Content */}
       {loading ? (
-        <View style={styles.skeletonContainer}>
+        <View style={[styles.skeletonContainer, contentMaxWidth ? {width: contentMaxWidth, alignSelf: 'center'} : undefined]}>
           <TopicSkeleton />
         </View>
       ) : error ? (
@@ -420,7 +426,9 @@ export default function WebVRFolderScreen() {
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           getItemLayout={getItemLayout}
-          contentContainerStyle={contentStyle}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={[contentStyle, contentMaxWidth ? {width: contentMaxWidth, alignSelf: 'center'} : undefined]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={EmptyComponent}
           // ── FlatList perf tuning ──

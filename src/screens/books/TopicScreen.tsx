@@ -27,6 +27,7 @@ import MediaViewer, {type MediaViewerPayload} from '@/components/MediaViewer';
 import {useScreenReady} from '@/hooks/useScreenReady';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {withAlpha} from './books.data';
 import {getYouTubeThumbnailUrl, isYouTubeUrl} from '@/utils/video';
 
@@ -59,15 +60,33 @@ const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
   return contrastDark > contrastLight ? dark : light;
 };
 
+const getFileLabelFromUrl = (url: string, fallback: string) => {
+  if (!url) return fallback;
+  try {
+    const trimmed = url.split('?')[0]?.split('#')[0] ?? '';
+    const parts = trimmed.split('/').filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (!last) return fallback;
+    const decoded = decodeURIComponent(last);
+    return decoded.replace(/\.[a-z0-9]+$/i, '') || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 function TopicScreenContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation<TopicNavigationProp>();
   const route = useRoute<TopicRouteProp>();
   const {topic, subjectColor, subjectName, gradeName} = route.params;
   const [selectedMedia, setSelectedMedia] = useState<MediaViewerPayload | null>(null);
   const screenReady = useScreenReady();
-  const headerTextColor = getContrastText(subjectColor);
+  const safeAccent = subjectColor && subjectColor.startsWith('#')
+    ? subjectColor
+    : colors.primary || '#F97316';
+  const headerTextColor = getContrastText(safeAccent);
   const headerSubTextColor = withAlpha(headerTextColor, 0.82);
   const headerBadgeBg = headerTextColor === '#fff'
     ? 'rgba(255,255,255,0.18)'
@@ -110,6 +129,10 @@ function TopicScreenContent() {
           contentContainerStyle={styles.resourcesRow}>
           {items.map((item, index) => {
             const thumbnailUrl = kind === 'video' ? getYouTubeThumbnailUrl(item) : null;
+            const label =
+              kind === 'image' || kind === 'video'
+                ? `${safeTopic.title} ${index + 1}`
+                : `Worksheet ${index + 1}`;
 
             return (
               <TouchableOpacity
@@ -126,7 +149,7 @@ function TopicScreenContent() {
                   styles.resourceCard,
                   {
                     backgroundColor: colors.surface,
-                    borderColor: withAlpha(subjectColor, 0.14),
+                    borderColor: withAlpha(safeAccent, 0.14),
                   },
                 ]}>
                 {kind === 'image' ? (
@@ -151,19 +174,23 @@ function TopicScreenContent() {
                   </ImageBackground>
                 ) : (
                   <LinearGradient
-                    colors={[withAlpha(subjectColor, 0.18), withAlpha(subjectColor, 0.06)]}
+                    colors={[withAlpha(safeAccent, 0.18), withAlpha(safeAccent, 0.06)]}
                     locations={[0, 1]}
                     style={styles.resourcePoster}>
                     {kind === 'video' ? (
-                      <PlayCircle size={moderateScale(36)} color={subjectColor} strokeWidth={1.8} />
+                      <PlayCircle size={moderateScale(36)} color={safeAccent} strokeWidth={1.8} />
                     ) : (
-                      <FileText size={moderateScale(30)} color={subjectColor} strokeWidth={1.8} />
+                      <FileText size={moderateScale(30)} color={safeAccent} strokeWidth={1.8} />
                     )}
                   </LinearGradient>
                 )}
 
-                <Text allowFontScaling={false} style={[styles.resourceLabel, {color: colors.text}]}>
-                  {kind === 'image' ? `Image ${index + 1}` : kind === 'video' ? `Video ${index + 1}` : `Worksheet ${index + 1}`}
+                <Text
+                  allowFontScaling={false}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={[styles.resourceLabel, {color: colors.text}]}>
+                  {label}
                 </Text>
                 <Text allowFontScaling={false} style={[styles.resourceMeta, {color: colors.textSecondary}]}>
                   Tap to open
@@ -178,9 +205,11 @@ function TopicScreenContent() {
 
   return (
     <>
-      <View style={[styles.root, {backgroundColor: subjectColor}]}>
+      <View style={[styles.root, {backgroundColor: safeAccent}]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={[
             styles.scrollContent,
             {
@@ -190,7 +219,7 @@ function TopicScreenContent() {
           ]}>
           <View style={[styles.headerOuter, {paddingTop: insets.top + verticalScale(12)}]}>
             <LinearGradient
-              colors={[subjectColor, withAlpha(subjectColor, 0.74)]}
+              colors={[safeAccent, withAlpha(safeAccent, 0.74)]}
               locations={[0, 1]}
               start={{x: 0, y: 0}}
               end={{x: 1, y: 1}}
@@ -214,42 +243,14 @@ function TopicScreenContent() {
               {safeTopic.conceptTitle} • Volume {safeTopic.volumeNumber}
             </Text>
 
-            <View style={styles.quickStats}>
-              <View style={[styles.quickStatCard, {backgroundColor: quickStatBg, borderColor: quickStatBorder}]}>
-                <ImageIcon size={moderateScale(16)} color={headerTextColor} strokeWidth={2} />
-                <Text style={[styles.quickStatValue, {color: headerTextColor}]}>
-                  {safeTopic.images.length}
-                </Text>
-                <Text style={[styles.quickStatLabel, {color: quickStatLabelColor}]}>
-                  Images
-                </Text>
-              </View>
-              <View style={[styles.quickStatCard, {backgroundColor: quickStatBg, borderColor: quickStatBorder}]}>
-                <PlayCircle size={moderateScale(16)} color={headerTextColor} strokeWidth={2} />
-                <Text style={[styles.quickStatValue, {color: headerTextColor}]}>
-                  {safeTopic.videos.length}
-                </Text>
-                <Text style={[styles.quickStatLabel, {color: quickStatLabelColor}]}>
-                  Videos
-                </Text>
-              </View>
-              <View style={[styles.quickStatCard, {backgroundColor: quickStatBg, borderColor: quickStatBorder}]}>
-                <FileText size={moderateScale(16)} color={headerTextColor} strokeWidth={2} />
-                <Text style={[styles.quickStatValue, {color: headerTextColor}]}>
-                  {safeTopic.arSheets.length}
-                </Text>
-                <Text style={[styles.quickStatLabel, {color: quickStatLabelColor}]}>
-                  Sheets
-                </Text>
-              </View>
-            </View>
+            {/* Quick stats removed as requested */}
             <View style={[styles.curve, {backgroundColor: colors.background}]} />
           </View>
 
           <View style={styles.content}>
             {!screenReady ? (
               <View style={[styles.loadingCard, {backgroundColor: colors.surface}]}>
-                <ActivityIndicator size="small" color={subjectColor} />
+                <ActivityIndicator size="small" color={safeAccent} />
                 <Text style={[styles.loadingCardTitle, {color: colors.text}]}>
                   Preparing topic preview…
                 </Text>
@@ -265,11 +266,11 @@ function TopicScreenContent() {
                       styles.keywordCard,
                       {
                         backgroundColor: colors.surface,
-                        borderColor: withAlpha(subjectColor, 0.14),
+                        borderColor: withAlpha(safeAccent, 0.14),
                       },
                     ]}>
-                    <View style={[styles.keywordIconWrap, {backgroundColor: withAlpha(subjectColor, 0.10)}]}>
-                      <Tag size={moderateScale(18)} color={subjectColor} strokeWidth={2} />
+                    <View style={[styles.keywordIconWrap, {backgroundColor: withAlpha(safeAccent, 0.10)}]}>
+                      <Tag size={moderateScale(18)} color={safeAccent} strokeWidth={2} />
                     </View>
                     <View style={styles.keywordContent}>
                       <Text style={[styles.keywordLabel, {color: colors.textSecondary}]}>Keyword</Text>
@@ -278,9 +279,10 @@ function TopicScreenContent() {
                   </View>
                 )}
 
+              
+
                 {renderResourceSection('Images', safeTopic.images, 'image')}
                 {renderResourceSection('Videos', safeTopic.videos, 'video')}
-                {renderResourceSection('Worksheets', safeTopic.arSheets, 'document')}
               </>
             )}
           </View>

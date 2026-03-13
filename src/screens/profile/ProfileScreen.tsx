@@ -6,6 +6,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
@@ -40,6 +41,10 @@ export default function ProfileScreen() {
   const {colors, mode, setMode, isDark} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const {width} = useWindowDimensions();
+  const isTablet = width >= 768;
+  const contentWidth = isTablet ? Math.min(width - scale(64), scale(960)) : undefined;
+  const contentStyle = contentWidth ? {width: contentWidth, alignSelf: 'center'} : undefined;
   const [showLogout, setShowLogout] = useState(false);
 
   const displayName = capitalize(user?.name || 'User');
@@ -60,7 +65,12 @@ export default function ProfileScreen() {
       />
 
       {/* ── Header ─────────────────────────────────── */}
-      <View style={[styles.header, {paddingTop: insets.top + verticalScale(8)}]}>
+      <View
+        style={[
+          styles.header,
+          {paddingTop: insets.top + verticalScale(8)},
+          contentStyle,
+        ]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
@@ -75,7 +85,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}>
 
         {/* ── Avatar Section ───────────────────────── */}
-        <View style={styles.avatarSection}>
+        <View style={[styles.avatarSection, contentStyle]}>
           <LinearGradient
             colors={colors.gradient.primary}
             locations={[0, 1]}
@@ -103,7 +113,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── Info Cards ───────────────────────────── */}
-        <View style={styles.cardsContainer}>
+        <View style={[styles.cardsContainer, contentStyle]}>
           <Text style={[styles.sectionLabel, {color: colors.textTertiary}]}>
             ACCOUNT
           </Text>
@@ -149,7 +159,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── Theme Picker ─────────────────────────── */}
-        <View style={styles.cardsContainer}>
+        <View style={[styles.cardsContainer, contentStyle]}>
           <Text style={[styles.sectionLabel, {color: colors.textTertiary}]}>
             APPEARANCE
           </Text>
@@ -198,7 +208,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── Logout ───────────────────────────────── */}
-        <View style={styles.cardsContainer}>
+        <View style={[styles.cardsContainer, contentStyle]}>
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => setShowLogout(true)}

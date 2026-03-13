@@ -18,6 +18,7 @@ import {ArrowLeft, ChevronRight, Layers3} from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {getGradeMeta, SUBJECT_OPTIONS, withAlpha} from './books.data';
 
 const H_PAD = scale(20);
@@ -27,22 +28,30 @@ type SubjectsRouteProp = RouteProp<BooksStackParamList, 'Subjects'>;
 type BooksNavigationProp = StackNavigationProp<BooksStackParamList>;
 
 function SubjectsScreenContent() {
-  const {colors} = useTheme();
+  const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectsRouteProp>();
   const [refreshing, setRefreshing] = React.useState(false);
   const {gradeKey, gradeName, gradeColors} = route.params;
   const {width} = useWindowDimensions();
+  const cardText = isDark ? '#1B1533' : colors.text;
+  const cardSubText = isDark ? '#5B547A' : colors.textSecondary;
+  const cardMetaText = isDark ? '#6B618C' : colors.textSecondary;
   const gradeMeta = getGradeMeta(gradeKey);
   const headerColors = gradeColors.length >= 2
     ? gradeColors
     : [...(gradeMeta?.colors ?? ['#2563EB', '#60A5FA'])];
   const isTablet = width >= 768;
-  const contentWidth = isTablet ? Math.min(width - scale(48), scale(760)) : width;
+  const contentWidth = isTablet ? Math.min(width - scale(32), scale(920)) : width;
   const cardWidth = isTablet
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : contentWidth - H_PAD * 2;
+  const isNarrowCard = cardWidth < scale(320);
+  const cardHeight = isTablet
+    ? Math.max(verticalScale(270), Math.min(verticalScale(340), cardWidth * 1.2))
+    : undefined;
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -57,6 +66,8 @@ function SubjectsScreenContent() {
     <View style={[styles.root, {backgroundColor: headerColors[0]}]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -160,13 +171,14 @@ function SubjectsScreenContent() {
                         subjectColor: subject.color,
                       })
                     }>
-                  <View
-                    style={[
-                      styles.subjectCard,
-                      {
-                        borderColor: withAlpha(subject.color, 0.14),
-                      },
-                    ]}>
+                    <View
+                      style={[
+                        styles.subjectCard,
+                        cardHeight ? {height: cardHeight} : undefined,
+                        {
+                          borderColor: withAlpha(subject.color, 0.14),
+                        },
+                      ]}>
                     <LinearGradient
                       colors={['#FFFFFF', subject.soft]}
                       locations={[0, 1]}
@@ -196,24 +208,39 @@ function SubjectsScreenContent() {
                     <Text style={[styles.subjectEyebrow, {color: subject.color}]}>
                       {subject.badge}
                     </Text>
-                    <Text style={[styles.subjectName, {color: colors.text}]}>
+                    <Text
+                      style={[styles.subjectName, {color: cardText}]}
+                      numberOfLines={2}
+                      ellipsizeMode="tail">
                       {subject.name}
                     </Text>
-                    <Text style={[styles.subjectDescription, {color: colors.textSecondary}]}>
+                    <Text
+                      style={[styles.subjectDescription, {color: cardSubText}]}
+                      numberOfLines={3}
+                      ellipsizeMode="tail">
                       {subject.description}
                     </Text>
 
-                    <View style={styles.subjectFooter}>
+                    <View
+                      style={[
+                        styles.subjectFooter,
+                        isTablet && styles.subjectFooterFixed,
+                        isNarrowCard && styles.subjectFooterCompact,
+                      ]}>
                       <View
                         style={[
                           styles.subjectBadge,
                           {backgroundColor: withAlpha(subject.color, 0.10)},
+                          isNarrowCard && styles.subjectBadgeCompact,
                         ]}>
                         <Text style={[styles.subjectBadgeText, {color: subject.color}]}>
                           Open {subject.shortName.toLowerCase()}
                         </Text>
                       </View>
-                      <Text style={[styles.subjectMeta, {color: colors.textSecondary}]}>
+                      <Text
+                        style={[styles.subjectMeta, {color: cardMetaText}, isNarrowCard && styles.subjectMetaCompact]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail">
                         Live content
                       </Text>
                     </View>
@@ -461,10 +488,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: scale(8),
   },
+  subjectFooterFixed: {
+    marginTop: 'auto',
+  },
+  subjectFooterCompact: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
+    gap: verticalScale(8),
+  },
   subjectBadge: {
     borderRadius: moderateScale(999),
     paddingHorizontal: scale(10),
     paddingVertical: verticalScale(7),
+  },
+  subjectBadgeCompact: {
+    alignSelf: 'flex-start',
   },
   subjectBadgeText: {
     fontSize: moderateScale(11),
@@ -473,6 +511,10 @@ const styles = StyleSheet.create({
   subjectMeta: {
     fontSize: moderateScale(11),
     fontWeight: '600',
+    flexShrink: 1,
+  },
+  subjectMetaCompact: {
+    alignSelf: 'flex-start',
   },
   subjectGlow: {
     position: 'absolute',

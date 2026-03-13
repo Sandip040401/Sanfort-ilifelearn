@@ -9,6 +9,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
@@ -20,6 +21,8 @@ import type {StackNavigationProp} from '@react-navigation/stack';
 import {useTheme} from '@/theme';
 import {ScreenErrorBoundary, Skeleton} from '@/components/ui';
 import {WebVRService} from '@/services/webvr.service';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
+import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
 import type {WebVRStackParamList} from '@/types';
 
 type Nav = StackNavigationProp<WebVRStackParamList, 'WebVRHome'>;
@@ -27,7 +30,6 @@ type Nav = StackNavigationProp<WebVRStackParamList, 'WebVRHome'>;
 // ── Stable constants (computed once at module load) ────────────────────
 const {width: SCREEN_W} = Dimensions.get('window');
 const H_PAD = scale(20);
-const IS_TABLET = SCREEN_W >= 600;
 const CARD_HEIGHT = verticalScale(140);
 const CARD_MARGIN_BOTTOM = verticalScale(14);
 const ITEM_HEIGHT = CARD_HEIGHT + CARD_MARGIN_BOTTOM;
@@ -205,6 +207,13 @@ function WebVRContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
+  const {width: screenWidth} = useWindowDimensions();
+  const {tabBarTranslateY} = useTabBarScroll();
+  const lastScrollY = useRef(0);
+  const isTabletDynamic = screenWidth >= 768;
+  const contentWidth = isTabletDynamic ? Math.min(screenWidth * 0.85, 720) : undefined;
+
+  const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -266,16 +275,38 @@ function WebVRContent() {
     [handleFolderPress],
   );
 
-  // Memoized content container style
   const contentStyle = useMemo(
-    () => ({paddingBottom: insets.bottom + verticalScale(90)}),
-    [insets.bottom],
+    () => ({paddingBottom: tabBarHeight + verticalScale(24)}),
+    [tabBarHeight],
   );
 
   // Memoized header
   const headerPaddingTop = useMemo(
     () => ({paddingTop: insets.top + verticalScale(16)}),
     [insets.top],
+  );
+
+  const containerStyle = useMemo(
+    () => (contentWidth ? {width: contentWidth, alignSelf: 'center'} : undefined),
+    [contentWidth],
+  );
+
+  const handleScroll = useCallback(
+    (e: any) => {
+      const y = e.nativeEvent.contentOffset.y;
+      const diff = y - lastScrollY.current;
+      lastScrollY.current = y;
+      if (y <= 0) {
+        tabBarTranslateY.value = 0;
+        return;
+      }
+      if (diff > 0) {
+        tabBarTranslateY.value = Math.min(tabBarTranslateY.value + diff, tabBarHeight);
+      } else {
+        tabBarTranslateY.value = Math.max(tabBarTranslateY.value + diff, 0);
+      }
+    },
+    [tabBarTranslateY, tabBarHeight],
   );
 
   const ListHeader = useMemo(
@@ -289,14 +320,20 @@ function WebVRContent() {
             end={GRADIENT_END}
             style={StyleSheet.absoluteFill}
           />
-          <Text style={styles.headerTitle}>WebVR</Text>
-          <Text style={styles.headerSub}>
-            Immersive virtual reality experiences
-          </Text>
+          <View style={containerStyle}>
+            <Text style={styles.headerTitle}>WebVR</Text>
+            <Text style={styles.headerSub}>
+              Immersive virtual reality experiences
+            </Text>
+          </View>
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
         </View>
 
-        <View style={styles.content}>
+        <View
+          style={[
+            styles.content,
+            contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined,
+          ]}>
           <View style={styles.banner}>
             <LinearGradient
               colors={BANNER_GRADIENT as unknown as string[]}
@@ -330,14 +367,26 @@ function WebVRContent() {
         </View>
       </>
     ),
-    [colors.background, colors.text, colors.textSecondary, headerPaddingTop, loading, folders.length],
+    [
+      colors.background,
+      colors.text,
+      colors.textSecondary,
+      headerPaddingTop,
+      loading,
+      folders.length,
+      containerStyle,
+    ],
   );
 
   // Memoized empty component
   const EmptyComponent = useMemo(() => {
     if (loading) {
       return (
-        <View style={styles.content}>
+        <View
+          style={[
+            styles.content,
+            contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined,
+          ]}>
           <FolderSkeleton />
         </View>
       );
@@ -373,7 +422,7 @@ function WebVRContent() {
         </Text>
       </View>
     );
-  }, [loading, error, colors.text, colors.textSecondary, handleRetry]);
+  }, [loading, error, colors.text, colors.textSecondary, handleRetry, contentWidth]);
 
   return (
     <View style={[styles.root, {backgroundColor: colors.background}]}>
@@ -386,6 +435,8 @@ function WebVRContent() {
         refreshing={refreshing}
         onRefresh={handleRefresh}
         contentContainerStyle={contentStyle}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={EmptyComponent}
         // ── Facebook-grade FlatList tuning ──

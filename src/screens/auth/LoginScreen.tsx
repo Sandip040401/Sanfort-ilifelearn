@@ -1,7 +1,6 @@
 import React, {useCallback, useRef, useState} from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
@@ -24,9 +24,6 @@ import {useAuth} from '@/store';
 import {useTheme} from '@/theme';
 import {AuthService} from '@/services';
 import type {AuthStackParamList} from '@/types';
-
-const {height} = Dimensions.get('window');
-const MIN_HEADER = 260;
 
 type Props = {
   navigation: StackNavigationProp<AuthStackParamList, 'Login'>;
@@ -51,7 +48,13 @@ export default function LoginScreen({navigation}: Props) {
   const {colors} = useTheme();
   const {login}  = useAuth();
   const insets   = useSafeAreaInsets();
-  const headerH  = Math.max(MIN_HEADER, height * 0.38) + insets.top;
+  const {width: screenWidth, height: screenHeight} = useWindowDimensions();
+  const isTablet = screenWidth >= 768;
+  const isLandscape = screenWidth > screenHeight;
+  const contentWidth = isTablet ? Math.min(screenWidth * 0.55, 480) : undefined;
+  const headerH = isLandscape
+    ? Math.max(220, screenHeight * 0.45) + insets.top
+    : Math.max(260, screenHeight * 0.38) + insets.top;
 
   const [email,        setEmail]        = useState('');
   const [password,     setPassword]     = useState('');
@@ -118,6 +121,10 @@ export default function LoginScreen({navigation}: Props) {
     }
   };
 
+  const wrapStyle = contentWidth
+    ? {width: contentWidth, alignSelf: 'center' as const}
+    : undefined;
+
   return (
     <SafeAreaView style={[styles.safe, {backgroundColor: colors.surface}]} edges={['bottom']}>
 
@@ -125,7 +132,7 @@ export default function LoginScreen({navigation}: Props) {
       <View style={[styles.brandTop, {height: headerH, backgroundColor: colors.primary}]} />
       {/* Decorative circles */}
       <View style={[styles.circle, {top: -40, right: -40, backgroundColor: colors.primaryLight, opacity: 0.18}]} />
-      <View style={[styles.circle, {top: height * 0.22, left: -60, backgroundColor: colors.primaryLight, opacity: 0.1}]} />
+      <View style={[styles.circle, {top: screenHeight * 0.22, left: -60, backgroundColor: colors.primaryLight, opacity: 0.1}]} />
 
       {/* ── Scrollable area ── */}
       <KeyboardAvoidingView
@@ -143,7 +150,7 @@ export default function LoginScreen({navigation}: Props) {
           showsVerticalScrollIndicator={false}>
 
           {/* Logo + Title (on purple) */}
-          <View style={styles.heroSection}>
+          <View style={[styles.heroSection, wrapStyle]}>
             <View style={styles.logoBox} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
               <Sparkles size={30} color="#6C4CFF" strokeWidth={1.8} />
             </View>
@@ -152,7 +159,7 @@ export default function LoginScreen({navigation}: Props) {
           </View>
 
           {/* ── White input card ── */}
-          <View style={[styles.card, {backgroundColor: colors.surface}]}>
+          <View style={[styles.card, {backgroundColor: colors.surface}, wrapStyle]}>
 
             {/* Email */}
             <View style={styles.fieldGroup}>
@@ -245,35 +252,35 @@ export default function LoginScreen({navigation}: Props) {
             </TouchableOpacity>
           </View>
 
+          {/* ── Sign In button inside scroll ── */}
+          <View style={[styles.ctaWrap, wrapStyle]}>
+            <Pressable
+              testID="login-submit-btn"
+              onPress={handleLogin}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in to your account"
+              accessibilityState={{disabled: loading, busy: loading}}
+              style={({pressed}) => [
+                styles.cta,
+                {backgroundColor: colors.primary},
+                loading && {opacity: 0.7},
+                pressed && {opacity: 0.9, transform: [{scale: 0.995}]},
+              ]}
+              android_ripple={{color: 'rgba(255,255,255,0.2)'}}>
+              {loading ? (
+                <ActivityIndicator color="#fff" accessibilityLabel="Signing in..." />
+              ) : (
+                <>
+                  <LogIn size={20} color="#fff" strokeWidth={2.5} />
+                  <Text style={styles.ctaText}>Sign In</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* ── Fixed bottom Sign In button ── */}
-      <View style={[styles.bottomBar, {paddingBottom: Math.max(20, insets.bottom + 12)}]}>
-        <Pressable
-          testID="login-submit-btn"
-          onPress={handleLogin}
-          disabled={loading}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in to your account"
-          accessibilityState={{disabled: loading, busy: loading}}
-          style={({pressed}) => [
-            styles.cta,
-            {backgroundColor: colors.primary},
-            loading && {opacity: 0.7},
-            pressed && {opacity: 0.9, transform: [{scale: 0.995}]},
-          ]}
-          android_ripple={{color: 'rgba(255,255,255,0.2)'}}>
-          {loading ? (
-            <ActivityIndicator color="#fff" accessibilityLabel="Signing in..." />
-          ) : (
-            <>
-              <LogIn size={20} color="#fff" strokeWidth={2.5} />
-              <Text style={styles.ctaText}>Sign In</Text>
-            </>
-          )}
-        </Pressable>
-      </View>
 
       <CustomAlert
         visible={alertVisible}
@@ -298,9 +305,9 @@ const styles = StyleSheet.create({
   },
   circle: {position: 'absolute', width: scale(180), height: scale(180), borderRadius: scale(90)},
 
-  scrollContent: {paddingHorizontal: scale(20)},
+  scrollContent: {paddingHorizontal: scale(20), flexGrow: 1},
 
-  heroSection: {alignItems: 'center', marginBottom: verticalScale(20)},
+  heroSection: {alignItems: 'center', marginBottom: verticalScale(20), paddingBottom: verticalScale(10)},
   logoBox: {
     width: scale(76), height: scale(76), borderRadius: moderateScale(22),
     backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
@@ -332,7 +339,7 @@ const styles = StyleSheet.create({
   forgotWrap: {alignSelf: 'flex-end', marginTop: verticalScale(-2)},
   forgotText: {fontSize: moderateScale(13), fontWeight: '600'},
 
-  bottomBar: {paddingHorizontal: scale(20), backgroundColor: 'transparent'},
+  ctaWrap: {marginTop: 'auto', paddingTop: verticalScale(24), paddingBottom: verticalScale(8)},
   cta: {
     height: verticalScale(52), borderRadius: moderateScale(14),
     flexDirection: 'row', alignItems: 'center',

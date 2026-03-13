@@ -73,7 +73,9 @@ function SubjectContentScreenContent() {
     [gradeMeta?.colors, subjectColor, subjectMeta?.colors],
   );
   const isTablet = width >= 768;
-  const contentWidth = isTablet ? Math.min(width - scale(48), scale(760)) : width - H_PAD * 2;
+  const contentWidth = isTablet
+    ? Math.min(width - H_PAD * 2, scale(920))
+    : width - H_PAD * 2;
 
   const booksQuery = useQuery({
     queryKey: ['books-content', gradeKey, subjectKey],
@@ -170,14 +172,15 @@ function SubjectContentScreenContent() {
   );
   const heroSectionWidthStyle = useMemo(
     () => ({
-      width: isTablet ? contentWidth : '100%',
-      alignSelf: isTablet ? 'center' : 'stretch',
+      width: '100%',
+      alignSelf: 'stretch',
     }),
-    [contentWidth, isTablet],
+    [],
   );
   const heroInnerWidthStyle = useMemo(
     () => ({
       width: contentWidth,
+      alignSelf: 'center',
     }),
     [contentWidth],
   );

@@ -20,6 +20,7 @@ import {useTheme} from '@/theme';
 import type {ConceptsResponse, FlatTopic} from '@/types';
 import {flattenTopics} from '@/screens/books/books.utils';
 import {withAlpha} from '@/screens/books/books.data';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 
 const PAGE_SIZE = 10;
 
@@ -65,6 +66,7 @@ export default function ConceptsTab({
   onSelectTopic: (topic: FlatTopic) => void;
 }) {
   const {colors} = useTheme();
+  const {onScroll} = useTabBarHideOnScroll();
   const [selectedVolume, setSelectedVolume] = useState<'all' | number>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const accentTextColor = useMemo(
@@ -128,6 +130,8 @@ export default function ConceptsTab({
       data={visibleTopics}
       keyExtractor={item => item.id}
       showsVerticalScrollIndicator={false}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
       initialNumToRender={8}
       maxToRenderPerBatch={8}
       windowSize={7}
@@ -270,12 +274,7 @@ export default function ConceptsTab({
               </Text>
             </View>
 
-            <View style={[styles.metricPill, styles.metricPillAmber]}>
-              <FileText size={moderateScale(14)} color="#D97706" strokeWidth={2} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.metricText, styles.metricTextAmber]}>
-                {item.arSheets.length} sheets
-              </Text>
-            </View>
+            {/* Sheets metric removed */}
           </View>
 
           <View style={styles.cardFooter}>

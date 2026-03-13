@@ -1,7 +1,6 @@
 import React, {startTransition, useCallback, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   FlatList,
   Image,
   Pressable,
@@ -11,24 +10,22 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
-import {BookOpen, ChevronLeft, ChevronRight, Expand, FileText, PlayCircle} from 'lucide-react-native';
+import {BookOpen, ChevronLeft, ChevronRight, Expand, PlayCircle} from 'lucide-react-native';
 import {WebView} from 'react-native-webview';
 import {useTheme} from '@/theme';
 import type {Ebook, EbookPage} from '@/types';
 import MediaViewer, {type MediaViewerPayload} from '@/components/MediaViewer';
 import FullScreenBookReader from '@/components/books/FullScreenBookReader';
 import {withAlpha} from '@/screens/books/books.data';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
-const BOOK_MARGIN = scale(16);
-const BOOK_WIDTH = SCREEN_WIDTH - BOOK_MARGIN * 2;
 const PAGE_ASPECT_RATIO = 1.35;
-const PAGE_HEIGHT = BOOK_WIDTH * PAGE_ASPECT_RATIO;
 
 function getDocumentViewerUrl(url: string): string {
   if (/\.pdf(\?|$)/i.test(url)) {
@@ -40,7 +37,6 @@ function getDocumentViewerUrl(url: string): string {
 
 export default function EbooksTab({
   ebooks,
-  arSheets,
   accentColor,
   bottomInset,
   headerContent,
@@ -48,7 +44,6 @@ export default function EbooksTab({
   onRefresh,
 }: {
   ebooks: Ebook[];
-  arSheets: string[];
   accentColor: string;
   bottomInset: number;
   headerContent?: React.ReactNode;
@@ -56,6 +51,16 @@ export default function EbooksTab({
   onRefresh: () => void;
 }) {
   const {colors} = useTheme();
+  const {onScroll} = useTabBarHideOnScroll();
+  const hasHexAccent = typeof accentColor === 'string' && accentColor.startsWith('#');
+  const safeAccent = hasHexAccent ? accentColor : colors.primary || '#F97316';
+  const navIconColor = hasHexAccent ? safeAccent : '#fff';
+  const {width: screenWidth, height: screenHeight} = useWindowDimensions();
+  const bookMargin = scale(16);
+  const maxBookWidth = Math.min(screenWidth - bookMargin * 2, scale(760));
+  const bookWidth = Math.max(scale(260), maxBookWidth);
+  const pageHeight = Math.min(bookWidth * PAGE_ASPECT_RATIO, screenHeight * 0.6);
+  const pageImageHeight = Math.max(verticalScale(160), pageHeight - verticalScale(36));
   const [selectedBookIndex, setSelectedBookIndex] = useState(0);
   const [selectedVolumeIndex, setSelectedVolumeIndex] = useState(0);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -119,13 +124,6 @@ export default function EbooksTab({
     pagesRef.current?.scrollToOffset({offset: 0, animated: false});
   };
 
-  const handleOpenWorksheet = (url: string, index: number) => {
-    setSelectedMedia({
-      type: 'document',
-      url,
-      title: `Worksheet ${index + 1}`,
-    });
-  };
 
   const handleOpenFullScreen = useCallback(() => {
     setFullScreenOpen(true);
@@ -151,8 +149,8 @@ export default function EbooksTab({
     const videoPosition = item.content.position || item.lastSavedContent.position || 'right';
 
     return (
-      <Pressable onPress={handleOpenFullScreen} style={styles.pageSlide}>
-        <View style={[styles.bookPage, {backgroundColor: '#FFFDF7'}]}>
+      <Pressable onPress={handleOpenFullScreen} style={[styles.pageSlide, {width: bookWidth}]}>
+        <View style={[styles.bookPage, {backgroundColor: '#FFFDF7', width: bookWidth, height: pageHeight}]}>
           {/* Page spine shadow on left */}
           <View style={styles.pageSpine} />
 
@@ -160,10 +158,14 @@ export default function EbooksTab({
             <Image
               source={{uri: imageUrl}}
               resizeMode="contain"
-              style={styles.pageImage}
+              style={[styles.pageImage, {height: pageImageHeight}]}
             />
           ) : (
-            <View style={[styles.pageFallback, {backgroundColor: withAlpha(accentColor, 0.06)}]}>
+            <View
+              style={[
+                styles.pageFallback,
+                {backgroundColor: withAlpha(accentColor, 0.06), height: pageImageHeight},
+              ]}>
               <BookOpen size={moderateScale(40)} color={accentColor} strokeWidth={1.5} />
               <Text style={[styles.pageFallbackText, {color: colors.textSecondary}]}>
                 No preview for this page
@@ -220,6 +222,8 @@ export default function EbooksTab({
       <ScrollView
         style={styles.root}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -303,7 +307,11 @@ export default function EbooksTab({
         {/* Book Reader Area */}
         <View style={styles.bookContainer}>
           {documentUrl ? (
-            <View style={[styles.documentViewer, {borderColor: withAlpha(accentColor, 0.14)}]}>
+            <View
+              style={[
+                styles.documentViewer,
+                {borderColor: withAlpha(accentColor, 0.14), height: pageHeight, marginHorizontal: bookMargin},
+              ]}>
               <WebView
                 source={{uri: getDocumentViewerUrl(documentUrl)}}
                 originWhitelist={['*']}
@@ -322,13 +330,13 @@ export default function EbooksTab({
           ) : pages.length > 0 ? (
             <>
               {/* Book wrapper with shadow & spine effect */}
-              <View style={styles.bookWrapper}>
+              <View style={[styles.bookWrapper, {marginHorizontal: bookMargin, width: bookWidth}]}>
                 <LinearGradient
                   colors={[withAlpha(accentColor, 0.08), withAlpha(accentColor, 0.02)]}
                   locations={[0, 1]}
                   style={styles.bookShadowBg}
                 />
-                <View style={[styles.bookFrame, {borderColor: withAlpha(accentColor, 0.12)}]}>
+                <View style={[styles.bookFrame, {borderColor: withAlpha(accentColor, 0.12), width: bookWidth}]}>
                   <FlatList
                     ref={pagesRef}
                     key={`${activeBook?.title}-${activeVolume?.id}`}
@@ -340,8 +348,8 @@ export default function EbooksTab({
                     renderItem={renderPage}
                     keyExtractor={item => item.pageId}
                     getItemLayout={(_data, index) => ({
-                      length: BOOK_WIDTH,
-                      offset: BOOK_WIDTH * index,
+                      length: bookWidth,
+                      offset: bookWidth * index,
                       index,
                     })}
                   />
@@ -349,7 +357,7 @@ export default function EbooksTab({
               </View>
 
               {/* Navigation controls below the book */}
-              <View style={styles.bookControls}>
+              <View style={[styles.bookControls, {marginHorizontal: bookMargin}]}>
                 <Pressable
                   onPress={() => goToPage('prev')}
                   disabled={currentPageIndex === 0}
@@ -363,7 +371,7 @@ export default function EbooksTab({
                   ]}>
                   <ChevronLeft
                     size={moderateScale(20)}
-                    color={currentPageIndex === 0 ? colors.textSecondary : accentColor}
+                    color={currentPageIndex === 0 ? colors.textSecondary : navIconColor}
                     strokeWidth={2.5}
                   />
                 </Pressable>
@@ -390,7 +398,7 @@ export default function EbooksTab({
                   ]}>
                   <ChevronRight
                     size={moderateScale(20)}
-                    color={currentPageIndex === pages.length - 1 ? colors.textSecondary : accentColor}
+                    color={currentPageIndex === pages.length - 1 ? colors.textSecondary : navIconColor}
                     strokeWidth={2.5}
                   />
                 </Pressable>
@@ -400,14 +408,14 @@ export default function EbooksTab({
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleOpenFullScreen}
-                style={[styles.readFullBtn, {backgroundColor: accentColor}]}>
+                style={[styles.readFullBtn, {backgroundColor: accentColor, marginHorizontal: bookMargin}]}>
                 <Expand size={moderateScale(16)} color="#fff" strokeWidth={2.5} />
                 <Text style={styles.readFullBtnText}>Read Full Screen</Text>
               </TouchableOpacity>
 
               {/* Page dots indicator */}
               {pages.length <= 20 && (
-                <View style={styles.dotsRow}>
+                <View style={[styles.dotsRow, {paddingHorizontal: bookMargin}]}>
                   {pages.map((_p, i) => (
                     <View
                       key={i}
@@ -436,40 +444,6 @@ export default function EbooksTab({
           )}
         </View>
 
-        {/* Worksheets section */}
-        {!!arSheets.length && (
-          <View style={styles.worksheetsSection}>
-            <Text style={[styles.worksheetsTitle, {color: colors.text}]}>Worksheets</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.worksheetsRow}>
-              {arSheets.map((sheetUrl, index) => (
-                <TouchableOpacity
-                  key={`${sheetUrl}-${index}`}
-                  activeOpacity={0.86}
-                  onPress={() => handleOpenWorksheet(sheetUrl, index)}
-                  style={[
-                    styles.worksheetCard,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: withAlpha(accentColor, 0.14),
-                    },
-                  ]}>
-                  <LinearGradient
-                    colors={[withAlpha(accentColor, 0.18), withAlpha(accentColor, 0.08)]}
-                    locations={[0, 1]}
-                    style={styles.worksheetIconWrap}>
-                    <FileText size={moderateScale(20)} color={accentColor} strokeWidth={2} />
-                  </LinearGradient>
-                  <Text style={[styles.worksheetLabel, {color: colors.text}]}>
-                    Worksheet {index + 1}
-                  </Text>
-                  <Text style={[styles.worksheetMeta, {color: colors.textSecondary}]}>
-                    Open in viewer
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
       </ScrollView>
 
       {/* Full screen book reader modal */}
@@ -535,7 +509,6 @@ const styles = StyleSheet.create({
     paddingTop: verticalScale(8),
   },
   bookWrapper: {
-    marginHorizontal: BOOK_MARGIN,
     borderRadius: moderateScale(16),
     overflow: 'hidden',
   },
@@ -555,11 +528,11 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   pageSlide: {
-    width: BOOK_WIDTH,
+    width: '100%',
   },
   bookPage: {
-    width: BOOK_WIDTH,
-    minHeight: PAGE_HEIGHT,
+    width: '100%',
+    minHeight: verticalScale(200),
     position: 'relative',
   },
   pageSpine: {
@@ -573,12 +546,10 @@ const styles = StyleSheet.create({
   },
   pageImage: {
     width: '100%',
-    height: PAGE_HEIGHT - verticalScale(36),
     marginTop: verticalScale(4),
   },
   pageFallback: {
     width: '100%',
-    height: PAGE_HEIGHT - verticalScale(36),
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: verticalScale(4),
@@ -662,7 +633,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: BOOK_MARGIN,
     marginTop: verticalScale(14),
     paddingHorizontal: scale(4),
   },
@@ -692,7 +662,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: scale(8),
-    marginHorizontal: BOOK_MARGIN,
     marginTop: verticalScale(12),
     paddingVertical: verticalScale(14),
     borderRadius: moderateScale(14),
@@ -708,7 +677,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: scale(4),
     marginTop: verticalScale(12),
-    paddingHorizontal: scale(20),
     flexWrap: 'wrap',
   },
   dot: {
@@ -718,8 +686,6 @@ const styles = StyleSheet.create({
 
   /* ── Document Viewer ── */
   documentViewer: {
-    marginHorizontal: BOOK_MARGIN,
-    height: PAGE_HEIGHT,
     borderRadius: moderateScale(16),
     overflow: 'hidden',
     borderWidth: 1.5,
@@ -773,41 +739,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  /* ── Worksheets ── */
-  worksheetsSection: {
-    paddingTop: verticalScale(20),
-  },
-  worksheetsTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: '800',
-    paddingHorizontal: scale(20),
-    marginBottom: verticalScale(10),
-  },
-  worksheetsRow: {
-    paddingHorizontal: scale(20),
-    gap: scale(12),
-  },
-  worksheetCard: {
-    width: scale(148),
-    borderRadius: moderateScale(20),
-    borderWidth: 1,
-    padding: moderateScale(14),
-  },
-  worksheetIconWrap: {
-    width: scale(46),
-    height: scale(46),
-    borderRadius: moderateScale(14),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: verticalScale(12),
-  },
-  worksheetLabel: {
-    fontSize: moderateScale(14),
-    fontWeight: '800',
-    marginBottom: verticalScale(4),
-  },
-  worksheetMeta: {
-    fontSize: moderateScale(11),
-    fontWeight: '600',
-  },
 });

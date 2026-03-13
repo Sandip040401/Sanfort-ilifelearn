@@ -15,12 +15,14 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import {useQuery, useQueryClient} from '@tanstack/react-query';
 import Voice from '@react-native-voice/voice';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {
   BarChart3,
   BookOpen,
@@ -193,9 +195,13 @@ function ReadAloudSkeleton() {
 function ReadAloudContent() {
   const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
   const queryClient = useQueryClient();
   const {user} = useAuth();
   const studentId = user?.id || user?._id || '';
+  const {width: screenWidth} = useWindowDimensions();
+  const isTablet = screenWidth >= 768;
+  const contentWidth = isTablet ? Math.min(screenWidth * 0.75, 620) : undefined;
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('practice');
   const [selectedAge, setSelectedAge] = useState(AGE_GROUPS[1]?.value || AGE_GROUPS[0]?.value || '5-6');
@@ -699,6 +705,8 @@ function ReadAloudContent() {
   return (
     <View style={[styles.root, {backgroundColor: colors.background}]}>
       <ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={attemptsQuery.isRefetching || dashboardQuery.isRefetching}
@@ -750,7 +758,7 @@ function ReadAloudContent() {
           </View>
         </LinearGradient>
 
-        <View style={styles.body}>
+        <View style={[styles.body, contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined]}>
           <View style={[styles.tabShell, {backgroundColor: colors.surface, borderColor: colors.border}]}>
             {(['practice', 'analytics'] as ActiveTab[]).map(tab => {
               const active = tab === activeTab;

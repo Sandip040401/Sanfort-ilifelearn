@@ -8,6 +8,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
@@ -15,6 +16,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {ScanLine, FileText, Clock, Info} from 'lucide-react-native';
 import {useTheme, Typography} from '@/theme';
 import {ScreenErrorBoundary} from '@/components/ui';
+import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 
 const {width: SCREEN_W} = Dimensions.get('window');
 const H_PAD = scale(20);
@@ -28,6 +30,10 @@ const RECENT_SCANS = [
 function ARSheetsContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
+  const {onScroll} = useTabBarHideOnScroll();
+  const {width} = useWindowDimensions();
+  const isTablet = width >= 768;
+  const contentWidth = isTablet ? Math.min(width * 0.75, 620) : undefined;
 
   const renderScanItem = ({item}: {item: typeof RECENT_SCANS[0]}) => (
     <TouchableOpacity
@@ -50,6 +56,8 @@ function ARSheetsContent() {
     <View style={[styles.root, {backgroundColor: colors.background}]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(90)}}>
 
         {/* Header */}
@@ -66,7 +74,7 @@ function ARSheetsContent() {
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
         </View>
 
-        <View style={styles.content}>
+        <View style={[styles.content, contentWidth ? {width: contentWidth, alignSelf: 'center'} : undefined]}>
 
           {/* Scan Area Placeholder */}
           <View style={[styles.scanArea, {backgroundColor: colors.card, borderColor: colors.border}]}>
