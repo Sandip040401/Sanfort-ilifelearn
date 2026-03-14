@@ -1,1 +1,0 @@
-export {useScreenReady} from './useScreenReady';
