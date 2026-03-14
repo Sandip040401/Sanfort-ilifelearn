@@ -3131,8 +3131,8 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MIN_TEXTURE_APPLY_INTERVAL_MS_RELIEF = 500L
     private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 2000L
     private const val TEXTURE_HOLD_AFTER_SAMPLE_MISS_MS = 10000L
-    private const val DELTA_COLORED_THRESHOLD_SQ = 1400   // euclidean distance ~37 in RGB space — catches lighter crayon strokes
-    private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 14
+    private const val DELTA_COLORED_THRESHOLD_SQ = 900   // euclidean distance ~30 in RGB space — catches even faint crayon strokes
+    private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 6
     private const val TEXTURE_ONLY_WARMUP_MS = 1200L
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
     private const val ANCHOR_SMOOTHING_ALPHA = 0.25f
@@ -3250,12 +3250,12 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MAX_FRAME_OCCLUSION_RATIO = 0.24f
     private const val OCCLUSION_PREVIOUS_DELTA_THRESHOLD_SQ = 2200
     private const val OCCLUSION_REFERENCE_DELTA_THRESHOLD_SQ = 2600
-    private const val MIN_DRAWING_SATURATION = 0.14f
-    private const val MIN_DRAWING_VALUE = 0.14f
-    private const val MIN_DRAWING_CHROMA = 24
-    private const val MAX_REFERENCE_HUE_SHIFT_DEGREES = 22f
-    private const val MAX_REFERENCE_SAT_SHIFT = 0.20f
-    private const val MAX_REFERENCE_VALUE_SHIFT = 0.22f
+    private const val MIN_DRAWING_SATURATION = 0.08f
+    private const val MIN_DRAWING_VALUE = 0.10f
+    private const val MIN_DRAWING_CHROMA = 16
+    private const val MAX_REFERENCE_HUE_SHIFT_DEGREES = 15f
+    private const val MAX_REFERENCE_SAT_SHIFT = 0.14f
+    private const val MAX_REFERENCE_VALUE_SHIFT = 0.16f
     private val SUBJECT_MASK_SEED_POINTS =
         listOf(
             0.50f to 0.40f,  // upper body / head area

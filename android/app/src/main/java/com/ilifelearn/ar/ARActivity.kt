@@ -212,9 +212,9 @@ class ARActivity : AppCompatActivity() {
                 // 1. Primary Directional Light (The Sun)
                 val sun =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(100000f)
-                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
-                                .setShadowCastingEnabled(false)
+                                .setIntensity(3000f)
+                                .setColor(SfColor(1.0f, 0.98f, 0.95f))
+                                .setShadowCastingEnabled(true)
                                 .build()
                 val sunNode = Node()
                 sunNode.light = sun
@@ -228,19 +228,19 @@ class ARActivity : AppCompatActivity() {
                 // Top Light
                 val skyLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(50000f)
-                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
+                                .setIntensity(1500f)
+                                .setColor(SfColor(0.95f, 0.95f, 1.0f))
                                 .build()
                 val skyNode = Node()
                 skyNode.light = skyLight
                 skyNode.setParent(scene)
                 skyNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.0f, 0.0f), -90f)
 
-                // Bottom Light
+                // Bottom Light (subtle fill to avoid pitch-black undersides)
                 val groundLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(50000f)
-                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
+                                .setIntensity(800f)
+                                .setColor(SfColor(1.0f, 0.98f, 0.95f))
                                 .build()
                 val groundNode = Node()
                 groundNode.light = groundLight
@@ -842,15 +842,22 @@ class ARActivity : AppCompatActivity() {
             ModelRenderable.builder()
                     .setSource(this, Uri.parse(path))
                     .setIsFilamentGltf(true)
+                    .setAsyncLoadEnabled(true)
                     .build()
                     .thenAccept { renderable ->
                         runOnUiThread {
                             isModelLoading = false
+                            renderable.isShadowCaster = true
+                            renderable.isShadowReceiver = true
                             placeModel(hitResult, renderable)
                         }
                     }
-                    .exceptionally {
-                        runOnUiThread { isModelLoading = false }
+                    .exceptionally { error ->
+                        runOnUiThread {
+                            isModelLoading = false
+                            android.widget.Toast.makeText(this, "Failed to load 3D model", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        android.util.Log.e("ARActivity", "Model load failed: $path", error)
                         null
                     }
         }
