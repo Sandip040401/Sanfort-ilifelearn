@@ -10,6 +10,7 @@ import {AuthProvider} from '@/store';
 import {ErrorBoundary} from '@/components/ui';
 import RootNavigator from '@/navigation/RootNavigator';
 
+
 // Performance: pre-register native screens + freeze inactive screens
 enableScreens();
 enableFreeze(true);
