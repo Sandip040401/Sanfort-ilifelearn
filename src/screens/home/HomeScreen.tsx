@@ -40,8 +40,6 @@ type MainNav = StackNavigationProp<MainStackParamList>;
 const GRID_ITEMS = [
   { key: 'AR' as const, label: 'Augmented\nReality', sub: 'Scan 3D models', Icon: Glasses, colors: ['#0369A1', '#0EA5E9'], shadow: '#0EA5E9' },
   { key: 'WebVR' as const, label: 'WebVR', sub: 'Virtual worlds', Icon: Globe, colors: ['#7C3AED', '#A855F7'], shadow: '#A855F7' },
-  { key: 'Games' as const, label: 'Learning\nGames', sub: 'Fun challenges', Icon: Gamepad2, colors: ['#D97706', '#F59E0B'], shadow: '#F59E0B' },
-  { key: 'ReadAloud' as const, label: 'Read Aloud\nAI', sub: 'AI pronunciation', Icon: Mic, colors: ['#BE185D', '#EC4899'], shadow: '#EC4899' },
 ] as const;
 
 function getGreeting() {
@@ -190,19 +188,6 @@ export default function HomeScreen() {
             <Text style={[styles.section, { color: colors.text }]}>Learning Tools</Text>
             <View style={[styles.gridRow, { gap: gridGap, marginBottom: gridGap }]}>
               {GRID_ITEMS.slice(0, 2).map(({ key, label, sub, Icon, colors: c }) => (
-                <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
-                  <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
-                    <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                    <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}><Icon size={isTablet ? 30 : 26} color="#fff" strokeWidth={1.8} /></View>
-                    <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{label}</Text>
-                    <Text style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{sub}</Text>
-                    <View style={styles.gridDecor} />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={[styles.gridRow, { gap: gridGap, marginBottom: gridGap }]}>
-              {GRID_ITEMS.slice(2, 4).map(({ key, label, sub, Icon, colors: c }) => (
                 <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
                   <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
                     <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />

@@ -14,8 +14,6 @@ type Props = {
 const FEATURES = [
   {Icon: BookOpen, label: 'Grade Books & Ebooks',     sub: 'Curriculum aligned content'},
   {Icon: Globe,    label: 'AR & WebVR Experiences',   sub: 'Immersive 3D learning'},
-  {Icon: Gamepad2, label: 'Learning Games & Quizzes', sub: 'Fun educational challenges'},
-  {Icon: Mic,      label: 'Read Aloud AI',             sub: 'AI-powered pronunciation'},
 ] as const;
 
 export default function WelcomeScreen({navigation}: Props) {
