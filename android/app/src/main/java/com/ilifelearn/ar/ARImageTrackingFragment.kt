@@ -49,7 +49,8 @@ class ARImageTrackingFragment : ArFragment() {
     val bitmap = loadBitmapFromAsset(referenceAsset) ?: return null
     return try {
       AugmentedImageDatabase(session).apply {
-        addImage(REFERENCE_IMAGE_NAME, bitmap)
+        // Provide physical width (meters) for more stable tracking; A4 page ~0.21m wide
+        addImage(REFERENCE_IMAGE_NAME, bitmap, REFERENCE_IMAGE_WIDTH_METERS)
       }
     } catch (error: ImageInsufficientQualityException) {
       Log.e(logTag, "Reference image quality is too low for ARCore tracking: $referenceAsset", error)
@@ -75,5 +76,7 @@ class ARImageTrackingFragment : ArFragment() {
     const val ARG_REFERENCE_IMAGE_ASSET = "referenceImageAsset"
     const val DEFAULT_REFERENCE_ASSET = "reference_bear_page.jpg"
     const val REFERENCE_IMAGE_NAME = "book_reference"
+    // Approximate physical width of the coloring page in meters (~21cm for A4)
+    private const val REFERENCE_IMAGE_WIDTH_METERS = 0.21f
   }
 }

@@ -284,7 +284,7 @@ object CameraColorSampler {
       return null
     }
 
-    val output = outputSize.coerceIn(48, 192)
+    val output = outputSize.coerceIn(48, 320)
     val regionWidth = (safeMaxX - safeMinX).coerceAtLeast(1)
     val regionHeight = (safeMaxY - safeMinY).coerceAtLeast(1)
     val pixels = IntArray(output * output)
@@ -315,7 +315,7 @@ object CameraColorSampler {
     val br = cornersPx[2]
     val bl = cornersPx[3]
     val homography = computeUnitSquareToQuadHomography(tl, tr, br, bl)
-    val output = outputSize.coerceIn(48, 160)
+    val output = outputSize.coerceIn(48, 320)
     val pixels = IntArray(output * output)
 
     for (row in 0 until output) {
