@@ -497,9 +497,9 @@ function ARScreenContent() {
         return;
       }
       if (diff > 0) {
-        tabBarTranslateY.value = Math.min(tabBarTranslateY.value + diff, tabBarHeight);
-      } else {
-        tabBarTranslateY.value = Math.max(tabBarTranslateY.value + diff, 0);
+        tabBarTranslateY.value = tabBarHeight;
+      } else if (diff < -2) {
+        tabBarTranslateY.value = 0;
       }
     },
     [tabBarTranslateY, tabBarHeight],

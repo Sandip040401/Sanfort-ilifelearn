@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
+import { withTiming } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -76,15 +77,15 @@ export default function HomeScreen() {
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
     if (y <= 0) {
-      tabBarTranslateY.value = 0;
+      tabBarTranslateY.value = withTiming(0, { duration: 200 });
       return;
     }
     if (diff > 0) {
-      // scrolling down — hide
-      tabBarTranslateY.value = Math.min(tabBarTranslateY.value + diff, tabBarHeight);
-    } else {
+      // scrolling down — snap hide immediately
+      tabBarTranslateY.value = withTiming(tabBarHeight, { duration: 200 });
+    } else if (diff < -2) {
       // scrolling up — show
-      tabBarTranslateY.value = Math.max(tabBarTranslateY.value + diff, 0);
+      tabBarTranslateY.value = withTiming(0, { duration: 200 });
     }
   }, [tabBarTranslateY, tabBarHeight]);
 
