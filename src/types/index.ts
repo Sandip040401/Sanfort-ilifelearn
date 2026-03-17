@@ -29,6 +29,17 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface DeleteAccountRequest {
+  email:    string;
+  password: string;
+}
+
+export interface ResetPasswordRequest {
+  email:    string;
+  oldPassword: string;
+  newPassword: string;
+}
+
 export interface LoginResponse {
   user:  User;
   token: string;
@@ -176,6 +187,7 @@ export type BookSubjectKey = 'literacy' | 'numeracy' | 'science' | 'rhymes';
 export type AuthStackParamList = {
   Welcome: undefined;
   Login:   undefined;
+  DeleteAccount: undefined;
 };
 
 export type MainStackParamList = {

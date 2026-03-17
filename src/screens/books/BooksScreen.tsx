@@ -85,7 +85,7 @@ function BooksScreenContent() {
           style={[
             styles.header,
             {
-              paddingTop: insets.top + verticalScale(14),
+              paddingTop: insets.top - verticalScale(8),
             },
           ]}>
           <LinearGradient
@@ -96,7 +96,7 @@ function BooksScreenContent() {
             style={StyleSheet.absoluteFill}
           />
           <View style={[styles.headerInner, {width: contentWidth - H_PAD * 2}]}>
-            <View style={styles.headerTopRow}>
+            {/* <View style={styles.headerTopRow}>
               <View style={styles.modulePill}>
                 <BookOpen size={moderateScale(16)} color="#fff" strokeWidth={2} />
                 <Text style={styles.modulePillText}>Books</Text>
@@ -105,14 +105,14 @@ function BooksScreenContent() {
               <View style={styles.livePill}>
                 <Text style={styles.livePillText}>Live Library</Text>
               </View>
-            </View>
+            </View> */}
 
             <Text style={styles.headerTitle}>Explore Grade Books</Text>
             <Text style={styles.headerSub}>
               Structured reading journeys with concepts, videos and ebooks grouped by level.
             </Text>
 
-            <View style={styles.statsBar}>
+            {/* <View style={styles.statsBar}>
               {[
                 {v: '3', l: 'Levels'},
                 {v: '12', l: 'Subjects'},
@@ -126,7 +126,7 @@ function BooksScreenContent() {
                   </View>
                 </React.Fragment>
               ))}
-            </View>
+            </View> */}
           </View>
 
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
@@ -134,122 +134,7 @@ function BooksScreenContent() {
 
         <View style={styles.content}>
           <View style={[styles.contentInner, {width: contentWidth - H_PAD * 2}]}>
-            <View style={styles.featureSection}>
-              <View style={styles.featureSectionHeader}>
-                <Text style={styles.featureSectionEyebrow}>Featured Journey</Text>
-                <Text style={[styles.featureSectionTitle, {color: colors.text}]}>
-                  One flow, all resources
-                </Text>
-                <Text style={[styles.featureSectionSub, {color: colors.textSecondary}]}>
-                  A cleaner reading path from grade to subject to concepts, videos and ebooks.
-                </Text>
-              </View>
 
-                <View style={[styles.featureCard, isCompact && styles.featureCardCompact]}>
-                <LinearGradient
-                  colors={['#FFFFFF', '#FBF8FF', '#F6F1FF']}
-                  locations={[0, 0.5, 1]}
-                  start={{x: 0, y: 0}}
-                  end={{x: 1, y: 1}}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View
-                  style={[
-                    styles.featureTopRow,
-                    isTabletLandscape && styles.featureTopRowTablet,
-                    isCompact && styles.featureTopRowCompact,
-                  ]}>
-                  <View style={styles.featureLead}>
-                    <View style={styles.featureIconWrap}>
-                      <LinearGradient
-                        colors={['#4F46E5', '#6640E9', '#7C3AED']}
-                        locations={[0, 0.5, 1]}
-                        start={{x: 0, y: 0}}
-                        end={{x: 1, y: 1}}
-                        style={StyleSheet.absoluteFill}
-                      />
-                      <BookOpen size={moderateScale(26)} color="#fff" strokeWidth={1.8} />
-                    </View>
-
-                    <View style={styles.featureLeadCopy}>
-                      <View style={styles.featureBadge}>
-                        <View style={styles.featureBadgeDot} />
-                        <Text style={styles.featureBadgeText}>Guided Flow</Text>
-                      </View>
-                      <Text style={[styles.featureTitle, isCompact && styles.featureTitleCompact]}>
-                        Move from level to library without friction
-                      </Text>
-                      <Text style={[styles.featureSub, isCompact && styles.featureSubCompact]}>
-                        Start with the right grade, open a subject, then browse every learning format from the
-                        same connected experience.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.featureMetaCard,
-                      isTabletLandscape ? styles.featureMetaCardTablet : styles.featureMetaCardMobile,
-                    ]}>
-                    <Text style={styles.featureMetaLabel}>Live content path</Text>
-                    <Text style={styles.featureMetaValue}>3 steps</Text>
-                    <Text style={styles.featureMetaSub}>Structured for fast navigation</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.featureStepsRow, isCompact && styles.featureStepsRowCompact]}>
-                  {FLOW_STEPS.map(step => (
-                    <View
-                      key={step.id}
-                      style={[styles.featureStepCard, isCompact && styles.featureStepCardCompact]}>
-                      <View
-                        style={[
-                          styles.featureStepIconWrap,
-                          isCompact && styles.featureStepIconWrapCompact,
-                        ]}>
-                        <step.Icon size={moderateScale(14)} color="#5B34F2" strokeWidth={2.1} />
-                      </View>
-                      <View style={styles.featureStepCopy}>
-                        <Text
-                          style={[
-                            styles.featureStepTitle,
-                            isCompact && styles.featureStepTitleCompact,
-                          ]}>
-                          {step.title}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.featureStepCaption,
-                            isCompact && styles.featureStepCaptionCompact,
-                          ]}>
-                          {step.caption}
-                        </Text>
-                      </View>
-                      <Text style={styles.featureStepNumber}>{step.id}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={[styles.featureFooter, isCompact && styles.featureFooterCompact]}>
-                  <Text style={styles.featureFooterLabel}>Included formats</Text>
-                  <View style={[styles.featurePillsRow, isCompact && styles.featurePillsRowCompact]}>
-                    {RESOURCE_PILLS.map(item => {
-                      const Icon = item.Icon;
-
-                      return (
-                        <View key={item.label} style={styles.featurePill}>
-                          <Icon size={moderateScale(12)} color="#5B34F2" strokeWidth={2} />
-                          <Text style={styles.featurePillText}>{item.label}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                <View style={styles.featureDecorLarge} />
-                <View style={styles.featureDecorSmall} />
-              </View>
-            </View>
 
             <Text style={[styles.sectionTitle, {color: colors.text}]}>
               Choose A Level
@@ -724,7 +609,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   sectionTitle: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(22),
     fontWeight: '800',
     marginBottom: verticalScale(6),
   },

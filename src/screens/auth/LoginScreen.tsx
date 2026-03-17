@@ -24,6 +24,7 @@ import {useAuth} from '@/store';
 import {useTheme} from '@/theme';
 import {AuthService} from '@/services';
 import type {AuthStackParamList} from '@/types';
+import Animated, {FadeInDown, FadeInUp, ZoomIn} from 'react-native-reanimated';
 
 type Props = {
   navigation: StackNavigationProp<AuthStackParamList, 'Login'>;
@@ -150,16 +151,22 @@ export default function LoginScreen({navigation}: Props) {
           showsVerticalScrollIndicator={false}>
 
           {/* Logo + Title (on purple) */}
-          <View style={[styles.heroSection, wrapStyle]}>
-            <View style={styles.logoBox} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
+          <Animated.View 
+            entering={FadeInDown.duration(800).springify()}
+            style={[styles.heroSection, wrapStyle]}>
+            <Animated.View 
+              entering={ZoomIn.delay(200).duration(600)}
+              style={styles.logoBox} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
               <Sparkles size={30} color="#6C4CFF" strokeWidth={1.8} />
-            </View>
+            </Animated.View>
             <Text style={styles.title}>Welcome Back!</Text>
             <Text style={styles.subtitle}>Sign in to continue your learning journey</Text>
-          </View>
+          </Animated.View>
 
           {/* ── White input card ── */}
-          <View style={[styles.card, {backgroundColor: colors.surface}, wrapStyle]}>
+          <Animated.View 
+            entering={FadeInUp.delay(400).duration(800)}
+            style={[styles.card, {backgroundColor: colors.surface}, wrapStyle]}>
 
             {/* Email */}
             <View style={styles.fieldGroup}>
@@ -250,10 +257,12 @@ export default function LoginScreen({navigation}: Props) {
               accessibilityLabel="Forgot password">
               <Text style={[styles.forgotText, {color: colors.primary}]}>Forgot Password?</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
           {/* ── Sign In button inside scroll ── */}
-          <View style={[styles.ctaWrap, wrapStyle]}>
+          <Animated.View 
+            entering={FadeInUp.delay(600).duration(800)}
+            style={[styles.ctaWrap, wrapStyle]}>
             <Pressable
               testID="login-submit-btn"
               onPress={handleLogin}
@@ -277,7 +286,16 @@ export default function LoginScreen({navigation}: Props) {
                 </>
               )}
             </Pressable>
-          </View>
+
+            <TouchableOpacity
+              style={styles.delBtnWrap}
+              onPress={() => navigation.navigate('DeleteAccount')}
+              activeOpacity={0.7}>
+              <Text style={[styles.delText, {color: colors.textSecondary}]}>
+                Want to delete your account? <Text style={{color: '#EF4444', fontWeight: '700'}}>Delete Here</Text>
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -346,4 +364,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center', gap: scale(10),
   },
   ctaText: {fontSize: moderateScale(15), fontWeight: '700', color: '#fff', letterSpacing: 0.3},
+
+  delBtnWrap: {
+    marginTop: verticalScale(16),
+    alignSelf: 'center',
+    padding: scale(10),
+  },
+  delText: {
+    fontSize: moderateScale(13),
+  },
 });

@@ -74,8 +74,8 @@ export default function ConceptsTab({
     [subjectColor],
   );
   const activeFilterTextStyle = useMemo(
-    () => [styles.filterChipTextActive, {color: accentTextColor}],
-    [accentTextColor],
+    () => [styles.filterChipTextActive, {color: '#fff'}],
+    [],
   );
   const inactiveFilterTextStyle = useMemo(
     () => [styles.filterChipText, {color: colors.text}],
@@ -296,10 +296,10 @@ export default function ConceptsTab({
             <View style={[styles.openButton, {backgroundColor: subjectColor}]}>
               <Text
                 allowFontScaling={false}
-                style={[styles.openButtonText, {color: accentTextColor}]}>
+                style={[styles.openButtonText, {color: '#fff'}]}>
                 Open
               </Text>
-              <ChevronRight size={moderateScale(16)} color={accentTextColor} strokeWidth={2.4} />
+              <ChevronRight size={moderateScale(16)} color="#fff" strokeWidth={2.4} />
             </View>
           </View>
         </Pressable>

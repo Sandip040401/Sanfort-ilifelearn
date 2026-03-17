@@ -38,6 +38,7 @@ import {
 import {useAuth} from '@/store';
 import {useTheme, Typography, BorderRadius, type AppColors} from '@/theme';
 import CustomAlert from '@/components/CustomAlert';
+import { AuthService } from '@/services/auth.service';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -69,6 +70,11 @@ export default function ProfileScreen() {
   const [gateInput, setGateInput] = useState('');
   const [gateAnswer] = useState('18'); // 12 + 6
 
+  // Form Inputs
+  const [password, setPassword] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
   // ── Animations ─────────────────────────────────
   const modalVisible = activeModal !== 'none';
   const modalScale = useSharedValue(0.85);
@@ -98,6 +104,10 @@ export default function ProfileScreen() {
     setActiveModal('none');
     setModalStep('confirm');
     setGateInput('');
+    setPassword('');
+    setOldPassword('');
+    setNewPassword('');
+    setErrorMessage('');
   };
 
   const handleLogout = () => {
@@ -120,36 +130,49 @@ export default function ProfileScreen() {
     setModalStep('input');
   };
 
-  const processResetPassword = () => {
+  const processResetPassword = async () => {
+    if (!oldPassword || !newPassword) {
+      setErrorMessage('Please fill in both fields.');
+      setModalStep('error');
+      return;
+    }
+
     setModalStep('processing');
-    /* 
-      TODO: REPLACE MOCK WITH REAL SERVICE
-      Example:
-      const response = await api.auth.resetPassword(user.email);
-      if(response.success) setModalStep('success');
-      else { setModalStep('confirm'); Alert.alert('Error', response.message); }
-    */
-    setTimeout(() => setModalStep('success'), 1500);
+    try {
+      const response = await AuthService.resetPassword({
+        email: user?.email || '',
+        oldPassword,
+        newPassword
+      });
+      setModalStep('success');
+    } catch (error: any) {
+      setErrorMessage(error?.response?.data?.message || error?.message || 'Failed to reset password');
+      setModalStep('error');
+    }
   };
 
-  const processDeleteAccount = () => {
+  const processDeleteAccount = async () => {
+    if (!password) {
+      setErrorMessage('Please enter your password to confirm.');
+      setModalStep('error');
+      return;
+    }
+
     setModalStep('processing');
-    /* 
-      TODO: REPLACE MOCK WITH REAL SERVICE
-      Example:
-      const response = await api.auth.deleteAccount();
-      if(response.success) {
-         setModalStep('success');
-         setTimeout(() => { resetModal(); logout(); }, 1500);
-      } else { setModalStep('confirm'); Alert.alert('Error', response.message); }
-    */
-    setTimeout(() => {
+    try {
+      await AuthService.deleteAccount({
+        email: user?.email || '',
+        password
+      });
       setModalStep('success');
       setTimeout(() => {
         resetModal();
         logout();
-      }, 1500);
-    }, 1500);
+      }, 2000);
+    } catch (error: any) {
+      setErrorMessage(error?.response?.data?.message || error?.message || 'Failed to delete account');
+      setModalStep('error');
+    }
   };
 
   const verifyParentGate = () => {
@@ -427,7 +450,7 @@ export default function ProfileScreen() {
                     {errorMessage || "Something went wrong. Please try again later."}
                   </Text>
                   <TouchableOpacity 
-                    style={[styles.modalBtn, {backgroundColor: colors.text}]} 
+                    style={[styles.modalBtn, {backgroundColor: colors.primary}]} 
                     onPress={() => setModalStep(activeModal === 'gate' ? 'input' : 'confirm')}>
                     <Text style={styles.modalBtnText}>Try Again</Text>
                   </TouchableOpacity>
@@ -440,29 +463,48 @@ export default function ProfileScreen() {
                   {modalStep === 'confirm' && (
                     <>
                       <Text style={[styles.modalDesc, {color: colors.textSecondary}]}>
-                        We will send a password reset link to <Text style={{fontWeight: '700'}}>{user?.email}</Text>.
+                        Updating password for <Text style={{fontWeight: '700'}}>{user?.email}</Text>
                       </Text>
+                      
+                      <TextInput
+                        style={[styles.modalInput, styles.passwordInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
+                        placeholder="Current Password"
+                        secureTextEntry
+                        placeholderTextColor={colors.textTertiary}
+                        value={oldPassword}
+                        onChangeText={setOldPassword}
+                      />
+
+                      <TextInput
+                        style={[styles.modalInput, styles.passwordInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
+                        placeholder="New Password"
+                        secureTextEntry
+                        placeholderTextColor={colors.textTertiary}
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                      />
+
                       <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.primary}]} onPress={processResetPassword}>
-                        <Text style={styles.modalBtnText}>Send Reset Link</Text>
+                        <Text style={styles.modalBtnText}>Update Password</Text>
                       </TouchableOpacity>
                     </>
                   )}
                   {modalStep === 'processing' && (
                     <View style={styles.modalContent}>
                       <ActivityIndicator size="large" color={colors.primary} />
-                      <Text style={[styles.modalInfo, {color: colors.textTertiary}]}>Sending Email...</Text>
+                      <Text style={[styles.modalInfo, {color: colors.textTertiary}]}>Updating...</Text>
                     </View>
                   )}
                   {modalStep === 'success' && (activeModal === 'reset') && (
                     <>
                       <View style={[styles.statusIcon, {backgroundColor: isDark ? '#064E3B' : '#ECFDF4'}]}>
-                        <Text style={{fontSize: 32}}>📧</Text>
+                        <Text style={{fontSize: 32}}>🔐</Text>
                       </View>
                       <Text style={[styles.modalDesc, {color: colors.textSecondary, textAlign: 'center'}]}>
-                        Reset link sent! Please check your inbox and follow the instructions.
+                        Password has been successfully updated!
                       </Text>
-                      <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.text}]} onPress={resetModal}>
-                        <Text style={styles.modalBtnText}>Done</Text>
+                      <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.primary}]} onPress={resetModal}>
+                        <Text style={styles.modalBtnText}>Close</Text>
                       </TouchableOpacity>
                     </>
                   )}
@@ -475,10 +517,21 @@ export default function ProfileScreen() {
                   {modalStep === 'confirm' && (
                     <>
                       <Text style={[styles.modalDesc, {color: colors.textSecondary}]}>
-                        Are you absolutely sure? This will permanently remove all your data.
+                        Enter your password to permanently delete <Text style={{fontWeight: '700'}}>{user?.email}</Text>
                       </Text>
+
+                      <TextInput
+                        style={[styles.modalInput, styles.passwordInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
+                        placeholder="Password"
+                        secureTextEntry
+                        placeholderTextColor={colors.textTertiary}
+                        value={password}
+                        onChangeText={setPassword}
+                        autoFocus
+                      />
+
                       <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.error}]} onPress={processDeleteAccount}>
-                        <Text style={styles.modalBtnText}>Delete Permanently</Text>
+                        <Text style={styles.modalBtnText}>Confirm Deletion</Text>
                       </TouchableOpacity>
                     </>
                   )}
@@ -494,7 +547,7 @@ export default function ProfileScreen() {
                         <Text style={{fontSize: 32}}>👋</Text>
                       </View>
                       <Text style={[styles.modalDesc, {color: colors.textSecondary, textAlign: 'center'}]}>
-                        Your account has been deleted. We are sorry to see you go!
+                        Account deleted. Logging you out...
                       </Text>
                     </>
                   )}
@@ -901,5 +954,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '700',
     marginBottom: verticalScale(20),
+  },
+  passwordInput: {
+    fontSize: moderateScale(15),
+    textAlign: 'left',
+    height: verticalScale(48),
+    marginBottom: verticalScale(12),
   },
 });

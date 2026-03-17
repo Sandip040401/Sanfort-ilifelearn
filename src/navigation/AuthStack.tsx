@@ -9,6 +9,7 @@ import {useTheme} from '@/theme';
 import type {AuthStackParamList} from '@/types';
 import WelcomeScreen from '@/screens/auth/WelcomeScreen';
 import LoginScreen   from '@/screens/auth/LoginScreen';
+import DeleteAccountScreen from '@/screens/auth/DeleteAccountScreen';
 
 const Stack = createStackNavigator<AuthStackParamList>();
 
@@ -32,6 +33,7 @@ export function AuthStack() {
     <Stack.Navigator screenOptions={screenOptions} initialRouteName="Welcome">
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="Login"   component={LoginScreen} />
+      <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
     </Stack.Navigator>
   );
 }

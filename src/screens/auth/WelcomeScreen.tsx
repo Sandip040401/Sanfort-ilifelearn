@@ -4,8 +4,9 @@ import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import type {StackNavigationProp} from '@react-navigation/stack';
-import {BookOpen, ChevronRight, Gamepad2, Globe, Mic, Sparkles} from 'lucide-react-native';
+import {BookOpen, ChevronRight, Globe, Sparkles} from 'lucide-react-native';
 import type {AuthStackParamList} from '@/types';
+import Animated, {FadeInDown, FadeInUp, ZoomIn} from 'react-native-reanimated';
 
 type Props = {
   navigation: StackNavigationProp<AuthStackParamList, 'Welcome'>;
@@ -44,28 +45,34 @@ export default function WelcomeScreen({navigation}: Props) {
         bounces={false}>
 
         {/* Hero */}
-        <View style={[styles.hero, {paddingTop: insets.top + verticalScale(28)}, wrapStyle]}>
-          <View style={styles.logoWrap} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
+        <Animated.View 
+          entering={FadeInDown.duration(800).springify()}
+          style={[styles.hero, {paddingTop: insets.top + verticalScale(28)}, wrapStyle]}>
+          <Animated.View 
+            entering={ZoomIn.delay(300).duration(600)}
+            style={styles.logoWrap} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
             <View style={styles.logoInner}>
               <Sparkles size={moderateScale(36)} color="#6C4CFF" strokeWidth={1.8} />
             </View>
             <View style={styles.logoBadge}>
               <BookOpen size={moderateScale(12)} color="#fff" strokeWidth={2} />
             </View>
-          </View>
+          </Animated.View>
           <Text style={styles.appName} accessibilityRole="header">iLife Learn</Text>
           <Text style={styles.tagline}>Learn · Explore · Grow</Text>
-        </View>
+        </Animated.View>
 
         {/* Features */}
-        <View
+        <Animated.View
+          entering={FadeInUp.delay(500).duration(800)}
           style={[
             styles.featuresWrap,
             wrapStyle ? {...wrapStyle, marginHorizontal: 0} : undefined,
           ]}
           accessibilityLabel="App features">
-          {FEATURES.map(({Icon, label, sub}) => (
-            <View
+          {FEATURES.map(({Icon, label, sub}, index) => (
+            <Animated.View
+              entering={FadeInDown.delay(700 + index * 100)}
               key={label}
               style={styles.featureRow}
               accessible
@@ -77,12 +84,14 @@ export default function WelcomeScreen({navigation}: Props) {
                 <Text style={styles.featureLabel}>{label}</Text>
                 <Text style={styles.featureSub}>{sub}</Text>
               </View>
-            </View>
+            </Animated.View>
           ))}
-        </View>
+        </Animated.View>
 
         {/* CTA */}
-        <View style={[styles.bottomWrap, {paddingBottom: insets.bottom + verticalScale(28)}, wrapStyle ? {...wrapStyle, paddingHorizontal: 0} : undefined]}>
+        <Animated.View 
+          entering={FadeInUp.delay(1000).duration(800)}
+          style={[styles.bottomWrap, {paddingBottom: insets.bottom + verticalScale(28)}, wrapStyle ? {...wrapStyle, paddingHorizontal: 0} : undefined]}>
           <TouchableOpacity
             testID="welcome-get-started-btn"
             style={styles.ctaBtn}
@@ -95,7 +104,7 @@ export default function WelcomeScreen({navigation}: Props) {
             <ChevronRight size={moderateScale(20)} color="#6C4CFF" strokeWidth={2.5} />
           </TouchableOpacity>
           <Text style={styles.versionText} accessibilityElementsHidden>Made for curious minds ✨</Text>
-        </View>
+        </Animated.View>
       </ScrollView>
     </LinearGradient>
   );

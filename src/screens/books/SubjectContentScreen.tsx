@@ -6,6 +6,8 @@ import {
   Text,
   View,
   useWindowDimensions,
+  ViewStyle,
+  TextStyle,
 } from 'react-native';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
@@ -103,7 +105,7 @@ function SubjectContentScreenContent() {
     return {
       concepts: flattenTopics(
         booksQuery.data.concepts,
-        booksQuery.data.subject.color || subjectColor,
+        subjectColor,
         booksQuery.data.arSheets,
       ).length,
       videos: getTotalVideoCount(booksQuery.data.videoVolumes),
@@ -123,68 +125,68 @@ function SubjectContentScreenContent() {
     [stats.concepts, stats.ebooks, stats.videos],
   );
 
-  const accent = booksQuery.data?.subject.color || subjectColor;
+  const accent = subjectColor;
   const subjectDisplayName = booksQuery.data?.subject.name || subjectName;
   const contentBottomInset = insets.bottom + verticalScale(76);
-  const activeTabButtonStyle = useMemo(
+  const activeTabButtonStyle: ViewStyle = useMemo(
     () => ({
-      backgroundColor: withAlpha(accent, 0.12),
-      borderColor: withAlpha(accent, 0.18),
+      backgroundColor: accent,
+      borderColor: accent,
     }),
     [accent],
   );
-  const activeCountStyle = useMemo(
+  const activeCountStyle: ViewStyle = useMemo(
     () => ({
       backgroundColor: accent,
     }),
     [accent],
   );
-  const activeCountTextStyle = useMemo(
+  const activeCountTextStyle: TextStyle = useMemo(
     () => ({
-      color: getContrastText(accent),
+      color: '#fff',
     }),
-    [accent],
+    [],
   );
-  const inactiveCountStyle = useMemo(
+  const inactiveCountStyle: ViewStyle = useMemo(
     () => ({
       backgroundColor: withAlpha(colors.text, 0.18),
     }),
     [colors.text],
   );
-  const inactiveCountTextStyle = useMemo(
+  const inactiveCountTextStyle: TextStyle = useMemo(
     () => ({
       color: colors.text,
     }),
     [colors.text],
   );
-  const inactiveTabTextStyle = useMemo(
+  const inactiveTabTextStyle: TextStyle = useMemo(
     () => ({
       color: colors.text,
       opacity: 0.8,
     }),
     [colors.text],
   );
-  const heroPaddingStyle = useMemo(
+  const heroPaddingStyle: ViewStyle = useMemo(
     () => ({
       paddingTop: insets.top + verticalScale(12),
     }),
     [insets.top],
   );
-  const heroSectionWidthStyle = useMemo(
+  const heroSectionWidthStyle: ViewStyle = useMemo(
     () => ({
       width: '100%',
       alignSelf: 'stretch',
     }),
     [],
   );
-  const heroInnerWidthStyle = useMemo(
+  const heroInnerWidthStyle: ViewStyle = useMemo(
     () => ({
       width: contentWidth,
       alignSelf: 'center',
     }),
     [contentWidth],
   );
-  const tabsShellStyle = useMemo(
+  const tabsShellStyle: ViewStyle = useMemo(
     () => ({
       backgroundColor: colors.surface,
       borderColor: colors.border,
@@ -293,7 +295,7 @@ function SubjectContentScreenContent() {
                     style={[
                       styles.tabText,
                       selected
-                        ? {color: colors.text}
+                        ? {color: '#fff'}
                         : inactiveTabTextStyle,
                     ]}>
                     {tab.label}
@@ -399,7 +401,7 @@ function SubjectContentScreenContent() {
         ) : (
           <EbooksTab
             ebooks={booksQuery.data.ebooks}
-            arSheets={booksQuery.data.arSheets}
+            // arSheets={booksQuery.data.arSheets}
             accentColor={accent}
             bottomInset={contentBottomInset}
             headerContent={headerContent}

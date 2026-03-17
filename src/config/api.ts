@@ -21,6 +21,10 @@ export const Endpoints = {
   login:    '/learn/auth/login',
   register: '/learn/auth/register',
 
+  // Account
+  deleteAccount: '/learn/account/delete-account',
+  resetPassword: '/learn/account/reset-password',
+
   // Profile
   profile: '/learn/user/profile',
 
