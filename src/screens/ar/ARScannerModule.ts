@@ -28,4 +28,18 @@ export const ARScannerModule = {
     }
     ARNativeModule.startScanner(referenceImageAsset, modelAsset);
   },
+
+  startScannerDynamic: async (
+    modelUrl: string,
+    referenceImageUrl: string,
+    modelName: string,
+    audiosJson?: string,
+  ): Promise<boolean> => {
+    if (!ARNativeModule?.startScannerDynamic) {
+      throw new Error(
+        'ARScannerModule.startScannerDynamic is not linked. Build the Android app again.',
+      );
+    }
+    return ARNativeModule.startScannerDynamic(modelUrl, referenceImageUrl, modelName, audiosJson || null);
+  },
 };

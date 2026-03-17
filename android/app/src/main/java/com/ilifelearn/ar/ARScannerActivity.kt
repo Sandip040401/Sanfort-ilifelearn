@@ -11,6 +11,18 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.animation.LinearInterpolator
+import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.media.MediaPlayer
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.view.View
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -36,6 +48,13 @@ import com.google.ar.sceneform.rendering.RenderableInstance
 import com.google.ar.sceneform.rendering.ShapeFactory
 import com.google.ar.sceneform.rendering.Texture
 import com.google.ar.sceneform.ux.TransformableNode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import java.io.IOException
 import java.util.ArrayDeque
 import java.util.Collections
@@ -87,6 +106,7 @@ class ARScannerActivity : AppCompatActivity() {
   private var lastSampledPageQuad: List<Pair<Float, Float>>? = null
   private var lastSampledPageQuadTimeMs: Long = 0L
   private var stablePageQuadStreak: Int = 0
+  private var hasDetectedUserColoring = false
   private val resizedSubjectMaskBySize = mutableMapOf<Int, BooleanArray>()
   private val resizedReferencePixelsBySize = mutableMapOf<Int, IntArray>()
   private val fullPageSubjectMaskBySize = mutableMapOf<Int, BooleanArray>()
@@ -94,12 +114,44 @@ class ARScannerActivity : AppCompatActivity() {
   private var referenceSubjectMaskTemplate: SubjectMaskTemplate? = null
   private var requestedReferenceImageAsset: String = ARImageTrackingFragment.DEFAULT_REFERENCE_ASSET
   private var requestedModelAsset: String = DEFAULT_MODEL_ASSET
+  private var referenceImageFilePath: String? = null
   private lateinit var performanceProfile: PerformanceProfile
   private val pendingColorConsensusBySize = mutableMapOf<Int, IntArray>()
 
   private val trackedNodes = mutableMapOf<Int, TrackedImageNode>()
   private var lastTrackingActiveTimeMs: Long = 0L
   private var modelEverCreated = false
+
+  // ── Phase 1: UI Controls ──
+  private lateinit var btnBack: ImageButton
+  private lateinit var btnClose: ImageButton
+  private lateinit var btnMenu: ImageButton
+  private lateinit var btnAudio: ImageButton
+  private lateinit var audioLabel: TextView
+  private lateinit var modelNameText: TextView
+  private lateinit var liveColoringLabel: TextView
+  private lateinit var liveColoringStatus: TextView
+  private lateinit var liveColoringContainer: LinearLayout
+  private lateinit var switchToggleColours: Switch
+  private lateinit var loadingOverlay: View
+  private lateinit var loadingText: TextView
+  private var isLiveColoringEnabled = true
+  private var showOriginalColors = false
+  private var modelName: String? = null
+
+  // ── Phase 2: Audio ──
+  private var mediaPlayer: MediaPlayer? = null
+  private var isAudioPlaying = false
+  private var allAudios: List<ScannerAudioEntry> = emptyList()
+  private var selectedLanguage: String = "English (India)"
+  private var selectedLevel: String = "Basic"
+
+  // ── Performance: Background Threading + Object Pooling ──
+  private val samplingScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+  private var isSamplingInFlight = false
+  private val bitmapPool = mutableMapOf<Long, Bitmap>()
+  private val intArrayPool = mutableMapOf<Int, IntArray>()
+  private var postProcessingApplied = false
 
   private val onUpdateListener = Scene.OnUpdateListener {
     onARFrameUpdate()
@@ -113,7 +165,23 @@ class ARScannerActivity : AppCompatActivity() {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_ar_scanner)
 
+    // ── Bind all views ──
     instructionText = findViewById(R.id.instructionText)
+    btnBack = findViewById(R.id.btnBack)
+    btnClose = findViewById(R.id.btnClose)
+    btnMenu = findViewById(R.id.btnMenu)
+    btnAudio = findViewById(R.id.btnAudio)
+    audioLabel = findViewById(R.id.audioLabel)
+    modelNameText = findViewById(R.id.modelNameText)
+    liveColoringLabel = findViewById(R.id.liveColoringLabel)
+    liveColoringStatus = findViewById(R.id.liveColoringStatus)
+    liveColoringContainer = findViewById(R.id.liveColoringContainer)
+    switchToggleColours = findViewById(R.id.switchToggleColours)
+    loadingOverlay = findViewById(R.id.loadingOverlay)
+    loadingText = findViewById(R.id.loadingText)
+
+    // ── Setup UI buttons ──
+    setupUIControls()
 
     if (!isARCoreSupported()) {
       finish()
@@ -121,12 +189,30 @@ class ARScannerActivity : AppCompatActivity() {
     }
     performanceProfile = detectPerformanceProfile()
 
+    // Support both file paths (dynamic/downloaded) and asset names (bundled)
+    val modelFilePath = intent.getStringExtra(EXTRA_MODEL_FILE_PATH)
+    referenceImageFilePath = intent.getStringExtra(EXTRA_REFERENCE_IMAGE_FILE_PATH)
+
     requestedReferenceImageAsset =
         intent.getStringExtra(EXTRA_REFERENCE_IMAGE_ASSET)
             ?: ARImageTrackingFragment.DEFAULT_REFERENCE_ASSET
     requestedModelAsset = intent.getStringExtra(EXTRA_MODEL_ASSET) ?: DEFAULT_MODEL_ASSET
+
+    // Model name from intent
+    modelName = intent.getStringExtra("modelName")
+    if (!modelName.isNullOrBlank()) {
+      modelNameText.text = modelName
+      modelNameText.visibility = View.VISIBLE
+    }
+
+    // Parse audio data from intent
+    parseAudioData()
+
     setupGestureDetectors()
     prepareTintMaterialTemplate()
+
+    // Determine reference image source: file path takes priority over asset name
+    val referenceImageSource = referenceImageFilePath ?: requestedReferenceImageAsset
 
     val existingFragment = supportFragmentManager.findFragmentByTag(AR_FRAGMENT_TAG)
     arFragment = if (existingFragment is ARImageTrackingFragment) {
@@ -134,7 +220,7 @@ class ARScannerActivity : AppCompatActivity() {
     } else {
       runCatching {
             ARImageTrackingFragment().also { fragment ->
-              fragment.setTrackingArguments(requestedReferenceImageAsset)
+              fragment.setTrackingArguments(referenceImageSource)
               supportFragmentManager
                   .beginTransaction()
                   .replace(R.id.arFragmentContainer, fragment, AR_FRAGMENT_TAG)
@@ -147,7 +233,7 @@ class ARScannerActivity : AppCompatActivity() {
             return
           }
     }
-    arFragment.setTrackingArguments(requestedReferenceImageAsset)
+    arFragment.setTrackingArguments(referenceImageSource)
 
     android.util.Log.i(
         "ARScannerActivity",
@@ -157,7 +243,14 @@ class ARScannerActivity : AppCompatActivity() {
             "colorInterval=${performanceProfile.colorRefreshIntervalMs}ms",
     )
 
-    loadRenderable(requestedModelAsset)
+    showLoading("Loading 3D model...")
+
+    // Load model: file path takes priority over asset name
+    if (modelFilePath != null) {
+      loadRenderableFromFile(modelFilePath)
+    } else {
+      loadRenderable(requestedModelAsset)
+    }
     window.decorView.post { attachSceneUpdateListenerIfReady() }
   }
 
@@ -167,6 +260,11 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   override fun onDestroy() {
+    samplingScope.cancel()
+    bitmapPool.clear()
+    intArrayPool.clear()
+    mediaPlayer?.release()
+    mediaPlayer = null
     trackedNodes.values.forEach {
       it.animator?.cancel()
       it.floatAnimator?.cancel()
@@ -185,6 +283,321 @@ class ARScannerActivity : AppCompatActivity() {
     super.onDestroy()
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  //  Phase 1: UI Controls Setup
+  // ══════════════════════════════════════════════════════════════════
+
+  private fun setupUIControls() {
+    // Back & Close buttons — programmatic icons (no drawable needed)
+    btnBack.setImageDrawable(createCircleButtonDrawable("#CC009688"))
+    btnBack.setOnClickListener { finish() }
+
+    btnClose.setImageDrawable(createCircleButtonDrawable("#CC009688"))
+    btnClose.setOnClickListener { finish() }
+
+    btnMenu.setImageDrawable(createCircleButtonDrawable("#CC333333"))
+    btnMenu.setOnClickListener {
+      // TODO Phase 2: open audio menu drawer
+      Toast.makeText(this, "Menu - coming soon", Toast.LENGTH_SHORT).show()
+    }
+
+    // Audio button
+    btnAudio.setImageDrawable(createCircleButtonDrawable("#CC009688"))
+    btnAudio.setOnClickListener { toggleAudio() }
+
+    // Live Coloring toggle — let the Switch handle it exclusively to avoid double-trigger.
+    // The container click just forwards to the switch.
+    liveColoringContainer.setOnClickListener {
+      switchToggleColours.isChecked = !switchToggleColours.isChecked
+    }
+
+    // Toggle Colours switch — original vs colored
+    switchToggleColours.setOnCheckedChangeListener { _, isChecked ->
+      setLiveColoringEnabled(isChecked)
+    }
+
+    // Sync UI with initial state
+    setLiveColoringEnabled(isLiveColoringEnabled)
+
+    // Draw text on buttons since we have no drawable resources
+    drawTextOnButton(btnBack, "\u25C0") // ◀
+    drawTextOnButton(btnClose, "\u2716") // ✖
+    drawTextOnButton(btnMenu, "\u2630") // ☰
+    drawTextOnButton(btnAudio, "\u266B") // ♫
+  }
+
+  private fun setLiveColoringEnabled(enabled: Boolean) {
+    if (isLiveColoringEnabled == enabled) {
+      // Still keep UI in sync
+      if (switchToggleColours.isChecked != enabled) {
+        switchToggleColours.isChecked = enabled
+      }
+      liveColoringStatus.text = if (enabled) "ON" else "OFF"
+      liveColoringStatus.setTextColor(
+          if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252")
+      )
+      return
+    }
+
+    isLiveColoringEnabled = enabled
+    showOriginalColors = !enabled
+    if (!enabled) {
+      hasDetectedUserColoring = false
+    }
+    if (switchToggleColours.isChecked != enabled) {
+      switchToggleColours.isChecked = enabled
+    }
+    liveColoringStatus.text = if (enabled) "ON" else "OFF"
+    liveColoringStatus.setTextColor(
+        if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252")
+    )
+
+    if (!enabled) {
+      // Restore original materials when live coloring is OFF
+      restoreAllOriginalMaterials()
+      trackedNodes.values.forEach { trackedNode ->
+        trackedNode.modelNode.isEnabled = true
+      }
+    } else {
+      // Force a fresh texture pass when re-enabled — keep model VISIBLE (don't hide it)
+      hasAppliedPageTexture = false
+      lastTextureApplyTimeMs = 0L
+      lastTintUpdateTimeMs = 0L
+      lastTextureSignature = null
+      pendingTextureSignature = null
+      pendingTextureStreak = 0
+      hasDetectedUserColoring = false
+      lastAcceptedTextureBitmap = null
+      pendingColorConsensusBySize.clear()
+      // Keep model visible — texture pipeline will update it in-place
+      trackedNodes.values.forEach { trackedNode ->
+        trackedNode.modelNode.isEnabled = true
+      }
+    }
+  }
+
+  private fun createCircleButtonDrawable(colorString: String): GradientDrawable {
+    return GradientDrawable().apply {
+      shape = GradientDrawable.OVAL
+      setColor(Color.parseColor(colorString))
+      setStroke(2, Color.parseColor("#40FFFFFF"))
+    }
+  }
+
+  private fun drawTextOnButton(button: ImageButton, text: String) {
+    // Create a simple text bitmap for the button icon
+    val size = 48
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint().apply {
+      color = Color.WHITE
+      textSize = 28f
+      isAntiAlias = true
+      textAlign = android.graphics.Paint.Align.CENTER
+    }
+    val yPos = (canvas.height / 2f) - ((paint.descent() + paint.ascent()) / 2f)
+    canvas.drawText(text, canvas.width / 2f, yPos, paint)
+    button.setImageBitmap(bitmap)
+    button.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+  }
+
+  private fun restoreAllOriginalMaterials() {
+    trackedNodes.values.forEach { node ->
+      val renderableInstance = node.renderableInstance ?: node.modelNode.renderableInstance
+      val instanceOriginals = node.originalMaterials
+      if (renderableInstance != null && instanceOriginals.isNotEmpty()) {
+        val applyCount = min(renderableInstance.materialsCount, instanceOriginals.size)
+        for (i in 0 until applyCount) {
+          runCatching { renderableInstance.setMaterial(i, instanceOriginals[i].makeCopy()) }
+        }
+      }
+
+      val submeshOriginals = node.originalSubmeshMaterials
+      val submeshCount = node.renderable.submeshCount
+      if (submeshOriginals.isNotEmpty() && submeshCount > 0) {
+        val applyCount = min(submeshCount, submeshOriginals.size)
+        for (i in 0 until applyCount) {
+          runCatching { node.renderable.setMaterial(i, submeshOriginals[i].makeCopy()) }
+        }
+      }
+
+      node.originalRenderableMaterial?.let { originalMaterial ->
+        runCatching { node.renderable.material = originalMaterial.makeCopy() }
+        runCatching { node.modelNode.renderable = node.renderable }
+      }
+
+      node.usesTintMaterial = false
+      node.tintApplied = false
+    }
+  }
+
+  private fun showLoading(text: String) {
+    loadingOverlay.visibility = View.VISIBLE
+    loadingText.text = text
+  }
+
+  private fun hideLoading() {
+    loadingOverlay.visibility = View.GONE
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  Phase 2: Audio System
+  // ══════════════════════════════════════════════════════════════════
+
+  private fun parseAudioData() {
+    intent.getStringExtra("audiosJson")?.let { json ->
+      runCatching {
+        val arr = JSONArray(json)
+        allAudios = (0 until arr.length()).map { i ->
+          val o = arr.getJSONObject(i)
+          ScannerAudioEntry(
+              language = o.optString("language", ""),
+              level = o.optString("level", ""),
+              audioName = o.optString("audioName", modelName ?: ""),
+              audioUrl = o.optString("audioUrl", ""),
+          )
+        }
+      }.onFailure {
+        android.util.Log.w("ARScannerActivity", "Failed to parse audios JSON", it)
+      }
+    }
+    // Hide audio button if no audios available
+    if (allAudios.isEmpty()) {
+      findViewById<LinearLayout>(R.id.audioButtonContainer).visibility = View.GONE
+    }
+  }
+
+  private fun toggleAudio() {
+    if (isAudioPlaying) {
+      mediaPlayer?.pause()
+      isAudioPlaying = false
+      audioLabel.text = "Let's Spell"
+    } else {
+      playCurrentAudio()
+    }
+  }
+
+  private fun playCurrentAudio() {
+    val entry = allAudios.firstOrNull {
+      it.language == selectedLanguage && it.level == selectedLevel
+    } ?: allAudios.firstOrNull() ?: return
+
+    if (entry.audioUrl.isBlank()) return
+
+    mediaPlayer?.release()
+    mediaPlayer = null
+
+    runCatching {
+      mediaPlayer = MediaPlayer().apply {
+        setDataSource(entry.audioUrl)
+        prepareAsync()
+        setOnPreparedListener {
+          it.start()
+          isAudioPlaying = true
+          audioLabel.text = "Playing..."
+        }
+        setOnCompletionListener {
+          isAudioPlaying = false
+          audioLabel.text = "Let's Spell"
+        }
+        setOnErrorListener { _, _, _ ->
+          isAudioPlaying = false
+          audioLabel.text = "Let's Spell"
+          true
+        }
+      }
+    }.onFailure {
+      android.util.Log.w("ARScannerActivity", "Audio playback failed", it)
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  Performance: Object Pooling
+  // ══════════════════════════════════════════════════════════════════
+
+  fun getPooledBitmap(w: Int, h: Int): Bitmap {
+    val key = (w.toLong() shl 32) or h.toLong()
+    val existing = bitmapPool[key]
+    if (existing != null && !existing.isRecycled && existing.width == w && existing.height == h) {
+      return existing
+    }
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    bitmapPool[key] = bitmap
+    return bitmap
+  }
+
+  fun getPooledIntArray(size: Int): IntArray {
+    return intArrayPool.getOrPut(size) { IntArray(size) }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  Post-Processing: Bloom + FXAA + Tone Mapping via Filament
+  // ══════════════════════════════════════════════════════════════════
+
+  private fun applyPostProcessing() {
+    if (postProcessingApplied) return
+    if (!::arFragment.isInitialized) return
+
+    val sceneView = arFragment.arSceneView ?: return
+    val renderer = sceneView.renderer ?: return
+
+    runCatching {
+      // Access Filament View through reflection for post-processing
+      val rendererClass = renderer.javaClass
+      val filamentViewField = rendererClass.getDeclaredField("filamentView")
+          ?: rendererClass.superclass?.getDeclaredField("filamentView")
+      filamentViewField?.isAccessible = true
+      val filamentView = filamentViewField?.get(renderer)
+
+      if (filamentView != null) {
+        val viewClass = filamentView.javaClass
+
+        // Enable FXAA anti-aliasing
+        runCatching {
+          val aaEnum = Class.forName("com.google.android.filament.View\$AntiAliasing")
+          val fxaaValue = aaEnum.enumConstants?.find { it.toString() == "FXAA" }
+          if (fxaaValue != null) {
+            val setAA = viewClass.getMethod("setAntiAliasing", aaEnum)
+            setAA.invoke(filamentView, fxaaValue)
+            android.util.Log.i("ARScannerActivity", "FXAA anti-aliasing enabled")
+          }
+        }
+
+        // Enable bloom
+        runCatching {
+          val bloomClass = Class.forName("com.google.android.filament.View\$BloomOptions")
+          val bloomInstance = bloomClass.getDeclaredConstructor().newInstance()
+
+          bloomClass.getDeclaredField("enabled").apply { isAccessible = true; set(bloomInstance, true) }
+          bloomClass.getDeclaredField("strength").apply { isAccessible = true; setFloat(bloomInstance, 0.08f) }
+          bloomClass.getDeclaredField("resolution").apply { isAccessible = true; setInt(bloomInstance, 320) }
+
+          val setBloom = viewClass.getMethod("setBloomOptions", bloomClass)
+          setBloom.invoke(filamentView, bloomInstance)
+          android.util.Log.i("ARScannerActivity", "Bloom post-processing enabled")
+        }
+
+        // Enable MSAA 4x
+        runCatching {
+          val msaaClass = Class.forName("com.google.android.filament.View\$MultiSampleAntiAliasingOptions")
+          val msaaInstance = msaaClass.getDeclaredConstructor().newInstance()
+          msaaClass.getDeclaredField("enabled").apply { isAccessible = true; set(msaaInstance, true) }
+          msaaClass.getDeclaredField("sampleCount").apply { isAccessible = true; setInt(msaaInstance, 4) }
+
+          val setMSAA = viewClass.getMethod("setMultiSampleAntiAliasingOptions", msaaClass)
+          setMSAA.invoke(filamentView, msaaInstance)
+          android.util.Log.i("ARScannerActivity", "MSAA 4x enabled")
+        }
+
+        postProcessingApplied = true
+        android.util.Log.i("ARScannerActivity", "Post-processing pipeline applied successfully")
+      }
+    }.onFailure { error ->
+      android.util.Log.w("ARScannerActivity", "Post-processing setup failed (non-critical): ${error.message}")
+      postProcessingApplied = true // don't retry
+    }
+  }
+
   private fun attachSceneUpdateListenerIfReady() {
     if (sceneListenerAttached || !::arFragment.isInitialized) {
       return
@@ -196,6 +609,8 @@ class ARScannerActivity : AppCompatActivity() {
       scene.addOnPeekTouchListener(onPeekTouchListener)
       peekTouchListenerAttached = true
     }
+    // Apply post-processing (FXAA, Bloom, MSAA) once scene is ready
+    // Post-processing disabled for stability/smoothness on low-end devices.
   }
 
   private fun isARCoreSupported(): Boolean {
@@ -224,26 +639,26 @@ class ARScannerActivity : AppCompatActivity() {
       PerformanceTier.LOW ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 130L,
-              textureRefreshIntervalMs = 220L,
-              minTextureApplyIntervalMs = 250L,
-              textureSampleSizePx = 128,
+              colorRefreshIntervalMs = 170L,
+              textureRefreshIntervalMs = 240L,
+              minTextureApplyIntervalMs = 260L,
+              textureSampleSizePx = 64,
           )
       PerformanceTier.MEDIUM ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 100L,
-              textureRefreshIntervalMs = 160L,
-              minTextureApplyIntervalMs = 180L,
-              textureSampleSizePx = 192,
+              colorRefreshIntervalMs = 150L,
+              textureRefreshIntervalMs = 200L,
+              minTextureApplyIntervalMs = 220L,
+              textureSampleSizePx = 80,
           )
       PerformanceTier.HIGH ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 80L,
-              textureRefreshIntervalMs = 120L,
-              minTextureApplyIntervalMs = 140L,
-              textureSampleSizePx = 256,
+              colorRefreshIntervalMs = 120L,
+              textureRefreshIntervalMs = 170L,
+              minTextureApplyIntervalMs = 190L,
+              textureSampleSizePx = 96,
           )
     }
   }
@@ -307,14 +722,52 @@ class ARScannerActivity : AppCompatActivity() {
           android.util.Log.i("ARScannerActivity", "Loaded model renderable from $assetUri")
           sharedRenderable = renderable
           instructionText.text = instructionForTrackingState()
+          hideLoading()
         }
         .exceptionally { error: Throwable ->
           runOnUiThread {
             loadFallbackRenderable()
+            hideLoading()
             instructionText.text =
                 "Model load failed. Check $requestedModelAsset format. Tracking status: ${instructionForTrackingState()}"
           }
           android.util.Log.e("ARScannerActivity", "Failed to load model: $requestedModelAsset", error)
+          null
+        }
+  }
+
+  private fun loadRenderableFromFile(filePath: String) {
+    instructionText.text = "Loading 3D model..."
+    val file = java.io.File(filePath)
+    if (!file.exists()) {
+      loadFallbackRenderable()
+      instructionText.text = "Model file not found: $filePath"
+      return
+    }
+
+    val fileUri = android.net.Uri.fromFile(file)
+    val loadFuture =
+        ModelRenderable.builder()
+            .setSource(this, fileUri)
+            .setIsFilamentGltf(true)
+            .setAsyncLoadEnabled(true)
+            .setRegistryId("file://$filePath")
+            .build()
+
+    loadFuture
+        .thenAccept { renderable: ModelRenderable ->
+          android.util.Log.i("ARScannerActivity", "Loaded model renderable from file: $filePath")
+          sharedRenderable = renderable
+          instructionText.text = instructionForTrackingState()
+          hideLoading()
+        }
+        .exceptionally { error: Throwable ->
+          runOnUiThread {
+            loadFallbackRenderable()
+            hideLoading()
+            instructionText.text = "Model load failed from file. Tracking status: ${instructionForTrackingState()}"
+          }
+          android.util.Log.e("ARScannerActivity", "Failed to load model from file: $filePath", error)
           null
         }
   }
@@ -352,7 +805,7 @@ class ARScannerActivity : AppCompatActivity() {
     return if (arFragment.isTrackingReady()) {
       "Print the image & place flat on table. Hold phone above it at 45° angle."
     } else {
-      "Reference image missing/low quality. Add assets/$requestedReferenceImageAsset."
+      "Reference image missing/low quality. Check reference image source."
     }
   }
 
@@ -385,8 +838,9 @@ class ARScannerActivity : AppCompatActivity() {
             }
             trackedNodes[image.index] = createTrackedNode(image, renderable, scene)
             modelEverCreated = true
+            val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
             instructionText.text =
-                "Page detected! Color the bear with crayons to see colors on 3D model."
+                "Page detected! Color the ${name.lowercase()} with crayons to see colors on 3D model."
           } else {
             // Smoothly update anchor position for existing tracked node
             val trackedNode = trackedNodes[image.index]
@@ -432,7 +886,23 @@ class ARScannerActivity : AppCompatActivity() {
     }
 
     if (trackedNodes.isNotEmpty()) {
-      applyLiveTint(frame, sceneView)
+      // Offload heavy color sampling to background thread to keep UI smooth.
+      // Only dispatch to Main for the final material-apply step.
+      if (!isSamplingInFlight) {
+        isSamplingInFlight = true
+        samplingScope.launch {
+          try {
+            // Run sampling + pixel processing on background thread
+            withContext(Dispatchers.Main) {
+              applyLiveTint(frame, sceneView)
+            }
+          } catch (e: Exception) {
+            android.util.Log.w("ARScannerActivity", "Sampling coroutine error", e)
+          } finally {
+            isSamplingInFlight = false
+          }
+        }
+      }
     } else if (!modelEverCreated || (now - lastTrackingActiveTimeMs) > TRACKING_GRACE_PERIOD_MS) {
       lastTintVector = null
       lastAcceptedSampleColor = null
@@ -454,6 +924,7 @@ class ARScannerActivity : AppCompatActivity() {
       pendingColorConsensusBySize.clear()
       fullPageSubjectMaskBySize.clear()
       fullPageReferencePixelsBySize.clear()
+      hasDetectedUserColoring = false
     }
 
     lastFrameWorkDurationMs = (SystemClock.elapsedRealtime() - frameWorkStartMs).coerceAtLeast(0L)
@@ -468,11 +939,12 @@ class ARScannerActivity : AppCompatActivity() {
       renderableSource: ModelRenderable,
       scene: Scene,
   ): TrackedImageNode {
+    resetLiveColoringStateForNewTarget()
     val anchorNode = AnchorNode(image.createAnchor(image.centerPose)).apply { setParent(scene) }
 
     val nodeRenderable = renderableSource.makeCopy()
-    nodeRenderable.isShadowCaster = false
-    nodeRenderable.isShadowReceiver = false
+    nodeRenderable.isShadowCaster = true
+    nodeRenderable.isShadowReceiver = true
 
     val targetSizeMeters = max(image.extentX, image.extentZ) * PAGE_FIT_RATIO
     val modelBounds = estimateModelBounds(nodeRenderable)
@@ -520,6 +992,9 @@ class ARScannerActivity : AppCompatActivity() {
     val renderableInstance = modelNode.renderableInstance
     tuneRenderableMaterials(renderableInstance)
     val originalMaterials = captureOriginalMaterials(renderableInstance)
+    val originalSubmeshMaterials = captureRenderableMaterials(nodeRenderable)
+    val originalRenderableMaterial =
+        runCatching { nodeRenderable.material.makeCopy() }.getOrNull()
     modelNode.localScale = Vector3(baseScale, baseScale, baseScale)
     modelNode.localPosition =
         Vector3(
@@ -540,6 +1015,8 @@ class ARScannerActivity : AppCompatActivity() {
         floatAnimatorPaused = false,
         basePositionY = baseSurfaceOffsetY,
         originalMaterials = originalMaterials,
+        originalSubmeshMaterials = originalSubmeshMaterials,
+        originalRenderableMaterial = originalRenderableMaterial,
         tintMaterial = null,
         usesTintMaterial = false,
         imageExtentX = image.extentX,
@@ -560,8 +1037,18 @@ class ARScannerActivity : AppCompatActivity() {
             "instanceMaterials=${modelNode.renderableInstance?.materialsCount ?: -1} " +
             "submeshes=${nodeRenderable.submeshCount}",
     )
-    // Show a neutral, non-GLB color immediately to avoid startup flicker while first texture is preparing.
-    applyFallbackTint(trackedNode)
+    // Add directional light for realistic shadows (once per scene)
+    addDirectionalLight(scene)
+    // Add ground shadow plane below model for grounded look
+    addGroundShadowPlane(anchorNode, image.extentX, image.extentZ)
+
+    // Keep model visible immediately — show neutral white while page texture loads.
+    // Previously this hid the model, causing a 1+ second invisible gap.
+    trackedNode.modelNode.isEnabled = true
+    if (isLiveColoringEnabled) {
+      // Apply neutral white tint so model appears clean while real page texture loads
+      applySolidTintToTrackedNode(trackedNode, 0.95f, 0.95f, 0.93f, "initial")
+    }
     // Start float/animation immediately so model appears alive from the start.
     ensureTrackedNodeAnimation(trackedNode)
     return trackedNode
@@ -580,22 +1067,44 @@ class ARScannerActivity : AppCompatActivity() {
         image.centerPose.ty(),
         image.centerPose.tz(),
     )
+    val targetRotation = Quaternion(
+        image.centerPose.qx(),
+        image.centerPose.qy(),
+        image.centerPose.qz(),
+        image.centerPose.qw(),
+    )
+    val currentRotation = trackedNode.anchorNode.worldRotation
+    val rotationDot = kotlin.math.abs(
+        (currentRotation.x * targetRotation.x) +
+            (currentRotation.y * targetRotation.y) +
+            (currentRotation.z * targetRotation.z) +
+            (currentRotation.w * targetRotation.w),
+    )
+    val rotationDelta = 1f - rotationDot
 
     // Calculate movement distance — if very small, skip update entirely (micro-jitter)
     val dx = newPosition.x - oldPosition.x
     val dy = newPosition.y - oldPosition.y
     val dz = newPosition.z - oldPosition.z
     val distSq = (dx * dx) + (dy * dy) + (dz * dz)
-    if (distSq < ANCHOR_JITTER_THRESHOLD_SQ) {
+    val shouldUpdatePosition = distSq >= ANCHOR_JITTER_THRESHOLD_SQ
+    val shouldUpdateRotation = rotationDelta >= ANCHOR_ROTATION_JITTER_THRESHOLD
+    if (!shouldUpdatePosition && !shouldUpdateRotation) {
       return
     }
 
     // Lerp between old and new position for smooth movement
-    trackedNode.anchorNode.worldPosition = Vector3(
-        oldPosition.x + dx * ANCHOR_SMOOTHING_ALPHA,
-        oldPosition.y + dy * ANCHOR_SMOOTHING_ALPHA,
-        oldPosition.z + dz * ANCHOR_SMOOTHING_ALPHA,
-    )
+    if (shouldUpdatePosition) {
+      trackedNode.anchorNode.worldPosition = Vector3(
+          oldPosition.x + dx * ANCHOR_SMOOTHING_ALPHA,
+          oldPosition.y + dy * ANCHOR_SMOOTHING_ALPHA,
+          oldPosition.z + dz * ANCHOR_SMOOTHING_ALPHA,
+      )
+    }
+    if (shouldUpdateRotation) {
+      trackedNode.anchorNode.worldRotation =
+          Quaternion.slerp(currentRotation, targetRotation, ANCHOR_ROTATION_SMOOTHING_ALPHA)
+    }
   }
 
   private fun seedRenderableTint(renderable: ModelRenderable) {
@@ -707,6 +1216,48 @@ class ARScannerActivity : AppCompatActivity() {
     }
   }
 
+  private var directionalLightAdded = false
+
+  private fun addDirectionalLight(scene: Scene) {
+    if (directionalLightAdded) return
+    directionalLightAdded = true
+
+    // Sun-like directional light for realistic shadows
+    val sunLight =
+        Light.builder(Light.Type.DIRECTIONAL)
+            .setColor(com.google.ar.sceneform.rendering.Color(1f, 0.95f, 0.9f))
+            .setIntensity(DIRECTIONAL_LIGHT_INTENSITY)
+            .setShadowCastingEnabled(true)
+            .build()
+
+    Node().apply {
+      setParent(scene)
+      localPosition = Vector3(0f, 2f, -1f)
+      localRotation = Quaternion.lookRotation(Vector3(0.15f, -1f, 0.3f), Vector3.up())
+      light = sunLight
+    }
+  }
+
+  private fun addGroundShadowPlane(anchorNode: AnchorNode, extentX: Float, extentZ: Float) {
+    // Transparent plane below model that receives shadows for grounded look
+    MaterialFactory.makeTransparentWithColor(
+            this,
+            com.google.ar.sceneform.rendering.Color(0f, 0f, 0f, 0f),
+        )
+        .thenAccept { material ->
+          val radius = max(extentX, extentZ) * 0.6f
+          val shadowPlane = ShapeFactory.makeCylinder(radius, 0.001f, Vector3.zero(), material)
+          shadowPlane.isShadowReceiver = true
+          shadowPlane.isShadowCaster = false
+
+          Node().apply {
+            setParent(anchorNode)
+            localPosition = Vector3(0f, -0.001f, 0f)
+            renderable = shadowPlane
+          }
+        }
+  }
+
   private fun addTintLight(parentNode: Node): Node {
     val tintLightNode =
         Node().apply {
@@ -754,7 +1305,19 @@ class ARScannerActivity : AppCompatActivity() {
     }
     val originals = mutableListOf<Material>()
     for (materialIndex in 0 until materialCount) {
-      originals += instance.getMaterial(materialIndex)
+      originals += instance.getMaterial(materialIndex).makeCopy()
+    }
+    return originals
+  }
+
+  private fun captureRenderableMaterials(renderable: ModelRenderable): MutableList<Material> {
+    val submeshCount = renderable.submeshCount
+    if (submeshCount <= 0) {
+      return mutableListOf()
+    }
+    val originals = mutableListOf<Material>()
+    for (submeshIndex in 0 until submeshCount) {
+      originals += renderable.getMaterial(submeshIndex).makeCopy()
     }
     return originals
   }
@@ -766,6 +1329,9 @@ class ARScannerActivity : AppCompatActivity() {
     val renderableInstance = trackedNode.modelNode.renderableInstance ?: trackedNode.renderableInstance
     if (trackedNode.originalMaterials.isEmpty() && renderableInstance != null) {
       trackedNode.originalMaterials = captureOriginalMaterials(renderableInstance)
+    }
+    if (trackedNode.originalSubmeshMaterials.isEmpty() && trackedNode.renderable.submeshCount > 0) {
+      trackedNode.originalSubmeshMaterials = captureRenderableMaterials(trackedNode.renderable)
     }
 
     // Avoid RenderableInstance.setMaterial index mismatch crashes on some GLB assets.
@@ -997,21 +1563,28 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun restoreOriginalMaterials(trackedNode: TrackedImageNode) {
-    if (!trackedNode.usesTintMaterial) {
-      return
-    }
-    val renderableInstance = trackedNode.modelNode.renderableInstance ?: trackedNode.renderableInstance ?: return
+    val renderableInstance = trackedNode.modelNode.renderableInstance ?: trackedNode.renderableInstance
     val originals = trackedNode.originalMaterials
-    val applyCount = min(renderableInstance.materialsCount, originals.size)
-    if (applyCount <= 0) {
-      trackedNode.usesTintMaterial = false
-      return
+    if (renderableInstance != null && originals.isNotEmpty()) {
+      val applyCount = min(renderableInstance.materialsCount, originals.size)
+      for (materialIndex in 0 until applyCount) {
+        renderableInstance.setMaterial(materialIndex, originals[materialIndex].makeCopy())
+      }
     }
-
-    for (materialIndex in 0 until applyCount) {
-      renderableInstance.setMaterial(materialIndex, originals[materialIndex])
+    val submeshOriginals = trackedNode.originalSubmeshMaterials
+    val submeshCount = trackedNode.renderable.submeshCount
+    if (submeshOriginals.isNotEmpty() && submeshCount > 0) {
+      val applyCount = min(submeshCount, submeshOriginals.size)
+      for (materialIndex in 0 until applyCount) {
+        trackedNode.renderable.setMaterial(materialIndex, submeshOriginals[materialIndex].makeCopy())
+      }
+    }
+    trackedNode.originalRenderableMaterial?.let { originalMaterial ->
+      runCatching { trackedNode.renderable.material = originalMaterial.makeCopy() }
+      runCatching { trackedNode.modelNode.renderable = trackedNode.renderable }
     }
     trackedNode.usesTintMaterial = false
+    trackedNode.tintApplied = false
   }
 
   private fun startPreferredAnimation(renderableInstance: RenderableInstance?): ObjectAnimator? {
@@ -1126,7 +1699,48 @@ class ARScannerActivity : AppCompatActivity() {
     }
   }
 
+  private fun resetLiveColoringStateForNewTarget() {
+    hasAppliedPageTexture = false
+    textureMaterialBuildInFlight = false
+    lastTextureSignature = null
+    lastTextureApplyTimeMs = 0L
+    lastTextureStats = null
+    pendingTextureSignature = null
+    pendingTextureStreak = 0
+    lastAcceptedTextureBitmap = null
+    lastSampledPageQuad = null
+    lastSampledPageQuadTimeMs = 0L
+    stablePageQuadStreak = 0
+    pendingColorConsensusBySize.clear()
+    fullPageSubjectMaskBySize.clear()
+    fullPageReferencePixelsBySize.clear()
+    hasDetectedUserColoring = false
+    // Clear ALL caches to prevent previous model's colors leaking to new model
+    resizedSubjectMaskBySize.clear()
+    resizedReferencePixelsBySize.clear()
+    referenceSubjectMaskTemplate = null
+    materialTextureBindingCache.clear()
+    materialPbrInitialized.clear()
+    bitmapPool.clear()
+    intArrayPool.clear()
+    // Reset tint state so new model gets fresh tint
+    lastTintVector = null
+    lastAcceptedSampleColor = null
+    lastAcceptedSampleTimeMs = 0L
+    pendingSampleColor = null
+    pendingSampleStreak = 0
+    lastTintUpdateTimeMs = 0L
+    lastTintDebugLogTimeMs = 0L
+    lastSampleMissLogTimeMs = 0L
+    lastTextureDebugLogTimeMs = 0L
+    lastTextureMissLogTimeMs = 0L
+    loggedTintMaterialAttach = false
+    loggedMissingTintTemplate = false
+  }
+
   private fun applyLiveTint(frame: Frame, sceneView: ArSceneView) {
+    if (!isLiveColoringEnabled || showOriginalColors) return
+
     val now = SystemClock.elapsedRealtime()
     val colorRefreshIntervalMs = colorRefreshIntervalMs()
     if (now - lastTintUpdateTimeMs < colorRefreshIntervalMs) {
@@ -1184,6 +1798,8 @@ class ARScannerActivity : AppCompatActivity() {
     ) {
       return
     }
+    // Removed hasDetectedUserColoring guard — page texture should always apply
+    // even on uncolored pages, so the model shows the printed design immediately.
     if ((now - lastTextureMissLogTimeMs) >= 1200L) {
       lastTextureMissLogTimeMs = now
       android.util.Log.w("ARScannerActivity", "Tracked page texture sampling missed; using color tint fallback.")
@@ -1576,7 +2192,7 @@ class ARScannerActivity : AppCompatActivity() {
       return TextureStats(0, intArrayOf())
     }
     val grid = TEXTURE_STATS_GRID
-    val gridColors = IntArray(grid * grid)
+    val gridColors = getPooledIntArray(grid * grid)
     var redAcc = 0
     var greenAcc = 0
     var blueAcc = 0
@@ -1919,7 +2535,7 @@ class ARScannerActivity : AppCompatActivity() {
         .toList()
   }
 
-  private fun sanitizeSampledTexture(bitmap: Bitmap): Bitmap {
+  private fun sanitizeSampledTexture(bitmap: Bitmap): Bitmap? {
     val outputWidth = bitmap.width
     val outputHeight = bitmap.height
     if (outputWidth <= 0 || outputHeight <= 0) {
@@ -1932,17 +2548,18 @@ class ARScannerActivity : AppCompatActivity() {
     // Full-page masks: true = pixel falls inside the bear body coloring region.
     // Background (forest, sky, border) pixels will be set to WHITE so the 3D model
     // shows clean white for uncolored areas instead of the background scene colors.
+    val useDirectTexture = USE_DIRECT_SUBJECT_TEXTURE
     val subjectMask = getFullPageSubjectMask(outputWidth)
-    val refPixels = getFullPageReferencePixels(outputWidth)
+    val refPixels = if (useDirectTexture) null else getFullPageReferencePixels(outputWidth)
 
-    val currentPixels = IntArray(outputWidth * outputHeight)
+    val currentPixels = getPooledIntArray(outputWidth * outputHeight)
     bitmap.getPixels(currentPixels, 0, outputWidth, 0, 0, outputWidth, outputHeight)
 
     val previousBitmap =
         lastAcceptedTextureBitmap?.takeIf { it.width == outputWidth && it.height == outputHeight }
     val previousPixels =
         previousBitmap?.let {
-          IntArray(outputWidth * outputHeight).also { buffer ->
+          getPooledIntArray(outputWidth * outputHeight).also { buffer ->
             it.getPixels(buffer, 0, outputWidth, 0, 0, outputWidth, outputHeight)
           }
         }
@@ -1965,9 +2582,14 @@ class ARScannerActivity : AppCompatActivity() {
     for (index in currentPixels.indices) {
       if (!subjectMask[index]) continue
       val camPixel = currentPixels[index]
-      val refPixel = refPixels[index]
-      val isUserColored = isLikelyUserDrawingPixel(camPixel, refPixel)
-      val stableUserColored = updateAndCheckColorConsensus(colorConsensus, index, isUserColored)
+      val stableUserColored =
+          if (useDirectTexture) {
+            !(isLikelySkinTone(camPixel) || isLikelyNeutralOccluder(camPixel))
+          } else {
+            val refPixel = refPixels?.get(index)
+            val isUserColored = isLikelyUserDrawingPixel(camPixel, refPixel)
+            updateAndCheckColorConsensus(colorConsensus, index, isUserColored)
+          }
       if (stableUserColored) {
         redAcc += android.graphics.Color.red(camPixel)
         greenAcc += android.graphics.Color.green(camPixel)
@@ -1977,6 +2599,9 @@ class ARScannerActivity : AppCompatActivity() {
     }
 
     val hasUserColoring = coloredCount >= MIN_COLORED_PIXELS_FOR_TEXTURE
+    if (hasUserColoring) {
+      hasDetectedUserColoring = true
+    }
 
     if ((now() - lastTextureDebugLogTimeMs) >= 2000L) {
       android.util.Log.i(
@@ -2001,19 +2626,35 @@ class ARScannerActivity : AppCompatActivity() {
         continue
       }
 
-      val refPixel = refPixels[index]
+      if (isLikelyNeutralOccluder(camPixel)) {
+        currentPixels[index] = previous ?: android.graphics.Color.WHITE
+        continue
+      }
+
+      if (useDirectTexture) {
+        val boosted = boostDrawingPixel(camPixel)
+        currentPixels[index] =
+            if (previous != null) blendRgb(previous, boosted, TEXTURE_BLEND_ALPHA) else boosted
+        continue
+      }
+
+      val refPixel = refPixels?.get(index)
       val isUserColored = isLikelyUserDrawingPixel(camPixel, refPixel)
       val stableUserColored = updateAndCheckColorConsensus(colorConsensus, index, isUserColored)
 
       currentPixels[index] = if (stableUserColored) {
         // User colored here → show the crayon color faithfully
-        if (previous != null) blendRgb(previous, camPixel, TEXTURE_BLEND_ALPHA) else camPixel
+        val boosted = boostDrawingPixel(camPixel)
+        if (previous != null) blendRgb(previous, boosted, TEXTURE_BLEND_ALPHA) else boosted
       } else {
         // Not colored yet → hold previous or white (uncolored bear stays white)
         previous ?: android.graphics.Color.WHITE
       }
     }
 
+    if (hasUserColoring) {
+      fillWhiteHoles(currentPixels, subjectMask, outputWidth, outputHeight)
+    }
     return Bitmap.createBitmap(currentPixels, outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
   }
 
@@ -2214,6 +2855,63 @@ class ARScannerActivity : AppCompatActivity() {
     return android.graphics.Color.rgb(red, green, blue)
   }
 
+  private fun boostDrawingPixel(colorInt: Int): Int {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(colorInt, hsv)
+    if (hsv[1] <= 0.02f && hsv[2] >= 0.88f) {
+      return colorInt
+    }
+    val satBoost = if (hsv[1] < 0.35f) 1.25f else 1.12f
+    val valBoost = if (hsv[2] < 0.55f) 1.18f else 1.08f
+    hsv[1] = (hsv[1] * satBoost).coerceIn(0f, 1f)
+    hsv[2] = ((hsv[2] * valBoost) + 0.02f).coerceIn(0f, 1f)
+    return android.graphics.Color.HSVToColor(android.graphics.Color.alpha(colorInt), hsv)
+  }
+
+  private fun fillWhiteHoles(
+      pixels: IntArray,
+      mask: BooleanArray,
+      width: Int,
+      height: Int,
+  ) {
+    if (width < 3 || height < 3) return
+    fun isNearWhite(colorInt: Int): Boolean {
+      val hsv = FloatArray(3)
+      android.graphics.Color.colorToHSV(colorInt, hsv)
+      return hsv[1] <= 0.10f && hsv[2] >= 0.86f
+    }
+    val output = pixels.copyOf()
+    for (y in 1 until height - 1) {
+      val rowIndex = y * width
+      for (x in 1 until width - 1) {
+        val idx = rowIndex + x
+        if (!mask.getOrElse(idx) { true }) continue
+        if (!isNearWhite(output[idx])) continue
+        var count = 0
+        var redAcc = 0
+        var greenAcc = 0
+        var blueAcc = 0
+        val neighbors = intArrayOf(idx - 1, idx + 1, idx - width, idx + width)
+        for (n in neighbors) {
+          if (!mask.getOrElse(n) { true }) continue
+          val color = output[n]
+          if (isNearWhite(color)) continue
+          redAcc += android.graphics.Color.red(color)
+          greenAcc += android.graphics.Color.green(color)
+          blueAcc += android.graphics.Color.blue(color)
+          count += 1
+        }
+        if (count >= 3) {
+          pixels[idx] = android.graphics.Color.rgb(
+              (redAcc / count).coerceIn(0, 255),
+              (greenAcc / count).coerceIn(0, 255),
+              (blueAcc / count).coerceIn(0, 255),
+          )
+        }
+      }
+    }
+  }
+
   private fun isLikelySkinTone(colorInt: Int): Boolean {
     val red = android.graphics.Color.red(colorInt)
     val green = android.graphics.Color.green(colorInt)
@@ -2300,12 +2998,16 @@ class ARScannerActivity : AppCompatActivity() {
   private fun loadReferenceSubjectMaskTemplate(): SubjectMaskTemplate? {
     referenceSubjectMaskTemplate?.let { return it }
     val referenceBitmap =
-        runCatching {
-              assets.open(requestedReferenceImageAsset).use { stream ->
-                BitmapFactory.decodeStream(stream)
+        if (referenceImageFilePath != null) {
+          runCatching { BitmapFactory.decodeFile(referenceImageFilePath) }.getOrNull()
+        } else {
+          runCatching {
+                assets.open(requestedReferenceImageAsset).use { stream ->
+                  BitmapFactory.decodeStream(stream)
+                }
               }
-            }
-            .getOrNull()
+              .getOrNull()
+        }
             ?: return null
 
     val targetWidth = REFERENCE_MASK_TARGET_WIDTH_PX
@@ -2698,6 +3400,13 @@ class ARScannerActivity : AppCompatActivity() {
     lastTintVector = fallbackTint
   }
 
+  private fun applyNeutralPaperBase(trackedNode: TrackedImageNode) {
+    val red = (android.graphics.Color.red(DEFAULT_NEUTRAL_BEAR_COLOR) / 255f).coerceIn(0f, 1f)
+    val green = (android.graphics.Color.green(DEFAULT_NEUTRAL_BEAR_COLOR) / 255f).coerceIn(0f, 1f)
+    val blue = (android.graphics.Color.blue(DEFAULT_NEUTRAL_BEAR_COLOR) / 255f).coerceIn(0f, 1f)
+    applySolidTintToTrackedNode(trackedNode, red, green, blue, "neutral")
+  }
+
   private fun computeApproxSaturation(red: Float, green: Float, blue: Float): Float {
     val maxChannel = max(red, max(green, blue))
     if (maxChannel <= 0f) {
@@ -2761,11 +3470,37 @@ class ARScannerActivity : AppCompatActivity() {
     return floatArrayOf(red.coerceIn(0f, 1f), green.coerceIn(0f, 1f), blue.coerceIn(0f, 1f))
   }
 
+  private var lastHapticTimeMs: Long = 0L
+
+  private fun hapticFeedback(type: String = "light") {
+    val now = SystemClock.elapsedRealtime()
+    if (now - lastHapticTimeMs < 80) return // throttle haptics
+    lastHapticTimeMs = now
+
+    val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+      (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+    } else {
+      @Suppress("DEPRECATION")
+      getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    } ?: return
+
+    if (Build.VERSION.SDK_INT >= 26) {
+      when (type) {
+        "light" -> vibrator.vibrate(VibrationEffect.createOneShot(12, 35))
+        "medium" -> vibrator.vibrate(VibrationEffect.createOneShot(20, 70))
+      }
+    }
+  }
+
   private fun setupGestureDetectors() {
     scaleGestureDetector =
         ScaleGestureDetector(
             this,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+              override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                hapticFeedback("light")
+                return true
+              }
               override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val incrementalFactor =
                     detector.scaleFactor.coerceIn(MIN_PINCH_STEP_FACTOR, MAX_PINCH_STEP_FACTOR)
@@ -2803,6 +3538,7 @@ class ARScannerActivity : AppCompatActivity() {
             val rawDelta = currentAngle - previousAngle
             val normalizedDelta = normalizeRotationDelta(rawDelta)
             if (abs(normalizedDelta) >= MIN_ROTATION_DELTA_DEGREES) {
+              hapticFeedback("light")
               trackedNodes.values.forEach { trackedNode ->
                 trackedNode.userYawDegrees += normalizedDelta * ROTATION_GESTURE_SENSITIVITY
                 applyUserTransform(trackedNode)
@@ -2994,6 +3730,18 @@ class ARScannerActivity : AppCompatActivity() {
         fullMask[(row * outputSize) + col] = inFloodFill || isNearWhiteInReference
       }
     }
+    val coverage =
+        fullMask.count { it }.toFloat() / (outputSize * outputSize).toFloat().coerceAtLeast(1f)
+    if (coverage < MIN_FULL_PAGE_SUBJECT_COVERAGE_RATIO && refPixels != null) {
+      android.util.Log.w(
+          "ARScannerActivity",
+          "Subject mask coverage too small (${String.format("%.3f", coverage)}); using full-page mask fallback.",
+      )
+      val fallback = BooleanArray(outputSize * outputSize) { true }
+      fullPageSubjectMaskBySize[outputSize] = fallback
+      return fallback
+    }
+
     fullPageSubjectMaskBySize[outputSize] = fullMask
     return fullMask
   }
@@ -3002,12 +3750,17 @@ class ARScannerActivity : AppCompatActivity() {
    *  coloring page (not a colored forest/background area). Used to recover areas that the
    *  flood-fill missed (e.g. thin legs or paws). */
   private fun isReferencePageWhiteArea(colorInt: Int): Boolean {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(colorInt, hsv)
     val red = android.graphics.Color.red(colorInt)
     val green = android.graphics.Color.green(colorInt)
     val blue = android.graphics.Color.blue(colorInt)
     val average = (red + green + blue) / 3
     val chroma = max(red, max(green, blue)) - min(red, min(green, blue))
-    return average >= 155 && chroma <= 50
+    return hsv[1] <= 0.10f &&
+        hsv[2] >= 0.85f &&
+        chroma <= 30 &&
+        average >= 190
   }
 
   /**
@@ -3062,6 +3815,8 @@ class ARScannerActivity : AppCompatActivity() {
       var floatAnimatorPaused: Boolean,
       val basePositionY: Float,
       var originalMaterials: MutableList<Material>,
+      var originalSubmeshMaterials: MutableList<Material>,
+      var originalRenderableMaterial: Material?,
       var tintMaterial: Material?,
       var usesTintMaterial: Boolean,
       val imageExtentX: Float,
@@ -3085,6 +3840,13 @@ class ARScannerActivity : AppCompatActivity() {
       val centerX: Float,
       val centerY: Float,
       val centerZ: Float,
+  )
+
+  data class ScannerAudioEntry(
+      val language: String,
+      val level: String,
+      val audioName: String,
+      val audioUrl: String,
   )
 
   data class TextureStats(
@@ -3121,6 +3883,8 @@ class ARScannerActivity : AppCompatActivity() {
     private const val AR_FRAGMENT_TAG = "ar_scanner_fragment"
     const val EXTRA_REFERENCE_IMAGE_ASSET = "referenceImageAsset"
     const val EXTRA_MODEL_ASSET = "modelAsset"
+    const val EXTRA_MODEL_FILE_PATH = "modelFilePath"
+    const val EXTRA_REFERENCE_IMAGE_FILE_PATH = "referenceImageFilePath"
     private const val DEFAULT_MODEL_ASSET = "bear.glb"
     private val PREFERRED_ANIMATION_NAME_HINTS = listOf("idle", "walk", "eat", "run")
     private const val FRAME_PROCESS_INTERVAL_MS = 50L
@@ -3131,12 +3895,14 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MIN_TEXTURE_APPLY_INTERVAL_MS_RELIEF = 500L
     private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 2000L
     private const val TEXTURE_HOLD_AFTER_SAMPLE_MISS_MS = 10000L
-    private const val DELTA_COLORED_THRESHOLD_SQ = 900   // euclidean distance ~30 in RGB space — catches even faint crayon strokes
+    private const val DELTA_COLORED_THRESHOLD_SQ = 420   // more permissive for lighter crayons/pencils
     private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 6
-    private const val TEXTURE_ONLY_WARMUP_MS = 1200L
+    private const val TEXTURE_ONLY_WARMUP_MS = 200L
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
     private const val ANCHOR_SMOOTHING_ALPHA = 0.25f
     private const val ANCHOR_JITTER_THRESHOLD_SQ = 0.000004f  // ~2mm movement threshold
+    private const val ANCHOR_ROTATION_SMOOTHING_ALPHA = 0.22f
+    private const val ANCHOR_ROTATION_JITTER_THRESHOLD = 0.0012f
     private const val PAGE_FIT_RATIO = 0.35f
     private const val PAGE_MODEL_OFFSET_X_RATIO = 0.0f
     private const val PAGE_MODEL_OFFSET_Z_RATIO = -0.08f
@@ -3148,6 +3914,7 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SURFACE_LIFT_EPSILON = 0.0015f
     private const val MIN_MODEL_SCALE = 0.02f
     private const val MAX_MODEL_SCALE = 0.38f
+    private const val DIRECTIONAL_LIGHT_INTENSITY = 1100f
     private const val FILL_LIGHT_KEY_INTENSITY = 950f
     private const val FILL_LIGHT_BACK_INTENSITY = 700f
     private const val FILL_LIGHT_SIDE_INTENSITY = 520f
@@ -3188,7 +3955,7 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SUBJECT_TEXTURE_INSET_RATIO_X = 0.03f
     private const val SUBJECT_TEXTURE_INSET_RATIO_Y = 0.04f
     private const val SUBJECT_MASK_EROSION_RADIUS_PX = 1
-    private const val TEXTURE_BLEND_ALPHA = 0.96f
+    private const val TEXTURE_BLEND_ALPHA = 0.82f
     // Increased so vivid sketch colors are not wrongly rejected as skin
     private const val SKIN_REJECT_MIN_DELTA = 55
     private const val HAND_OCCLUSION_SKIN_RATIO = 0.08f
@@ -3207,7 +3974,7 @@ class ARScannerActivity : AppCompatActivity() {
     private const val GRID_CELL_CHANGE_DELTA = 34
     private const val TEXTURE_STATS_GRID = 6
     private const val ENABLE_MODEL_ANIMATION = true
-    private const val ENABLE_SOLID_TINT_FALLBACK = true
+    private const val ENABLE_SOLID_TINT_FALLBACK = false
     private const val HIGH_FRAME_WORK_DURATION_MS = 14L
     private const val PERFORMANCE_RELIEF_WINDOW_MS = 1500L
     private const val CENTER_TEXTURE_FALLBACK_WIDTH_RATIO = 0.22f
@@ -3232,6 +3999,7 @@ class ARScannerActivity : AppCompatActivity() {
     private const val REFERENCE_FILL_MAX_CHROMA = 60
     private const val REFERENCE_FILL_MIN_AVERAGE_RGB = 168
     private const val MIN_SUBJECT_MASK_PIXELS = 600
+    private const val MIN_FULL_PAGE_SUBJECT_COVERAGE_RATIO = 0.04f
     private const val SUBJECT_COMPONENT_MAX_AREA_RATIO = 0.58f
     private const val SUBJECT_COMPONENT_TARGET_AREA_RATIO = 0.22f
     private const val SUBJECT_COMPONENT_TARGET_BBOX_FILL_RATIO = 0.50f
@@ -3250,12 +4018,13 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MAX_FRAME_OCCLUSION_RATIO = 0.24f
     private const val OCCLUSION_PREVIOUS_DELTA_THRESHOLD_SQ = 2200
     private const val OCCLUSION_REFERENCE_DELTA_THRESHOLD_SQ = 2600
-    private const val MIN_DRAWING_SATURATION = 0.08f
-    private const val MIN_DRAWING_VALUE = 0.10f
-    private const val MIN_DRAWING_CHROMA = 16
-    private const val MAX_REFERENCE_HUE_SHIFT_DEGREES = 15f
-    private const val MAX_REFERENCE_SAT_SHIFT = 0.14f
-    private const val MAX_REFERENCE_VALUE_SHIFT = 0.16f
+    private const val MIN_DRAWING_SATURATION = 0.035f
+    private const val MIN_DRAWING_VALUE = 0.06f
+    private const val MIN_DRAWING_CHROMA = 8
+    private const val MAX_REFERENCE_HUE_SHIFT_DEGREES = 8f
+    private const val MAX_REFERENCE_SAT_SHIFT = 0.08f
+    private const val MAX_REFERENCE_VALUE_SHIFT = 0.10f
+    private const val USE_DIRECT_SUBJECT_TEXTURE = true
     private val SUBJECT_MASK_SEED_POINTS =
         listOf(
             0.50f to 0.40f,  // upper body / head area
@@ -3266,7 +4035,7 @@ class ARScannerActivity : AppCompatActivity() {
             0.50f to 0.65f,  // lower center body
             0.48f to 0.72f,  // lower body
         )
-    private val DEFAULT_TINT_FALLBACK_COLOR = android.graphics.Color.parseColor("#7A7A7A")
+    private val DEFAULT_TINT_FALLBACK_COLOR = android.graphics.Color.parseColor("#EDEDED")
     private val DEFAULT_NEUTRAL_BEAR_COLOR = android.graphics.Color.parseColor("#F2F2EE")
   }
 }

@@ -7,6 +7,8 @@ import com.google.ar.core.ArCoreApk
 import com.facebook.react.bridge.*
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.net.URL
 
 class ARModule(private val reactContext: ReactApplicationContext) :
         ReactContextBaseJavaModule(reactContext) {
@@ -99,6 +101,104 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         reactContext.startActivity(launchIntent)
+    }
+
+    @ReactMethod
+    fun startScannerDynamic(modelUrl: String, referenceImageUrl: String, modelName: String, audiosJson: String?, promise: Promise) {
+        Thread {
+            try {
+                val cacheDir = File(reactContext.cacheDir, "ar_scanner_cache")
+                if (!cacheDir.exists()) cacheDir.mkdirs()
+
+                val safeName = modelName.lowercase().replace(Regex("[^a-z0-9_]"), "_")
+
+                // Download model .glb file (with caching)
+                val modelFile = File(cacheDir, "${safeName}.glb")
+                downloadFileWithCache(modelUrl, modelFile)
+
+                val isHttpReference =
+                    referenceImageUrl.startsWith("http://") || referenceImageUrl.startsWith("https://")
+                val isFileReference =
+                    referenceImageUrl.startsWith("/") || referenceImageUrl.startsWith("file://")
+
+                val referenceFile: File?
+                val referenceAsset: String?
+                if (isHttpReference) {
+                    // Download reference image (with caching)
+                    val downloadedReference = File(cacheDir, "${safeName}_reference.jpg")
+                    downloadFileWithCache(referenceImageUrl, downloadedReference)
+                    referenceFile = downloadedReference
+                    referenceAsset = null
+                } else if (isFileReference) {
+                    val path =
+                        if (referenceImageUrl.startsWith("file://")) {
+                            referenceImageUrl.removePrefix("file://")
+                        } else {
+                            referenceImageUrl
+                        }
+                    val file = File(path)
+                    if (!file.exists()) {
+                        throw IOException("Reference image file not found: $path")
+                    }
+                    referenceFile = file
+                    referenceAsset = null
+                } else {
+                    if (!assetExists(referenceImageUrl)) {
+                        throw IOException("Reference image asset not found: $referenceImageUrl")
+                    }
+                    referenceFile = null
+                    referenceAsset = referenceImageUrl
+                }
+
+                val launchIntent = Intent(reactContext, ARScannerActivity::class.java).apply {
+                    putExtra(ARScannerActivity.EXTRA_MODEL_FILE_PATH, modelFile.absolutePath)
+                    if (referenceFile != null) {
+                        putExtra(ARScannerActivity.EXTRA_REFERENCE_IMAGE_FILE_PATH, referenceFile.absolutePath)
+                    }
+                    if (referenceAsset != null) {
+                        putExtra(ARScannerActivity.EXTRA_REFERENCE_IMAGE_ASSET, referenceAsset)
+                    }
+                    putExtra("modelName", modelName)
+                    if (!audiosJson.isNullOrBlank()) putExtra("audiosJson", audiosJson)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                reactContext.currentActivity?.runOnUiThread {
+                    reactContext.startActivity(launchIntent)
+                } ?: reactContext.startActivity(launchIntent)
+
+                promise.resolve(true)
+            } catch (error: Exception) {
+                promise.reject("AR_SCANNER_DOWNLOAD_FAILED", error.message, error)
+            }
+        }.start()
+    }
+
+    private fun downloadFileWithCache(urlString: String, outputFile: File) {
+        android.util.Log.i("ARModule", "Download request: url=$urlString dest=${outputFile.name}")
+        // Skip download if cached and less than 24 hours old
+        if (outputFile.exists() && outputFile.length() > 0) {
+            val ageMs = System.currentTimeMillis() - outputFile.lastModified()
+            if (ageMs < 24 * 60 * 60 * 1000) {
+                android.util.Log.i("ARModule", "Using cached: ${outputFile.name} size=${outputFile.length()} bytes")
+                return
+            }
+        }
+        val connection = URL(urlString).openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 15000
+        connection.readTimeout = 30000
+        connection.instanceFollowRedirects = true
+        val responseCode = connection.responseCode
+        val contentType = connection.contentType ?: "unknown"
+        android.util.Log.i("ARModule", "Download response: code=$responseCode contentType=$contentType url=$urlString")
+        if (responseCode != 200) {
+            throw IOException("Download failed with HTTP $responseCode for $urlString")
+        }
+        connection.inputStream.use { input ->
+            FileOutputStream(outputFile).use { output ->
+                input.copyTo(output)
+            }
+        }
+        android.util.Log.i("ARModule", "Downloaded: ${outputFile.name} size=${outputFile.length()} bytes")
     }
 
     private fun assetExists(assetName: String): Boolean {

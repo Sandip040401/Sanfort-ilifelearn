@@ -34,6 +34,7 @@ import {
 import {ScreenErrorBoundary} from '@/components/ui';
 import {useScreenReady} from '@/hooks/useScreenReady';
 import {ARService} from '@/services';
+import {API_BASE_URL} from '@/config';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
 import type {
@@ -102,12 +103,95 @@ type ARNavigationProp = CompositeNavigationProp<
   StackNavigationProp<MainStackParamList>
 >;
 
+const REFERENCE_IMAGE_ASSETS_BY_MODEL: Record<string, string> = {
+  bear: 'reference_bear_page.jpg',
+};
+
 function getPreviewUri(model: ARModel) {
   if (model.previewUrl) {
     return model.previewUrl;
   }
   if (model.previewImage) {
-    return ARService.getPreviewImageUrl(model.previewImage);
+    const raw = String(model.previewImage);
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+  }
+  const modelId = model._id || model.id;
+  return modelId ? ARService.getPreviewImageUrl(modelId) : null;
+}
+
+function normalizeReferenceSource(value: string) {
+  if (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('file://') ||
+    value.startsWith('/')
+  ) {
+    return value;
+  }
+  // Treat paths with a slash as API-relative, otherwise assume an app asset name.
+  if (value.includes('/')) {
+    const base = API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`;
+    return `${base}${value.replace(/^\/+/, '')}`;
+  }
+  return value;
+}
+
+function resolvePreviewReference(model: ARModel, value: string) {
+  const raw = value.trim();
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('file://')) {
+    return raw;
+  }
+  const modelId = model._id || model.id;
+  return modelId ? ARService.getPreviewImageUrl(modelId) : normalizeReferenceSource(raw);
+}
+
+function normalizeReferenceForDisplay(value: string) {
+  const normalized = normalizeReferenceSource(value);
+  if (
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    normalized.startsWith('file://')
+  ) {
+    return normalized;
+  }
+  if (normalized.startsWith('/')) {
+    return `file://${normalized}`;
+  }
+  return Platform.OS === 'android'
+    ? `file:///android_asset/${normalized}`
+    : normalized;
+}
+
+function getReferenceImageSource(model: ARModel) {
+  const previewValue = (model as any).preview_image || model.previewImage;
+  if (previewValue) {
+    return resolvePreviewReference(model, String(previewValue));
+  }
+  const rawReference =
+    (model as any).referenceImageUrl ||
+    (model as any).referenceUrl ||
+    (model as any).referenceImage ||
+    (model as any).reference_image ||
+    (model as any).targetImageUrl ||
+    (model as any).targetImage ||
+    (model as any).sheetImage ||
+    (model as any).sheetUrl ||
+    (model as any).arSheet ||
+    (model as any).arSheetUrl ||
+    (model as any).coloringPage ||
+    (model as any).coloringPageUrl ||
+    (model as any).colorSheet ||
+    (model as any).colorSheetUrl ||
+    (model as any).reference;
+  if (rawReference) {
+    return normalizeReferenceSource(String(rawReference));
+  }
+
+  const key = (model.name || model.id || model._id || '').toString().trim().toLowerCase();
+  if (key && REFERENCE_IMAGE_ASSETS_BY_MODEL[key]) {
+    return REFERENCE_IMAGE_ASSETS_BY_MODEL[key];
   }
   return null;
 }
@@ -362,6 +446,10 @@ function ModelGallery({
           <View style={[styles.modelsGrid, {gap}]}>
             {models.map((model, index) => {
               const previewUri = getPreviewUri(model);
+              const referenceSource = getReferenceImageSource(model);
+              const displayUri = referenceSource
+                ? normalizeReferenceForDisplay(referenceSource)
+                : previewUri;
               const level = getModelLevel(model);
               const stars = getLevelStars(level);
 
@@ -378,9 +466,9 @@ function ModelGallery({
                       style={StyleSheet.absoluteFill}
                     />
                     <View style={[styles.modelPreviewShell, {height: modelPreviewHeight}]}>
-                      {previewUri ? (
+                      {displayUri ? (
                         <Image
-                          source={{uri: previewUri}}
+                          source={{uri: displayUri}}
                           style={styles.modelPreviewImage}
                           resizeMode="contain"
                         />
@@ -545,29 +633,6 @@ function ARScreenContent() {
         return;
       }
 
-      const modelName = (model.name || 'model').toLowerCase().replace(/\s+/g, '_');
-      const referenceImageAsset = `reference_${modelName}_page.jpg`;
-      const modelAsset = `${modelName}.glb`;
-
-      const assetStatus = await ARScannerModule.checkScannerAssets(
-        referenceImageAsset,
-        modelAsset,
-      );
-
-      if (!assetStatus.referenceImageExists || !assetStatus.modelExists) {
-        const missing = [
-          !assetStatus.referenceImageExists ? referenceImageAsset : null,
-          !assetStatus.modelExists ? modelAsset : null,
-        ]
-          .filter(Boolean)
-          .join(', ');
-        Alert.alert(
-          'Missing AR Assets',
-          `AR Scan assets not found for ${model.name || 'this model'}: ${missing}`,
-        );
-        return;
-      }
-
       const permission = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.CAMERA,
       );
@@ -576,9 +641,39 @@ function ARScreenContent() {
         return;
       }
 
-      ARScannerModule.startScanner(referenceImageAsset, modelAsset);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to launch AR Scanner.');
+      const modelId = model._id || model.id || (model as any).name;
+      if (!modelId) {
+        Alert.alert('Error', 'Model ID not found.');
+        return;
+      }
+
+      const modelFileUrl = ARService.getModelFileUrl(modelId);
+      const referenceImageUrl =
+        getReferenceImageSource(model) || ARService.getPreviewImageUrl(modelId);
+
+      // Fetch audios for this model
+      let audiosJson: string | undefined;
+      try {
+        const audiosResponse = await ARService.getModelAudios(modelId);
+        if (audiosResponse.audios?.length) {
+          const audiosWithUrls = audiosResponse.audios.map(a => ({
+            ...a,
+            audioUrl: ARService.getAudioStreamUrlById(a.gridfsId),
+          }));
+          audiosJson = JSON.stringify(audiosWithUrls);
+        }
+      } catch (_audioErr) {
+        // Audio fetch failed — scanner will work without audio
+      }
+
+      await ARScannerModule.startScannerDynamic(
+        modelFileUrl,
+        referenceImageUrl,
+        model.name || 'model',
+        audiosJson,
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
     }
   };
 

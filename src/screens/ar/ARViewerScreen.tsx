@@ -43,6 +43,7 @@ import {
   Minus,
 } from 'lucide-react-native';
 import {ARService} from '@/services';
+import {API_BASE_URL} from '@/config';
 import type {ARAudioTrack, ARModel, MainStackParamList} from '@/types';
 import {
   type AREnvironmentView,
@@ -75,6 +76,84 @@ const TARGET_ASSETS: Record<string, string> = {
   Elephant: 'https://i.ibb.co/p6WG1hLc/Elephant.jpg',
   Wolf: 'https://i.ibb.co/35LpnYGX/Wolf.jpg',
 };
+
+const REFERENCE_IMAGE_ASSETS_BY_MODEL: Record<string, string> = {
+  bear: 'reference_bear_page.jpg',
+};
+
+function normalizeReferenceSource(value: string) {
+  if (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('file://') ||
+    value.startsWith('/')
+  ) {
+    return value;
+  }
+  if (value.includes('/')) {
+    const base = API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`;
+    return `${base}${value.replace(/^\/+/, '')}`;
+  }
+  return value;
+}
+
+function resolvePreviewReference(model: ARModel, value: string) {
+  const raw = value.trim();
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('file://')) {
+    return raw;
+  }
+  const modelId = model._id || model.id;
+  return modelId ? ARService.getPreviewImageUrl(modelId) : normalizeReferenceSource(raw);
+}
+
+function normalizeReferenceForDisplay(value: string) {
+  const normalized = normalizeReferenceSource(value);
+  if (
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    normalized.startsWith('file://')
+  ) {
+    return normalized;
+  }
+  if (normalized.startsWith('/')) {
+    return `file://${normalized}`;
+  }
+  return Platform.OS === 'android'
+    ? `file:///android_asset/${normalized}`
+    : normalized;
+}
+
+function getReferenceImageSource(model?: ARModel | null) {
+  if (!model) return null;
+  const previewValue = (model as any).preview_image || model.previewImage;
+  if (previewValue) {
+    return resolvePreviewReference(model, String(previewValue));
+  }
+  const rawReference =
+    (model as any).referenceImageUrl ||
+    (model as any).referenceUrl ||
+    (model as any).referenceImage ||
+    (model as any).reference_image ||
+    (model as any).targetImageUrl ||
+    (model as any).targetImage ||
+    (model as any).sheetImage ||
+    (model as any).sheetUrl ||
+    (model as any).arSheet ||
+    (model as any).arSheetUrl ||
+    (model as any).coloringPage ||
+    (model as any).coloringPageUrl ||
+    (model as any).colorSheet ||
+    (model as any).colorSheetUrl ||
+    (model as any).reference;
+  if (rawReference) {
+    return String(rawReference);
+  }
+  const key = (model.name || model.id || model._id || '').toString().trim().toLowerCase();
+  if (key && REFERENCE_IMAGE_ASSETS_BY_MODEL[key]) {
+    return REFERENCE_IMAGE_ASSETS_BY_MODEL[key];
+  }
+  return null;
+}
 
 function PanelButton({
   label,
@@ -306,6 +385,10 @@ export default function ARViewerScreen() {
   );
 
   const targetUrl = useMemo(() => {
+    const referenceSource = getReferenceImageSource(currentModel);
+    if (referenceSource) {
+      return normalizeReferenceForDisplay(referenceSource);
+    }
     const modelName = currentModel?.name || '';
     const exact = TARGET_ASSETS[modelName];
     if (exact) {
@@ -318,7 +401,7 @@ export default function ARViewerScreen() {
       return TARGET_ASSETS[matchedKey];
     }
     return Object.values(TARGET_ASSETS)[0] || '';
-  }, [currentModel?.name]);
+  }, [currentModel]);
 
   const colorSheetHtml = useMemo(
     () => buildColorSheetHtml(targetUrl),
@@ -727,9 +810,19 @@ export default function ARViewerScreen() {
 
                   {filteredEnvModels.map(model => {
                     const isSelected = getModelStableId(model) === modelId;
-                    const previewUri =
-                      model.previewUrl ||
-                      (model.previewImage ? ARService.getPreviewImageUrl(model.previewImage) : null);
+                  const previewUri = (() => {
+                    if (model.previewUrl) {
+                      return model.previewUrl;
+                    }
+                    if (model.previewImage) {
+                      const raw = String(model.previewImage);
+                      if (raw.startsWith('http://') || raw.startsWith('https://')) {
+                        return raw;
+                      }
+                    }
+                    const modelId = model._id || model.id;
+                    return modelId ? ARService.getPreviewImageUrl(modelId) : null;
+                  })();
 
                     return (
                       <TouchableOpacity
@@ -1107,7 +1200,12 @@ export default function ARViewerScreen() {
               allowUniversalAccessFromFileURLs
               onShouldStartLoadWithRequest={(request) => {
                 const {url} = request;
-                return url.startsWith('http') || url.startsWith('about:') || url.startsWith('data:');
+                return (
+                  url.startsWith('http') ||
+                  url.startsWith('about:') ||
+                  url.startsWith('data:') ||
+                  url.startsWith('file:')
+                );
               }}
               onMessage={(event) => {
                 try {

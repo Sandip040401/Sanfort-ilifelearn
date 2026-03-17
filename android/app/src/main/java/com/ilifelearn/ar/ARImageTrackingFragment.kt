@@ -20,9 +20,13 @@ class ARImageTrackingFragment : ArFragment() {
     val config = super.onCreateSessionConfig(session).apply {
       focusMode = Config.FocusMode.AUTO
       updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-      // Keep model lighting stable; ambient estimation can flicker to very dark on real devices.
-      lightEstimationMode = Config.LightEstimationMode.DISABLED
+      // Use environmental HDR for realistic lighting that matches the real room
+      lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
       planeFindingMode = Config.PlaneFindingMode.DISABLED
+      // Enable depth occlusion if supported (model hides behind real objects)
+      if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+        depthMode = Config.DepthMode.AUTOMATIC
+      }
     }
     buildImageDatabase(session)?.let { database ->
       config.augmentedImageDatabase = database
@@ -45,18 +49,42 @@ class ARImageTrackingFragment : ArFragment() {
   fun isTrackingReady(): Boolean = isImageTrackingEnabled
 
   private fun buildImageDatabase(session: Session): AugmentedImageDatabase? {
-    val referenceAsset = arguments?.getString(ARG_REFERENCE_IMAGE_ASSET) ?: DEFAULT_REFERENCE_ASSET
-    val bitmap = loadBitmapFromAsset(referenceAsset) ?: return null
+    val referenceSource = arguments?.getString(ARG_REFERENCE_IMAGE_ASSET) ?: DEFAULT_REFERENCE_ASSET
+    val bitmap = loadBitmap(referenceSource) ?: return null
     return try {
       AugmentedImageDatabase(session).apply {
         // Provide physical width (meters) for more stable tracking; A4 page ~0.21m wide
         addImage(REFERENCE_IMAGE_NAME, bitmap, REFERENCE_IMAGE_WIDTH_METERS)
       }
     } catch (error: ImageInsufficientQualityException) {
-      Log.e(logTag, "Reference image quality is too low for ARCore tracking: $referenceAsset", error)
+      Log.e(logTag, "Reference image quality is too low for ARCore tracking: $referenceSource", error)
       null
     } catch (error: Exception) {
-      Log.e(logTag, "Failed to build augmented image database for $referenceAsset", error)
+      Log.e(logTag, "Failed to build augmented image database for $referenceSource", error)
+      null
+    }
+  }
+
+  private fun loadBitmap(source: String): Bitmap? {
+    // If source looks like a file path, load from file system
+    if (source.startsWith("/") || source.startsWith("file://")) {
+      return loadBitmapFromFile(source)
+    }
+    // Otherwise load from assets
+    return loadBitmapFromAsset(source)
+  }
+
+  private fun loadBitmapFromFile(filePath: String): Bitmap? {
+    val path = if (filePath.startsWith("file://")) filePath.removePrefix("file://") else filePath
+    return try {
+      val file = java.io.File(path)
+      if (!file.exists()) {
+        Log.w(logTag, "Reference image file not found: $path")
+        return null
+      }
+      BitmapFactory.decodeFile(path)
+    } catch (error: Exception) {
+      Log.w(logTag, "Failed to load reference image from file: $path", error)
       null
     }
   }
