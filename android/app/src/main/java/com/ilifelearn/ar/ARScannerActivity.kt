@@ -848,7 +848,10 @@ class ARScannerActivity : AppCompatActivity() {
               smoothUpdateAnchorPose(trackedNode, image)
               // Ensure model is visible when tracking resumes
               if (!trackedNode.modelNode.isEnabled) {
-                trackedNode.modelNode.isEnabled = true
+                val shouldShow = !isLiveColoringEnabled || hasAppliedPageTexture
+                if (shouldShow) {
+                  trackedNode.modelNode.isEnabled = true
+                }
               }
               // Retry animation start if renderableInstance wasn't ready at creation
               if (trackedNode.animator == null) {
