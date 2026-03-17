@@ -1902,6 +1902,12 @@ class ARScannerActivity : AppCompatActivity() {
       return false
     }
 
+    if (delta >= MIN_TEXTURE_SIGNATURE_DELTA) {
+      pendingTextureSignature = null
+      pendingTextureStreak = 0
+      return true
+    }
+
     if (delta < MIN_TEXTURE_SIGNATURE_DELTA) {
       pendingTextureSignature = null
       pendingTextureStreak = 0
@@ -2738,28 +2744,15 @@ class ARScannerActivity : AppCompatActivity() {
     val chroma = max(red, max(green, blue)) - min(red, min(green, blue))
 
     // Accept only crayon-like pixels: sufficiently colorful and not too dark.
-    if (saturation < MIN_DRAWING_SATURATION || value < MIN_DRAWING_VALUE || chroma < MIN_DRAWING_CHROMA) {
-      return false
-    }
-
     if (referencePixel == null) {
+      if (saturation < MIN_DRAWING_SATURATION || value < MIN_DRAWING_VALUE || chroma < MIN_DRAWING_CHROMA) {
+        return false
+      }
       return true
     }
 
     val deltaSq = colorDistanceSq(cameraPixel, referencePixel)
     if (deltaSq < DELTA_COLORED_THRESHOLD_SQ) {
-      return false
-    }
-
-    // Reject mostly illumination-only shifts that stay close to reference hue/sat.
-    val refHsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(referencePixel, refHsv)
-    val hueShift = hueDistance(hsv[0], refHsv[0])
-    val satShift = abs(saturation - refHsv[1])
-    val valueShift = abs(value - refHsv[2])
-    if (hueShift <= MAX_REFERENCE_HUE_SHIFT_DEGREES &&
-        satShift <= MAX_REFERENCE_SAT_SHIFT &&
-        valueShift <= MAX_REFERENCE_VALUE_SHIFT) {
       return false
     }
 
@@ -3898,8 +3891,8 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MIN_TEXTURE_APPLY_INTERVAL_MS_RELIEF = 500L
     private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 2000L
     private const val TEXTURE_HOLD_AFTER_SAMPLE_MISS_MS = 10000L
-    private const val DELTA_COLORED_THRESHOLD_SQ = 420   // more permissive for lighter crayons/pencils
-    private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 6
+    private const val DELTA_COLORED_THRESHOLD_SQ = 320   // more permissive for lighter crayons/pencils
+    private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 3
     private const val TEXTURE_ONLY_WARMUP_MS = 200L
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
     private const val ANCHOR_SMOOTHING_ALPHA = 0.25f
@@ -4027,7 +4020,7 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MAX_REFERENCE_HUE_SHIFT_DEGREES = 8f
     private const val MAX_REFERENCE_SAT_SHIFT = 0.08f
     private const val MAX_REFERENCE_VALUE_SHIFT = 0.10f
-    private const val USE_DIRECT_SUBJECT_TEXTURE = true
+    private const val USE_DIRECT_SUBJECT_TEXTURE = false
     private val SUBJECT_MASK_SEED_POINTS =
         listOf(
             0.50f to 0.40f,  // upper body / head area
