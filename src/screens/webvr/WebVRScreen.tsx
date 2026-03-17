@@ -3,6 +3,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Dimensions,
   FlatList,
+  Image,
   InteractionManager,
   Platform,
   StyleSheet,
@@ -23,16 +24,17 @@ import {ScreenErrorBoundary, Skeleton} from '@/components/ui';
 import {WebVRService} from '@/services/webvr.service';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
+import Animated, {FadeInDown, FadeInRight, FadeInUp, Layout, LinearTransition, ZoomIn} from 'react-native-reanimated';
 import type {WebVRStackParamList} from '@/types';
 
 type Nav = StackNavigationProp<WebVRStackParamList, 'WebVRHome'>;
 
 // ── Stable constants (computed once at module load) ────────────────────
 const {width: SCREEN_W} = Dimensions.get('window');
-const H_PAD = scale(20);
-const CARD_HEIGHT = verticalScale(140);
-const CARD_MARGIN_BOTTOM = verticalScale(14);
-const ITEM_HEIGHT = CARD_HEIGHT + CARD_MARGIN_BOTTOM;
+const H_PAD = scale(16);
+const GAP = scale(12);
+const CARD_HEIGHT = verticalScale(150);
+const CARD_MARGIN_BOTTOM = verticalScale(12);
 const CARD_BORDER_RADIUS = moderateScale(20);
 
 // Pre-computed gradient start/end to avoid re-creation
@@ -48,18 +50,19 @@ const ENVIRONMENTS: ReadonlyArray<{
   name: string;
   gradient: readonly [string, string];
   description: string;
+  image: any;
 }> = [
-  {name: 'Phonics Fun',         gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words'},
-  {name: 'Numbers',             gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers'},
-  {name: 'My Body',             gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts'},
-  {name: 'Underwater World',    gradient: ['#45B7D1', '#7DD3E6'], description: 'Dive into the ocean depths'},
-  {name: 'Fruits & Vegetables', gradient: ['#45B7D1', '#7DD3E6'], description: 'Healthy and colorful treats'},
-  {name: 'Wild Animals',        gradient: ['#FECA57', '#FED76B'], description: 'Meet amazing creatures of the wild'},
-  {name: 'Amphibians',          gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn about frogs, toads, and more'},
-  {name: 'Farm Animals',        gradient: ['#4ECDC4', '#6CD9D6'], description: 'Discover life on the farm'},
-  {name: 'Transportation',      gradient: ['#E8A2AF', '#F0B8C7'], description: 'Cars, planes, and everything that moves!'},
-  {name: 'Space Adventure',     gradient: ['#FECA57', '#FED76B'], description: 'Planets, stars, and astronauts'},
-  {name: 'Extinct Animals',     gradient: ['#FF6B6B', '#FF8E8E'], description: 'Discover animals from the past'},
+  {name: 'Phonics Fun',         gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words', image: require('@/assets/images/environments/phonics.jpg')},
+  {name: 'Numbers',             gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers',                 image: require('@/assets/images/environments/numbers.jpg')},
+  {name: 'My Body',             gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts',          image: require('@/assets/images/environments/my-body.jpg')},
+  {name: 'Underwater World',    gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths',                image: require('@/assets/images/environments/underwater.jpg')},
+  {name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats',               image: require('@/assets/images/environments/fruits-vegetables.jpg')},
+  {name: 'Wild Animals',        gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild',        image: require('@/assets/images/environments/wild-animals.jpg')},
+  {name: 'Amphibians',          gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more',        image: require('@/assets/images/environments/amphibians.jpg')},
+  {name: 'Farm Animals',        gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm',                 image: require('@/assets/images/environments/farm-animals.jpg')},
+  {name: 'Transportation',      gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!',  image: require('@/assets/images/environments/transportation.jpg')},
+  {name: 'Space Adventure',     gradient: ['#4F46E5', '#818CF8'], description: 'Planets, stars, and astronauts',            image: require('@/assets/images/environments/space.jpg')},
+  {name: 'Extinct Animals',     gradient: ['#94A3B8', '#CBD5E1'], description: 'Discover animals from the past',            image: require('@/assets/images/environments/extinct-animals.jpg')},
 ];
 
 // Pre-built lookup maps (O(1) instead of O(n) per item)
@@ -90,67 +93,80 @@ interface FolderItem {
   name: string;
   description: string;
   gradient: [string, string];
+  image?: any;
 }
 
 // ── Stable key extractor ───────────────────────────────────────────────
 const keyExtractor = (item: FolderItem) => item._id;
 
-// ── getItemLayout for fixed-height cards (instant scroll) ──────────────
-const getItemLayout = (_data: unknown, index: number) => ({
-  length: ITEM_HEIGHT,
-  offset: ITEM_HEIGHT * index,
-  index,
-});
-
-// ── Memoized folder card ───────────────────────────────────────────────
 const FolderCard = React.memo(function FolderCard({
   item,
+  index,
   onPress,
 }: {
   item: FolderItem;
+  index: number;
   onPress: (item: FolderItem) => void;
 }) {
   const handlePress = useCallback(() => onPress(item), [item, onPress]);
   const colors = useMemo(() => [item.gradient[0], item.gradient[1]], [item.gradient]);
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.88}
-      style={styles.card}
-      onPress={handlePress}>
-      <View style={styles.cardGradient}>
-        <LinearGradient
-          colors={colors}
-          locations={[0, 1]}
-          start={GRADIENT_START}
-          end={GRADIENT_END}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={styles.cardContent}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text style={styles.cardDesc} numberOfLines={2}>
-            {item.description}
-          </Text>
-        </View>
+    <Animated.View 
+      entering={ZoomIn.delay(index * 80).duration(600).springify()}
+      layout={LinearTransition.springify()}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        style={styles.card}
+        onPress={handlePress}>
+        <View style={styles.cardContainer}>
+
+            <Image
+              source={item.image}
+              style={{position: 'absolute', inset: 0, width: '100%', height: '100%',  transform: [{ translateY: -20 }] }}
+              resizeMode="cover"
+              
+            />
+          
+          <View style={styles.cardContent}>
+            <LinearGradient
+              colors={colors}
+              locations={[0, 1]}
+              start={GRADIENT_START}
+              end={GRADIENT_END}
+              style={StyleSheet.absoluteFill}
+            />
+            <Text style={styles.cardName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.cardDesc} numberOfLines={1}>
+              {item.description}
+            </Text>
+          </View>
         <View style={styles.cardDecor1} />
-        <View style={styles.cardDecor2} />
       </View>
     </TouchableOpacity>
+    </Animated.View>
   );
 });
 
 // ── Skeleton loader (memoized) ─────────────────────────────────────────
-const SKELETON_DATA = [0, 1, 2, 3, 4] as const;
+const SKELETON_ROWS = [0, 1, 2, 3, 4, 5] as const;
 
 const FolderSkeleton = React.memo(function FolderSkeleton() {
+  const cardWidth = (SCREEN_W - H_PAD * 2 - GAP) / 2;
+  
   return (
-    <View style={styles.skeletonWrap}>
-      {SKELETON_DATA.map(i => (
-        <View key={i} style={styles.skeletonCard}>
+    <View style={styles.skeletonGrid}>
+      {SKELETON_ROWS.map(row => (
+        <View key={row} style={styles.skeletonRow}>
           <Skeleton
-            width="100%"
+            width={cardWidth}
+            height={CARD_HEIGHT}
+            borderRadius={CARD_BORDER_RADIUS}
+          />
+          <Skeleton
+            width={cardWidth}
             height={CARD_HEIGHT}
             borderRadius={CARD_BORDER_RADIUS}
           />
@@ -193,6 +209,7 @@ function parseFolders(response: any): FolderItem[] {
         name: match?.name ?? fName,
         description: match?.description ?? 'Tap to explore',
         gradient: (match?.gradient ? [match.gradient[0], match.gradient[1]] : DEFAULT_GRADIENT) as [string, string],
+        image: match?.image,
       });
     }
   }
@@ -269,8 +286,8 @@ function WebVRContent() {
 
   // Stable renderItem
   const renderItem = useCallback(
-    ({item}: ListRenderItemInfo<FolderItem>) => (
-      <FolderCard item={item} onPress={handleFolderPress} />
+    ({item, index}: ListRenderItemInfo<FolderItem>) => (
+      <FolderCard item={item} index={index} onPress={handleFolderPress} />
     ),
     [handleFolderPress],
   );
@@ -287,7 +304,7 @@ function WebVRContent() {
   );
 
   const containerStyle = useMemo(
-    () => (contentWidth ? {width: contentWidth, alignSelf: 'center'} : undefined),
+    () => (contentWidth ? {width: contentWidth, alignSelf: 'center' as const} : undefined),
     [contentWidth],
   );
 
@@ -320,12 +337,19 @@ function WebVRContent() {
             end={GRADIENT_END}
             style={StyleSheet.absoluteFill}
           />
-          <View style={containerStyle}>
+          <Animated.View 
+            entering={ZoomIn.duration(600).springify()}
+            style={styles.bannerIconWrap}>
+              <Globe size={moderateScale(30)} color="#fff" strokeWidth={1.8} />
+            </Animated.View>
+          <Animated.View 
+            entering={FadeInUp.duration(600).springify()}
+            style={containerStyle}>
             <Text style={styles.headerTitle}>WebVR</Text>
             <Text style={styles.headerSub}>
               Immersive virtual reality experiences
             </Text>
-          </View>
+          </Animated.View>
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
         </View>
 
@@ -334,25 +358,7 @@ function WebVRContent() {
             styles.content,
             contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined,
           ]}>
-          <View style={styles.banner}>
-            <LinearGradient
-              colors={BANNER_GRADIENT as unknown as string[]}
-              locations={BANNER_LOCATIONS as unknown as number[]}
-              start={GRADIENT_START}
-              end={GRADIENT_END}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.bannerIconWrap}>
-              <Globe size={36} color="#fff" strokeWidth={1.6} />
-            </View>
-            <Text style={styles.bannerTitle}>Explore Virtual Worlds</Text>
-            <Text style={styles.bannerDesc}>
-              Step into immersive 3D environments and discover{'\n'}
-              the wonders of science, history and nature
-            </Text>
-            <View style={styles.bannerDecor1} />
-            <View style={styles.bannerDecor2} />
-          </View>
+
 
           <View style={styles.sectionRow}>
             <Text style={[styles.section, {color: colors.text}]}>
@@ -427,10 +433,12 @@ function WebVRContent() {
   return (
     <View style={[styles.root, {backgroundColor: colors.background}]}>
       <FlatList
+        key="webvr-grid-2"
         data={folders}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        getItemLayout={getItemLayout}
+        numColumns={2}
+        columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
         refreshing={refreshing}
         onRefresh={handleRefresh}
@@ -439,12 +447,11 @@ function WebVRContent() {
         scrollEventThrottle={16}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={EmptyComponent}
-        // ── Facebook-grade FlatList tuning ──
-        initialNumToRender={5}
-        maxToRenderPerBatch={5}
-        windowSize={7}
+        // ── FlatList tuning ──
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
-        updateCellsBatchingPeriod={50}
       />
     </View>
   );
@@ -466,6 +473,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PAD,
     paddingBottom: verticalScale(30),
     overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(2),
   },
   headerTitle: {
     fontSize: moderateScale(24),
@@ -493,44 +503,47 @@ const styles = StyleSheet.create({
   },
 
   banner: {
-    borderRadius: CARD_BORDER_RADIUS,
-    padding: moderateScale(24),
-    marginBottom: verticalScale(16),
+    flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: CARD_BORDER_RADIUS,
+    padding: moderateScale(14),
+    paddingHorizontal: moderateScale(16),
+    marginBottom: verticalScale(14),
     overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#6C4CFF',
-        shadowOffset: {width: 0, height: verticalScale(8)},
-        shadowOpacity: 0.3,
-        shadowRadius: moderateScale(16),
+        shadowOffset: {width: 0, height: verticalScale(4)},
+        shadowOpacity: 0.2,
+        shadowRadius: moderateScale(8),
       },
-      android: {},
+      android: {elevation: 3},
     }),
   },
   bannerIconWrap: {
-    width: scale(68),
-    height: scale(68),
-    borderRadius: moderateScale(20),
+    width: scale(57),
+    height: scale(57),
+    borderRadius: moderateScale(12),
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
-    marginBottom: verticalScale(12),
+    marginRight: scale(14),
+  },
+  bannerTextContent: {
+    flex: 1,
   },
   bannerTitle: {
-    fontSize: moderateScale(20),
+    fontSize: moderateScale(15),
     fontWeight: '800',
     color: '#fff',
-    marginBottom: verticalScale(6),
-    textAlign: 'center',
+    marginBottom: verticalScale(1),
   },
   bannerDesc: {
-    fontSize: moderateScale(12),
-    color: 'rgba(255,255,255,0.8)',
-    textAlign: 'center',
-    lineHeight: moderateScale(18),
+    fontSize: moderateScale(10.5),
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: moderateScale(14),
   },
   bannerDecor1: {
     position: 'absolute',
@@ -559,71 +572,83 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(4),
   },
   section: {
-    fontSize: moderateScale(15),
+    fontSize: moderateScale(20),
     fontWeight: '700',
   },
   sectionCount: {
     fontSize: moderateScale(12),
   },
 
+  columnWrapper: {
+    justifyContent: 'flex-start',
+    gap: GAP,
+    paddingHorizontal: H_PAD,
+  },
   card: {
+    width: (SCREEN_W - H_PAD * 2 - GAP) / 2,
     marginBottom: CARD_MARGIN_BOTTOM,
-    marginHorizontal: H_PAD,
     borderRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: {width: 0, height: verticalScale(6)},
-        shadowOpacity: 0.15,
-        shadowRadius: moderateScale(12),
+        shadowOffset: {width: 0, height: verticalScale(4)},
+        shadowOpacity: 0.12,
+        shadowRadius: moderateScale(8),
       },
-      android: {elevation: 6},
+      android: {elevation: 4},
     }),
   },
-  cardGradient: {
+  cardContainer: {
     height: CARD_HEIGHT,
     justifyContent: 'flex-end',
-    padding: moderateScale(20),
+    // padding: moderateScale(20),
+    // paddingBottom: moderateScale(24),
     overflow: 'hidden',
+    position: 'relative',
   },
-  cardContent: {},
+  cardContent: {
+    zIndex: 2,
+    padding: moderateScale(12),
+    paddingVertical: moderateScale(8),
+    paddingBottom: moderateScale(14),
+  },
   cardName: {
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(14),
     fontWeight: '900',
     color: '#fff',
-    marginBottom: verticalScale(4),
-    textShadowColor: 'rgba(0,0,0,0.3)',
+    marginBottom: verticalScale(1),
+    textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: {width: 0, height: 1},
     textShadowRadius: 3,
   },
   cardDesc: {
-    fontSize: moderateScale(12),
-    color: 'rgba(255,255,255,0.92)',
-    lineHeight: moderateScale(17),
-    fontWeight: '500',
+    fontSize: moderateScale(9),
+    color: 'rgba(255,255,255,0.95)',
+    lineHeight: moderateScale(13),
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 2,
   },
   cardDecor1: {
     position: 'absolute',
-    top: verticalScale(-20),
-    right: scale(-20),
-    width: scale(80),
-    height: scale(80),
-    borderRadius: scale(40),
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  cardDecor2: {
-    position: 'absolute',
-    top: verticalScale(10),
-    right: scale(30),
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(25),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    top: verticalScale(-30),
+    right: scale(-30),
+    width: scale(110),
+    height: scale(110),
+    borderRadius: scale(55),
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
 
-  skeletonWrap: {gap: verticalScale(12)},
-  skeletonCard: {marginBottom: verticalScale(2)},
+  skeletonGrid: {
+    gap: verticalScale(12),
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: GAP,
+  },
 
   emptyWrap: {
     alignItems: 'center',

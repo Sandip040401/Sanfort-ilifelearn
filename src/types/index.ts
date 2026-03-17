@@ -185,6 +185,7 @@ export type MainStackParamList = {
   WebVRViewer: {folderId: string; folderName: string};
   GamePlayer:  {gameId: string; gameUrl: string; gameTitle: string};
   BooksStack:  undefined;
+  PrivacyPolicy: undefined;
 };
 
 export type BottomTabParamList = {

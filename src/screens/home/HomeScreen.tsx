@@ -160,7 +160,7 @@ export default function HomeScreen() {
 
         {/* ── Content ── */}
         <View style={[styles.content, { backgroundColor: colors.background }]}>
-          <View style={[containerStyle]}>
+          <View style={[containerStyle as any]}>
 
             {/* Featured — Books */}
           <Text style={[styles.section, styles.sectionFirst, { color: colors.text }]}>Featured</Text>
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
 
   gridRow:       { flexDirection: 'row', marginBottom: CARD_GAP },
   gridTouchable: { flex: 1 },
-  gridCard:        { minHeight: verticalScale(150), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
+  gridCard:        { minHeight: verticalScale(125), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
   gridCardTablet:  { minHeight: 170, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 16, borderRadius: 20 },
   gridIcon:        { width: scale(44), height: scale(44), borderRadius: moderateScale(13), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   gridIconTablet:  { width: 52, height: 52, borderRadius: 16, marginBottom: 10 },
