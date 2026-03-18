@@ -203,6 +203,7 @@ export default function ARViewerScreen() {
   const [paintMode, setPaintMode] = useState<'model' | 'target'>('model');
   const [paintingEnabled, setPaintingEnabled] = useState(false);
   const [textureDisplayMode, setTextureDisplayMode] = useState<'original' | 'model-paint' | 'target-paint'>('original');
+  const [targetTextureDataUrl, setTargetTextureDataUrl] = useState<string | null>(null);
   const [showTargetPainter, setShowTargetPainter] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatusText, setExportStatusText] = useState('');
@@ -338,6 +339,7 @@ export default function ARViewerScreen() {
     setAssetSearchTerm('');
     setPaintingEnabled(false);
     setTextureDisplayMode('original');
+    setTargetTextureDataUrl(null);
     setShowTargetPainter(false);
     setPaintMode('model');
     setBrushColor(COLOR_SWATCHES[0] || '#ff0000');
@@ -371,8 +373,14 @@ export default function ARViewerScreen() {
     }
     if (textureDisplayMode === 'model-paint') {
       sendToWebView({type: 'showPaintTexture'});
+      return;
     }
-  }, [loadingModel, paintingEnabled, textureDisplayMode]);
+    if (textureDisplayMode === 'target-paint') {
+      if (targetTextureDataUrl) {
+        sendToWebView({type: 'applyTargetTexture', dataUrl: targetTextureDataUrl});
+      }
+    }
+  }, [loadingModel, paintingEnabled, targetTextureDataUrl, textureDisplayMode]);
 
   const modelUrl = useMemo(
     () => (currentModel ? ARService.getModelFileUrl(getModelStableId(currentModel)) : ''),
@@ -820,8 +828,8 @@ export default function ARViewerScreen() {
                         return raw;
                       }
                     }
-                    const modelId = model._id || model.id;
-                    return modelId ? ARService.getPreviewImageUrl(modelId) : null;
+                    const previewModelId = model._id || model.id;
+                    return previewModelId ? ARService.getPreviewImageUrl(previewModelId) : null;
                   })();
 
                     return (
@@ -905,7 +913,13 @@ export default function ARViewerScreen() {
                     label="Sheet"
                     active={textureDisplayMode === 'target-paint'}
                     onPress={() => {
-                      setTextureDisplayMode('target-paint');
+                      setPaintingEnabled(false);
+                      sendToWebView({type: 'enablePaint', value: false});
+                      if (targetTextureDataUrl) {
+                        setTextureDisplayMode('target-paint');
+                        sendToWebView({type: 'applyTargetTexture', dataUrl: targetTextureDataUrl});
+                        return;
+                      }
                       setShowTargetPainter(true);
                     }}
                     color="#DA70D6"
@@ -1211,10 +1225,13 @@ export default function ARViewerScreen() {
                 try {
                   const data = JSON.parse(event.nativeEvent.data);
                   if (data.type === 'textureReady') {
+                    setTargetTextureDataUrl(data.dataUrl);
                     sendToWebView({type: 'applyTargetTexture', dataUrl: data.dataUrl});
                     setTextureDisplayMode('target-paint');
                     setShowTargetPainter(false);
                     setPaintMode('target');
+                    setPaintingEnabled(false);
+                    setShowBrushControls(false);
                   } else if (data.type === 'log') {
                     console.log('[SheetWebView]', data.message);
                   } else if (data.type === 'error') {

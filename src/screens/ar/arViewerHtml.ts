@@ -109,6 +109,45 @@ export function buildARViewerHtml(modelFileUrl: string) {
   const lastPoints = new Map();
   const PAINT_TEX_SIZE = 1024;
 
+  function getMeshMaterials(mesh) {
+    if (!mesh || !mesh.material) return [];
+    return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  }
+
+  function applyTextureToMesh(mesh, texture, forceWhite) {
+    const materials = getMeshMaterials(mesh);
+    materials.forEach((material) => {
+      if (!material) return;
+      material.map = texture;
+      if (forceWhite && material.color) {
+        material.color.set('#ffffff');
+      }
+      material.needsUpdate = true;
+    });
+  }
+
+  function restoreOriginalMaterial(mesh) {
+    const materials = getMeshMaterials(mesh);
+    materials.forEach((material, index) => {
+      if (!material || !mesh.userData.paint) return;
+      material.map = mesh.userData.paint.origMaps[index] || null;
+      const origColor = mesh.userData.paint.origColors[index];
+      if (material.color && origColor) {
+        material.color.copy(origColor);
+      }
+      material.needsUpdate = true;
+    });
+  }
+
+  function showStoredTargetTexture() {
+    if (!loadedModel) return;
+    loadedModel.traverse(c => {
+      if (c.isMesh && c.userData.paint && c.userData.paint.targetTex) {
+        applyTextureToMesh(c, c.userData.paint.targetTex, true);
+      }
+    });
+  }
+
   const loader = new GLTFLoader();
   loader.load(
     '${modelFileUrl}',
@@ -170,12 +209,12 @@ export function buildARViewerHtml(modelFileUrl: string) {
     const tex = new THREE.CanvasTexture(canvas);
     tex.flipY = true;
     tex.colorSpace = THREE.SRGBColorSpace;
-    const origMap = (mesh.material && mesh.material.map) ? mesh.material.map : null;
-    const mat = mesh.material.clone();
-    mat.map = origMap || tex;
-    mat.needsUpdate = true;
-    mesh.material = mat;
-    mesh.userData.paint = { canvas, ctx, tex, origMap, size: PAINT_TEX_SIZE };
+    const materials = getMeshMaterials(mesh).map(material => material.clone());
+    mesh.material = Array.isArray(mesh.material) ? materials : materials[0];
+    const currentMaterials = getMeshMaterials(mesh);
+    const origMaps = currentMaterials.map(material => (material && material.map) ? material.map : null);
+    const origColors = currentMaterials.map(material => (material && material.color) ? material.color.clone() : null);
+    mesh.userData.paint = { canvas, ctx, tex, targetTex: null, origMaps, origColors, size: PAINT_TEX_SIZE };
   }
 
   function paintAt(intersect) {
@@ -282,18 +321,19 @@ export function buildARViewerHtml(modelFileUrl: string) {
         if (loadedModel) {
           loadedModel.traverse(c => {
             if (c.isMesh && c.userData.paint) {
-              c.material.map = c.userData.paint.tex;
-              c.material.needsUpdate = true;
+              applyTextureToMesh(c, c.userData.paint.tex, true);
             }
           });
         }
       }
+      if (data.type === 'showTargetTexture') {
+        showStoredTargetTexture();
+      }
       if (data.type === 'showOriginalTexture') {
         if (loadedModel) {
           loadedModel.traverse(c => {
-            if (c.isMesh && c.userData.paint && c.userData.paint.origMap) {
-              c.material.map = c.userData.paint.origMap;
-              c.material.needsUpdate = true;
+            if (c.isMesh && c.userData.paint) {
+              restoreOriginalMaterial(c);
             }
           });
         }
@@ -302,15 +342,20 @@ export function buildARViewerHtml(modelFileUrl: string) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width || PAINT_TEX_SIZE;
+          canvas.height = img.naturalHeight || img.height || PAINT_TEX_SIZE;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const tex = new THREE.CanvasTexture(canvas);
+          tex.flipY = false;
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.needsUpdate = true;
           if (loadedModel) {
             loadedModel.traverse(c => {
-              if (c.isMesh && c.geometry && c.geometry.attributes.uv) {
-                const tex = new THREE.CanvasTexture(img);
-                tex.flipY = false;
-                tex.colorSpace = THREE.SRGBColorSpace;
-                tex.channel = 1;
-                c.material.map = tex;
-                c.material.needsUpdate = true;
+              if (c.isMesh && c.userData.paint) {
+                c.userData.paint.targetTex = tex;
+                applyTextureToMesh(c, tex, true);
               }
             });
           }
@@ -320,36 +365,20 @@ export function buildARViewerHtml(modelFileUrl: string) {
       if (data.type === 'exportGLB') {
         if (!loadedModel) return;
         postMsg({ type: 'exportStatus', status: 'Exporting 3D scene...' });
-        const restoreStates = [];
         loadedModel.traverse(c => {
-          if (c.isMesh && c.material && c.material.map) {
-            c.material.map.needsUpdate = true;
-            if (c.material.map.channel === 1 && c.geometry && c.geometry.attributes.uv1) {
-              restoreStates.push({
-                mat: c.material,
-                map: c.material.map,
-                origUv: c.geometry.attributes.uv,
-                geom: c.geometry
-              });
-              c.geometry.setAttribute('uv', c.geometry.attributes.uv1);
-              c.material.map.channel = 0;
+          getMeshMaterials(c).forEach(material => {
+            if (material && material.map) {
+              material.map.needsUpdate = true;
             }
-          }
+          });
         });
 
         renderer.render(scene, camera);
         const exporter = new GLTFExporter();
         const exportAnims = window._gltfAnimations || [];
-        const cleanupAndRestore = () => {
-          restoreStates.forEach(s => {
-            s.geom.setAttribute('uv', s.origUv);
-            s.map.channel = 1;
-          });
-        };
         exporter.parse(
           loadedModel,
           async function(gltf) {
-            cleanupAndRestore();
             postMsg({ type: 'exportStatus', status: 'Converting file format...' });
             try {
               const base64 = await arrayBufferToBase64(gltf);
@@ -359,7 +388,6 @@ export function buildARViewerHtml(modelFileUrl: string) {
             }
           },
           function(error) {
-            cleanupAndRestore();
             postMsg({ type: 'error', message: 'Export failed: ' + error });
           },
           { binary: true, animations: exportAnims }

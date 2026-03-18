@@ -58,5 +58,26 @@ target 'iLifeLearn' do
         end
       end
     end
+
+    # RN 0.84.1 can generate a malformed Hermes flag for React-RCTAppDelegate:
+    #   -DRCT_NEW_ARCH_ENABLED=1-DUSE_HERMES=1
+    # That corrupts ObjC++/C++ pod compilation under the New Architecture.
+    react_rct_app_delegate_xcconfigs = Dir.glob(
+      File.join(__dir__, 'Pods', 'Target Support Files', 'React-RCTAppDelegate', 'React-RCTAppDelegate*.xcconfig')
+    )
+    react_rct_app_delegate_xcconfigs.each do |xcconfig_path|
+      next unless File.exist?(xcconfig_path)
+
+      xcconfig_source = File.read(xcconfig_path)
+      xcconfig_fixed = xcconfig_source.gsub(
+        '-DRCT_NEW_ARCH_ENABLED=1-DUSE_HERMES=1',
+        '-DRCT_NEW_ARCH_ENABLED=1 -DUSE_HERMES=1'
+      )
+
+      next if xcconfig_fixed == xcconfig_source
+
+      File.write(xcconfig_path, xcconfig_fixed)
+      Pod::UI.puts "Patched malformed Hermes flags in #{File.basename(xcconfig_path)}"
+    end
   end
 end

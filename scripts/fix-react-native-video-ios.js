@@ -22,14 +22,21 @@ const videoPath = path.join(
 
 const beforeManager =
   'return RCTVideo(eventDispatcher: (RCTBridge.current().eventDispatcher() as! RCTEventDispatcher))';
-const afterManager =
+const brokenAfterManager =
   'let dispatcher = bridge?.eventDispatcher() ?? RCTBridge.current()?.eventDispatcher()\\n' +
+  '        return RCTVideo(eventDispatcher: dispatcher)';
+const afterManager =
+  'let dispatcher = bridge?.eventDispatcher() ?? RCTBridge.current()?.eventDispatcher()\n' +
   '        return RCTVideo(eventDispatcher: dispatcher)';
 
 try {
   if (fs.existsSync(managerPath)) {
     const src = fs.readFileSync(managerPath, 'utf8');
-    if (!src.includes(afterManager) && src.includes(beforeManager)) {
+    if (src.includes(brokenAfterManager)) {
+      const next = src.replace(brokenAfterManager, afterManager);
+      fs.writeFileSync(managerPath, next, 'utf8');
+      console.log('[fix-react-native-video-ios] repaired manager');
+    } else if (!src.includes(afterManager) && src.includes(beforeManager)) {
       const next = src.replace(beforeManager, afterManager);
       fs.writeFileSync(managerPath, next, 'utf8');
       console.log('[fix-react-native-video-ios] patched manager');
