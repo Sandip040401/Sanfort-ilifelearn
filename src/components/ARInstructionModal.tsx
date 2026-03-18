@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: scale(450),
     maxHeight: '85%',
-    minHeight:'0%',
+    minHeight: verticalScale(520),
     borderRadius: moderateScale(20),
     overflow: 'hidden',
     shadowColor: '#000',
@@ -364,16 +364,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 15,
     elevation: 10,
-    paddingBottom: verticalScale(10),
+    backgroundColor: '#fff',
   },
   contentWrapper: {
-    minHeight: verticalScale(350),
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stepContent: {
     width: '100%',
     maxHeight:'100%',
+  },
+  warningContainer: {
+    flex: 1,
+    width: '100%',
   },
   warningHeader: {
     flexDirection: 'row',
@@ -401,6 +405,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: moderateScale(20),
+    height:'100%',
   },
   shieldSection: {
     flexDirection: 'row',
