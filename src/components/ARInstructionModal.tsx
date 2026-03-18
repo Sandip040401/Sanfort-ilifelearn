@@ -21,15 +21,22 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   AlertTriangle,
-  Shield,
-  User,
-  ChevronRight,
-  ChevronLeft,
-  X,
-  ScanLine,
+  BookOpen,
   Box,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
   Hand,
-  CheckCircle2,
+  Languages,
+  Menu,
+  Palette,
+  Pencil,
+  RotateCcw,
+  ScanLine,
+  Shield,
+  Sparkles,
+  User,
+  X,
 } from 'lucide-react-native';
 import {useTheme} from '@/theme';
 import {moderateScale, verticalScale, scale} from 'react-native-size-matters';
@@ -47,34 +54,49 @@ const STEPS = [
     type: 'warning',
   },
   {
-    id: 'step1',
-    title: 'Ready your Sheet',
-    description: 'Place the worksheet on a flat, well-lit surface for the best experience.',
-    icon: ScanLine,
+    id: 'slide1',
+    title: 'Getting Started',
+    instructions: [
+      '1. Open the "Augmented Reality (AR)" book and choose the object or animal that you would want to bring to life.',
+      '2. Colour the image using colour pencils or crayons.',
+      '3. Point the camera of your mobile/tablet on pages containing the AR icon in the book.',
+      '4. Wait for the 3D object/animal to appear on the screen.',
+      '5. Use the menu option to Reset, Pause & take a Snapshot.',
+    ],
+    icon: BookOpen,
   },
   {
-    id: 'step2',
-    title: 'Hold it Steady',
-    description: 'Hold the device steady and point it directly at the worksheet.',
-    icon: Box,
+    id: 'slide2',
+    title: 'Control & Interact',
+    instructions: [
+      '6. Use your fingers to rotate and adjust the size of the 3D model.',
+    ],
+    icon: Hand,
   },
   {
-    id: 'step3',
-    title: 'Wait for Detect',
-    description: 'Wait for the scanner to detect the worksheet or target image.',
-    icon: ScanLine,
+    id: 'slide3',
+    title: 'Audio & Reset',
+    instructions: [
+      '7. Click the language icon to listen to the audio in English and in Indian regional languages.',
+      '8. Click "RESET" to bring the image back to its original size.',
+    ],
+    icon: Languages,
   },
   {
-    id: 'step4',
-    title: 'Experience Magic',
-    description: 'High-quality 3D animations will appear on your screen like magic!',
-    icon: Shield,
+    id: 'slide4',
+    title: 'Live Colouring',
+    instructions: [
+      '9. The live colouring option lets you colour the model when it is visible on the screen.',
+    ],
+    icon: Pencil,
   },
   {
-    id: 'step5',
-    title: 'Interact & Learn',
-    description: 'Interact with the 3D models by tapping or rotating them to enjoy learning!',
-    icon: CheckCircle2,
+    id: 'slide5',
+    title: 'Capture Memories',
+    instructions: [
+      '10. Click "SNAPSHOT" to take a picture of your art work. Open the gallery to view the saved image.',
+    ],
+    icon: Camera,
   },
 ];
 
@@ -164,7 +186,7 @@ export default function ARInstructionModal({
     </View>
   );
 
-  const renderInstructionStep = (step: typeof STEPS[0], index: number) => {
+  const renderInstructionStep = (step: any, index: number) => {
     const Icon = step.icon || Box;
     return (
       <View key={step.id} style={styles.stepContainer}>
@@ -173,10 +195,31 @@ export default function ARInstructionModal({
         </View>
         <View style={styles.textContainer}>
           <View style={styles.stepBadge}>
-            <Text style={styles.stepBadgeText}>Instruction {index}</Text>
+            <Text style={styles.stepBadgeText}>Slide {index}</Text>
           </View>
           <Text style={[styles.stepTitle, {color: colors.text}]}>{step.title}</Text>
-          <Text style={[styles.stepDescription, {color: colors.textSecondary}]}>{step.description}</Text>
+          <View style={styles.instructionsContainer}>
+            <ScrollView 
+              showsVerticalScrollIndicator={true} 
+              style={styles.instructionsList}
+              contentContainerStyle={styles.instructionsScrollContent}
+            >
+              {step.instructions?.map((instruction: string, i: number) => (
+                <Text 
+                  key={i} 
+                  style={[
+                    styles.stepDescription, 
+                    {
+                      color: colors.textSecondary,
+                      textAlign: step.instructions.length > 1 ? 'left' : 'center'
+                    }
+                  ]}
+                >
+                  {instruction}
+                </Text>
+              ))}
+            </ScrollView>
+          </View>
         </View>
       </View>
     );
@@ -440,16 +483,27 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
   },
   stepTitle: {
-    fontSize: moderateScale(24),
+    fontSize: moderateScale(22),
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(16),
+  },
+  instructionsContainer: {
+    maxHeight: verticalScale(200),
+    width: '100%',
+    paddingHorizontal: scale(5),
+  },
+  instructionsList: {
+    width: '100%',
+  },
+  instructionsScrollContent: {
+    paddingBottom: verticalScale(10),
   },
   stepDescription: {
-    fontSize: moderateScale(15),
-    lineHeight: moderateScale(22),
-    textAlign: 'center',
-    paddingHorizontal: scale(10),
+    fontSize: moderateScale(14),
+    lineHeight: moderateScale(20),
+    textAlign: 'left',
+    marginBottom: verticalScale(8),
   },
   pagination: {
     flexDirection: 'row',
