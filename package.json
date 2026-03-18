@@ -6,7 +6,7 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
-    "postinstall": "node ./scripts/fix-react-native-voice-gradle.js && node ./scripts/fix-react-native-video-ios.js",
+    "postinstall": "node ./scripts/fix-react-native-voice-gradle.js && node ./scripts/fix-react-native-video-ios.js && node ./scripts/fix-react-native-orientation-locker-ios.js && node ./scripts/fix-react-native-codegen-deps.js",
     "start": "react-native start",
     "test": "jest"
   },

@@ -127,7 +127,7 @@ function SubjectContentScreenContent() {
 
   const accent = subjectColor;
   const subjectDisplayName = booksQuery.data?.subject.name || subjectName;
-  const contentBottomInset = insets.bottom + verticalScale(76);
+  const contentBottomInset = insets.bottom + verticalScale(24);
   const activeTabButtonStyle: ViewStyle = useMemo(
     () => ({
       backgroundColor: accent,

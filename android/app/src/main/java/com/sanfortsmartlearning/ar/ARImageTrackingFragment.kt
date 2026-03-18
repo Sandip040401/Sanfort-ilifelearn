@@ -1,4 +1,4 @@
-package com.ilifelearn.ar
+package com.sanfortsmartlearning.ar
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

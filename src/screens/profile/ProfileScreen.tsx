@@ -45,6 +45,7 @@ import { useAuth, useModals } from '@/store';
 import { useTheme, Typography, BorderRadius, type AppColors } from '@/theme';
 import CustomAlert from '@/components/CustomAlert';
 import { AuthService } from '@/services/auth.service';
+import { APP_NAME, APP_VERSION } from '@/config/appInfo';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -230,7 +231,7 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + verticalScale(100) }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + verticalScale(24) }}
         showsVerticalScrollIndicator={false}>
 
         {/* ── Avatar Section ───────────────────────── */}
@@ -464,7 +465,7 @@ export default function ProfileScreen() {
 
         {/* ── App Version ──────────────────────────── */}
         <Text style={[styles.versionText, { color: colors.textTertiary }]}>
-          iLife Learn v1.0.0
+          {APP_NAME} v{APP_VERSION}
         </Text>
 
       </ScrollView>
@@ -1061,5 +1062,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
-

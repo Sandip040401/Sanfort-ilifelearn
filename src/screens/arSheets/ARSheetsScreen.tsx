@@ -34,6 +34,7 @@ function ARSheetsContent() {
   const {width} = useWindowDimensions();
   const isTablet = width >= 768;
   const contentWidth = isTablet ? Math.min(width * 0.75, 620) : undefined;
+  const bottomContentInset = insets.bottom + verticalScale(24);
 
   const renderScanItem = ({item}: {item: typeof RECENT_SCANS[0]}) => (
     <TouchableOpacity
@@ -58,7 +59,7 @@ function ARSheetsContent() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(90)}}>
+        contentContainerStyle={{paddingBottom: bottomContentInset}}>
 
         {/* Header */}
         <View style={[styles.header, {paddingTop: insets.top + verticalScale(16)}]}>

@@ -25,6 +25,7 @@ import {useTheme} from '@/theme';
 import {AuthService} from '@/services';
 import type {AuthStackParamList} from '@/types';
 import Animated, {FadeInDown, FadeInUp, ZoomIn} from 'react-native-reanimated';
+import {APP_NAME} from '@/config/appInfo';
 
 type Props = {
   navigation: StackNavigationProp<AuthStackParamList, 'Login'>;
@@ -157,7 +158,7 @@ export default function LoginScreen({navigation}: Props) {
             style={[styles.heroSection, wrapStyle]}>
             <Animated.View 
               entering={ZoomIn.delay(200).duration(600)}
-              style={styles.logoBox} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
+              style={styles.logoBox} accessibilityRole="image" accessibilityLabel={`${APP_NAME} logo`}>
               <Sparkles size={30} color="#6C4CFF" strokeWidth={1.8} />
             </Animated.View>
             <Text style={styles.title}>Welcome Back!</Text>

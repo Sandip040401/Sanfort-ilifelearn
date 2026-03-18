@@ -97,6 +97,7 @@ function TopicScreenContent() {
   const quickStatBg = withAlpha(headerTextColor, 0.14);
   const quickStatBorder = withAlpha(headerTextColor, 0.18);
   const quickStatLabelColor = withAlpha(headerTextColor, 0.75);
+  const bottomContentInset = insets.bottom + verticalScale(24);
   const safeTopic = {
     ...topic,
     title: topic?.title ?? 'Topic',
@@ -214,7 +215,7 @@ function TopicScreenContent() {
             styles.scrollContent,
             {
               backgroundColor: colors.background,
-              paddingBottom: insets.bottom + verticalScale(92),
+              paddingBottom: bottomContentInset,
             },
           ]}>
           <View style={[styles.headerOuter, {paddingTop: insets.top + verticalScale(12)}]}>

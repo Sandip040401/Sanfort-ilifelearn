@@ -1,4 +1,4 @@
-package com.ilifelearn.ar
+package com.sanfortsmartlearning.ar
 
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
@@ -26,7 +26,7 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.ilifelearn.R
+import com.sanfortsmartlearning.R
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.AugmentedImage
 import com.google.ar.core.Coordinates2d

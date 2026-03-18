@@ -1,4 +1,4 @@
-package com.ilifelearn.ar
+package com.sanfortsmartlearning.ar
 
 import android.net.Uri
 import android.util.Base64

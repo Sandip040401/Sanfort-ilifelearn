@@ -56,6 +56,7 @@ function BooksScreenContent() {
   const showTwoColumn = isTabletLandscape;
   const contentWidth = isTablet ? Math.min(width - scale(32), scale(920)) : width;
   const singleCardWidth = contentWidth - H_PAD * 2;
+  const bottomContentInset = insets.bottom + verticalScale(24);
   const cardWidth = showTwoColumn
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : singleCardWidth;
@@ -78,7 +79,7 @@ function BooksScreenContent() {
           styles.scrollContent,
           {
             backgroundColor: colors.background,
-            paddingBottom: insets.bottom + verticalScale(60),
+            paddingBottom: bottomContentInset,
           },
         ]}>
         <View

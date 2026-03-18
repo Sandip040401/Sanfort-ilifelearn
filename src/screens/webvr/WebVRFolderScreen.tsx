@@ -343,7 +343,7 @@ export default function WebVRFolderScreen() {
   const contentStyle = useMemo(
     () => ({
       padding: scale(16),
-      paddingBottom: insets.bottom + verticalScale(90),
+      paddingBottom: insets.bottom + verticalScale(24),
     }),
     [insets.bottom],
   );

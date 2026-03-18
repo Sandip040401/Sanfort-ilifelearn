@@ -214,6 +214,7 @@ function GamesScreenContent() {
   const [searchValue, setSearchValue] = useState('');
   const deferredSearchValue = useDeferredValue(searchValue);
   const isTablet = width >= 768;
+  const bottomContentInset = insets.bottom + verticalScale(24);
   const queueVisualStyle = useMemo(
     () => ({width: isTablet ? scale(148) : scale(112)}),
     [isTablet],
@@ -424,7 +425,7 @@ function GamesScreenContent() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(96)}}
+        contentContainerStyle={{paddingBottom: bottomContentInset}}
         refreshControl={
           <RefreshControl
             refreshing={liveGamesQuery.isRefetching}

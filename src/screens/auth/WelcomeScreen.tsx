@@ -7,6 +7,7 @@ import type {StackNavigationProp} from '@react-navigation/stack';
 import {BookOpen, ChevronRight, Globe, Sparkles} from 'lucide-react-native';
 import type {AuthStackParamList} from '@/types';
 import Animated, {FadeInDown, FadeInUp, ZoomIn} from 'react-native-reanimated';
+import {APP_NAME} from '@/config/appInfo';
 
 type Props = {
   navigation: StackNavigationProp<AuthStackParamList, 'Welcome'>;
@@ -50,7 +51,7 @@ export default function WelcomeScreen({navigation}: Props) {
           style={[styles.hero, {paddingTop: insets.top + verticalScale(28)}, wrapStyle]}>
           <Animated.View 
             entering={ZoomIn.delay(300).duration(600)}
-            style={styles.logoWrap} accessibilityRole="image" accessibilityLabel="iLife Learn logo">
+            style={styles.logoWrap} accessibilityRole="image" accessibilityLabel={`${APP_NAME} logo`}>
             <View style={styles.logoInner}>
               <Sparkles size={moderateScale(36)} color="#6C4CFF" strokeWidth={1.8} />
             </View>
@@ -58,7 +59,7 @@ export default function WelcomeScreen({navigation}: Props) {
               <BookOpen size={moderateScale(12)} color="#fff" strokeWidth={2} />
             </View>
           </Animated.View>
-          <Text style={styles.appName} accessibilityRole="header">iLife Learn</Text>
+          <Text style={styles.appName} accessibilityRole="header">{APP_NAME}</Text>
           <Text style={styles.tagline}>Learn · Explore · Grow</Text>
         </Animated.View>
 
@@ -98,7 +99,7 @@ export default function WelcomeScreen({navigation}: Props) {
             onPress={() => navigation.navigate('Login')}
             activeOpacity={0.88}
             accessibilityRole="button"
-            accessibilityLabel="Get started with iLife Learn"
+            accessibilityLabel={`Get started with ${APP_NAME}`}
             accessibilityHint="Opens the sign in screen">
             <Text style={styles.ctaBtnText}>Get Started</Text>
             <ChevronRight size={moderateScale(20)} color="#6C4CFF" strokeWidth={2.5} />
@@ -122,7 +123,7 @@ const styles = StyleSheet.create({
   logoWrap:   {marginBottom:verticalScale(20), position:'relative'},
   logoInner:  {width:scale(96), height:scale(96), borderRadius:moderateScale(28), backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0, height:verticalScale(10)}, shadowOpacity:0.25, shadowRadius:moderateScale(20), elevation:12},
   logoBadge:  {position:'absolute', bottom:verticalScale(-4), right:scale(-4), width:scale(28), height:scale(28), borderRadius:scale(14), backgroundColor:'#FFB020', alignItems:'center', justifyContent:'center', borderWidth:2, borderColor:'#fff'},
-  appName:    {fontSize:moderateScale(32), fontWeight:'800', color:'#fff', letterSpacing:0.5, marginBottom:verticalScale(6)},
+  appName:    {fontSize:moderateScale(28), lineHeight:moderateScale(34), fontWeight:'800', color:'#fff', letterSpacing:0.3, marginBottom:verticalScale(6), textAlign:'center'},
   tagline:    {fontSize:moderateScale(14), color:'rgba(255,255,255,0.7)', letterSpacing:2},
 
   featuresWrap: {marginHorizontal:scale(20), marginTop:verticalScale(28), backgroundColor:'rgba(255,255,255,0.12)', borderRadius:moderateScale(20), padding:moderateScale(18), borderWidth:1, borderColor:'rgba(255,255,255,0.2)', gap:verticalScale(14)},

@@ -715,7 +715,7 @@ function ReadAloudContent() {
           />
         }
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(112)}}>
+        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(24)}}>
         <LinearGradient
           colors={isDark ? ['#0F172A', '#0F474C', '#0F766E', '#1A6DAD', '#2563EB'] : ['#115E59', '#0D7886', '#0891B2', '#177ACF', '#2563EB']}
           locations={[0, 0.25, 0.5, 0.75, 1]}

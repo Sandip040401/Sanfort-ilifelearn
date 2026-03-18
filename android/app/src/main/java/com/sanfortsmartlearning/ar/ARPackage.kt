@@ -1,4 +1,4 @@
-package com.ilifelearn.ar
+package com.sanfortsmartlearning.ar
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.ReactApplicationContext

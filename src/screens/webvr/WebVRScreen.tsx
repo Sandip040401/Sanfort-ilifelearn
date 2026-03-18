@@ -318,9 +318,14 @@ function WebVRContent() {
     [handleFolderPress],
   );
 
+  const bottomContentInset = useMemo(
+    () => Math.max(insets.bottom + verticalScale(24), tabBarHeight - verticalScale(24)),
+    [insets.bottom, tabBarHeight],
+  );
+
   const contentStyle = useMemo(
-    () => ({paddingBottom: tabBarHeight + verticalScale(24)}),
-    [tabBarHeight],
+    () => ({paddingBottom: bottomContentInset}),
+    [bottomContentInset],
   );
 
   // Memoized header

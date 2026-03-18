@@ -49,6 +49,7 @@ function SubjectsScreenContent() {
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : contentWidth - H_PAD * 2;
   const isNarrowCard = cardWidth < scale(320);
+  const bottomContentInset = insets.bottom + verticalScale(24);
   const cardHeight = isTablet
     ? Math.max(verticalScale(270), Math.min(verticalScale(340), cardWidth * 1.2))
     : undefined;
@@ -82,7 +83,7 @@ function SubjectsScreenContent() {
           styles.scrollContent,
           {
             backgroundColor: colors.background,
-            paddingBottom: insets.bottom + verticalScale(60),
+            paddingBottom: bottomContentInset,
           },
         ]}>
         <View style={[styles.header, {paddingTop: insets.top + verticalScale(12)}]}>

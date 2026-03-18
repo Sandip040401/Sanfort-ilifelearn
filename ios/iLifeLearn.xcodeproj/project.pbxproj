@@ -274,7 +274,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.kamal.iLifeLearn;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sanfortsmartlearning;
 				PRODUCT_NAME = iLifeLearn;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OBJC_BRIDGING_HEADER = "iLifeLearn/iLifeLearn-Bridging-Header.h";
@@ -305,7 +305,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.kamal.iLifeLearn;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sanfortsmartlearning;
 				PRODUCT_NAME = iLifeLearn;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OBJC_BRIDGING_HEADER = "iLifeLearn/iLifeLearn-Bridging-Header.h";
