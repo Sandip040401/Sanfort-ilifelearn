@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   NativeScrollEvent,
@@ -16,7 +15,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import Animated, { FadeInDown, FadeInUp, LinearTransition, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
@@ -109,6 +108,20 @@ type ARNavigationProp = CompositeNavigationProp<
 const REFERENCE_IMAGE_ASSETS_BY_MODEL: Record<string, string> = {
   bear: 'reference_bear_page.jpg',
 };
+
+const isAndroid = Platform.OS === 'android';
+const androidCardBorder = {
+  borderWidth: 1,
+  borderColor: 'rgba(17,24,39,0.06)',
+};
+const galleryHeroEntering = isAndroid
+  ? FadeIn.duration(180)
+  : ZoomIn.duration(600).springify();
+const getGalleryCardEntering = (index: number) =>
+  isAndroid
+    ? FadeIn.delay(index * 50).duration(180)
+    : FadeInDown.delay(index * 100).duration(600).springify();
+const galleryLayoutTransition = isAndroid ? undefined : LinearTransition.springify();
 
 function getPreviewUri(model: ARModel) {
   if (model.previewUrl) {
@@ -279,7 +292,6 @@ function EnvironmentGallery({
   bottomInset: number;
   onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) {
-  const { colors, isDark } = useTheme();
   const { isTablet, contentWidth, gap, cardWidth, worldCardHeight, isCompactCard } = useResponsiveLayout();
   const emojiSize = isCompactCard ? scale(42) : scale(48);
   const emojiRadius = isCompactCard ? moderateScale(14) : moderateScale(16);
@@ -304,8 +316,8 @@ function EnvironmentGallery({
           progressViewOffset={topInset + verticalScale(8)}
         />
       }>
-      <Animated.View 
-        entering={ZoomIn.duration(600).springify()}
+      <Animated.View
+        entering={galleryHeroEntering}
         style={[styles.worldHeroShadow, { marginTop: verticalScale(8), width: contentWidth, alignSelf: 'center' }]}>
         <View style={styles.worldHero}>
           <LinearGradient
@@ -331,10 +343,10 @@ function EnvironmentGallery({
         {environments.map((environment, index) => {
           const modelCount = getModelsForEnvironment(environment, models).length;
           return (
-            <Animated.View 
+            <Animated.View
               key={environment._id}
-              entering={FadeInDown.delay(index * 100).duration(600).springify()}
-              layout={LinearTransition.springify()}>
+              entering={getGalleryCardEntering(index)}
+              layout={galleryLayoutTransition}>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => onEnvironmentSelect(environment)}
@@ -399,7 +411,7 @@ function ModelGallery({
   bottomInset: number;
   onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
   const { isTablet, contentWidth, gap, cardWidth, modelPreviewHeight } = useResponsiveLayout();
 
@@ -423,8 +435,8 @@ function ModelGallery({
           progressViewOffset={topInset + verticalScale(8)}
         />
       }>
-      <Animated.View 
-        entering={ZoomIn.duration(600).springify()}
+      <Animated.View
+        entering={galleryHeroEntering}
         style={[styles.modelsHeroShadow, { marginTop: verticalScale(8), width: contentWidth, alignSelf: 'center' }]}>
         <View style={styles.modelsHero}>
           <LinearGradient
@@ -490,8 +502,8 @@ function ModelGallery({
               return (
                 <Animated.View
                   key={getModelStableId(model, index)}
-                  entering={FadeInDown.delay(index * 80).duration(600).springify()}
-                  layout={LinearTransition.springify()}
+                  entering={getGalleryCardEntering(index)}
+                  layout={galleryLayoutTransition}
                   style={[styles.modelCardWrap, { width: cardWidth, backgroundColor: colors.card }]}>
                   <View style={styles.modelGradient}>
                     <LinearGradient
@@ -701,7 +713,7 @@ function ARScreenContent() {
           }));
           audiosJson = JSON.stringify(audiosWithUrls);
         }
-      } catch (_audioErr) {
+      } catch {
         // Audio fetch failed — scanner will work without audio
       }
 
@@ -857,11 +869,14 @@ const styles = StyleSheet.create({
   },
   worldHeroShadow: {
     borderRadius: moderateScale(20),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: verticalScale(4) },
-    shadowOpacity: 0.2,
-    shadowRadius: moderateScale(12),
-    elevation: 8,
+    ...(isAndroid
+      ? androidCardBorder
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: verticalScale(4) },
+          shadowOpacity: 0.2,
+          shadowRadius: moderateScale(12),
+        }),
   },
   worldHero: {
     borderRadius: moderateScale(20),
@@ -896,11 +911,14 @@ const styles = StyleSheet.create({
   worldCardWrap: {
     borderRadius: moderateScale(20),
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: verticalScale(3) },
-    shadowOpacity: 0.15,
-    shadowRadius: moderateScale(8),
-    elevation: 5,
+    ...(isAndroid
+      ? androidCardBorder
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: verticalScale(3) },
+          shadowOpacity: 0.15,
+          shadowRadius: moderateScale(8),
+        }),
   },
   worldCard: {
     flex: 1,
@@ -956,11 +974,14 @@ const styles = StyleSheet.create({
   },
   modelsHeroShadow: {
     borderRadius: moderateScale(20),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: verticalScale(4) },
-    shadowOpacity: 0.2,
-    shadowRadius: moderateScale(12),
-    elevation: 8,
+    ...(isAndroid
+      ? androidCardBorder
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: verticalScale(4) },
+          shadowOpacity: 0.2,
+          shadowRadius: moderateScale(12),
+        }),
   },
   modelsHero: {
     borderRadius: moderateScale(20),
@@ -1039,11 +1060,14 @@ const styles = StyleSheet.create({
   modelCardWrap: {
     borderRadius: moderateScale(16),
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: verticalScale(3) },
-    shadowOpacity: 0.15,
-    shadowRadius: moderateScale(8),
-    elevation: 5,
+    ...(isAndroid
+      ? androidCardBorder
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: verticalScale(3) },
+          shadowOpacity: 0.15,
+          shadowRadius: moderateScale(8),
+        }),
   },
   modelGradient: {
     padding: moderateScale(8),

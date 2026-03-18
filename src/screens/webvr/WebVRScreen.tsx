@@ -24,7 +24,7 @@ import {ScreenErrorBoundary, Skeleton} from '@/components/ui';
 import {WebVRService} from '@/services/webvr.service';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
-import Animated, {FadeInDown, FadeInRight, FadeInUp, Layout, LinearTransition, ZoomIn} from 'react-native-reanimated';
+import Animated, {FadeIn, FadeInUp, LinearTransition, ZoomIn} from 'react-native-reanimated';
 import type {WebVRStackParamList} from '@/types';
 
 type Nav = StackNavigationProp<WebVRStackParamList, 'WebVRHome'>;
@@ -42,8 +42,18 @@ const GRADIENT_START = {x: 0, y: 0} as const;
 const GRADIENT_END = {x: 1, y: 1} as const;
 const HEADER_GRADIENT = ['#3D2799', '#5439CC', '#6C4CFF'] as const;
 const HEADER_LOCATIONS = [0, 0.5, 1] as const;
-const BANNER_GRADIENT = ['#4F46E5', '#5D49F2', '#6C4CFF', '#8354FF', '#9B5CFF'] as const;
-const BANNER_LOCATIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+const isAndroid = Platform.OS === 'android';
+const androidCardBorder = {
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(17,24,39,0.08)',
+} as const;
+const headerIconEntering = isAndroid ? FadeIn.duration(180) : ZoomIn.duration(600).springify();
+const headerCopyEntering = isAndroid ? FadeIn.duration(180) : FadeInUp.duration(600).springify();
+const getFolderCardEntering = (index: number) =>
+  isAndroid
+    ? FadeIn.delay(index * 50).duration(180)
+    : ZoomIn.delay(index * 80).duration(600).springify();
+const folderCardLayout = isAndroid ? undefined : LinearTransition.springify();
 
 // ── Predefined environment metadata ────────────────────────────────────
 const ENVIRONMENTS: ReadonlyArray<{
@@ -112,9 +122,9 @@ const FolderCard = React.memo(function FolderCard({
   const colors = useMemo(() => [item.gradient[0], item.gradient[1]], [item.gradient]);
 
   return (
-    <Animated.View 
-      entering={ZoomIn.delay(index * 80).duration(600).springify()}
-      layout={LinearTransition.springify()}>
+    <Animated.View
+      entering={getFolderCardEntering(index)}
+      layout={folderCardLayout}>
       <TouchableOpacity
         activeOpacity={0.9}
         style={styles.card}
@@ -353,13 +363,13 @@ function WebVRContent() {
             end={GRADIENT_END}
             style={StyleSheet.absoluteFill}
           />
-          <Animated.View 
-            entering={ZoomIn.duration(600).springify()}
+          <Animated.View
+            entering={headerIconEntering}
             style={styles.bannerIconWrap}>
               <Globe size={moderateScale(30)} color="#fff" strokeWidth={1.8} />
             </Animated.View>
-          <Animated.View 
-            entering={FadeInUp.duration(600).springify()}
+          <Animated.View
+            entering={headerCopyEntering}
             style={containerStyle}>
             <Text style={styles.headerTitle}>WebVR</Text>
             <Text style={styles.headerSub}>
@@ -396,6 +406,7 @@ function WebVRContent() {
       headerPaddingTop,
       loading,
       folders.length,
+      contentWidth,
       containerStyle,
     ],
   );
@@ -526,15 +537,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: moderateScale(16),
     marginBottom: verticalScale(14),
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#6C4CFF',
-        shadowOffset: {width: 0, height: verticalScale(4)},
-        shadowOpacity: 0.2,
-        shadowRadius: moderateScale(8),
-      },
-      android: {elevation: 3},
-    }),
+    ...(isAndroid
+      ? androidCardBorder
+      : {
+          shadowColor: '#6C4CFF',
+          shadowOffset: {width: 0, height: verticalScale(4)},
+          shadowOpacity: 0.2,
+          shadowRadius: moderateScale(8),
+        }),
   },
   bannerIconWrap: {
     width: scale(57),
@@ -605,15 +615,14 @@ const styles = StyleSheet.create({
     marginBottom: CARD_MARGIN_BOTTOM,
     borderRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: {width: 0, height: verticalScale(4)},
-        shadowOpacity: 0.12,
-        shadowRadius: moderateScale(8),
-      },
-      android: {elevation: 4},
-    }),
+    ...(isAndroid
+      ? androidCardBorder
+      : {
+          shadowColor: '#000',
+          shadowOffset: {width: 0, height: verticalScale(4)},
+          shadowOpacity: 0.12,
+          shadowRadius: moderateScale(8),
+        }),
   },
   cardContainer: {
     height: CARD_HEIGHT,
