@@ -220,12 +220,28 @@ function parseFolders(response: any): FolderItem[] {
 }
 
 // ── Main content ───────────────────────────────────────────────────────
+
+import {useModals} from '@/store';
+
+
 function WebVRContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const {width: screenWidth} = useWindowDimensions();
   const {tabBarTranslateY} = useTabBarScroll();
+  const {showARWarning} = useModals();
+  const hasTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    // Only trigger once when this component/screen instance mounts
+    if (!hasTriggeredRef.current) {
+       showARWarning();
+       hasTriggeredRef.current = true;
+    }
+  }, [showARWarning]);
+
+
   const lastScrollY = useRef(0);
   const isTabletDynamic = screenWidth >= 768;
   const contentWidth = isTabletDynamic ? Math.min(screenWidth * 0.85, 720) : undefined;

@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,18 +13,21 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
+import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useNavigation} from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import {
+  AlertTriangle,
   ArrowLeft,
   Baby,
   BookOpen,
+  CheckCircle,
   ChevronRight,
   FileText,
   Fingerprint,
   Key,
+  Lock,
   LogOut,
   Mail,
   Monitor,
@@ -34,9 +37,10 @@ import {
   Sun,
   Trash2,
   UserRound,
+  UserX,
 } from 'lucide-react-native';
-import {useAuth} from '@/store';
-import {useTheme, Typography, BorderRadius, type AppColors} from '@/theme';
+import { useAuth, useModals } from '@/store';
+import { useTheme, Typography, BorderRadius, type AppColors } from '@/theme';
 import CustomAlert from '@/components/CustomAlert';
 import { AuthService } from '@/services/auth.service';
 import Animated, {
@@ -54,21 +58,19 @@ function capitalize(str: string): string {
 }
 
 export default function ProfileScreen() {
-  const {user, logout} = useAuth();
-  const {colors, mode, setMode, isDark} = useTheme();
+  const { user, logout } = useAuth();
+  const { colors, mode, setMode, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const {width} = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isTablet = width >= 768;
   const contentWidth = isTablet ? Math.min(width - scale(64), scale(960)) : undefined;
-  const contentStyle = contentWidth ? {width: contentWidth, alignSelf: 'center' as const} : undefined;
-  
+  const contentStyle = contentWidth ? { width: contentWidth, alignSelf: 'center' as const } : undefined;
+
   const [showLogout, setShowLogout] = useState(false);
-  const [activeModal, setActiveModal] = useState<'none' | 'reset' | 'delete' | 'gate'>('none');
-  const [modalStep, setModalStep] = useState<'confirm' | 'processing' | 'success' | 'input' | 'error'>('confirm');
+  const [activeModal, setActiveModal] = useState<'none' | 'reset' | 'delete'>('none');
+  const [modalStep, setModalStep] = useState<'confirm' | 'processing' | 'success' | 'input' | 'error' | 'final_confirm'>('confirm');
   const [errorMessage, setErrorMessage] = useState('');
-  const [gateInput, setGateInput] = useState('');
-  const [gateAnswer] = useState('18'); // 12 + 6
 
   // Form Inputs
   const [password, setPassword] = useState('');
@@ -82,18 +84,18 @@ export default function ProfileScreen() {
 
   React.useEffect(() => {
     if (modalVisible) {
-      opacity.value = withTiming(1, {duration: 200, easing: Easing.out(Easing.cubic)});
-      modalScale.value = withSpring(1, {damping: 18, stiffness: 280});
+      opacity.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
+      modalScale.value = withSpring(1, { damping: 18, stiffness: 280 });
     } else {
-      opacity.value = withTiming(0, {duration: 150});
-      modalScale.value = withTiming(0.9, {duration: 150});
+      opacity.value = withTiming(0, { duration: 150 });
+      modalScale.value = withTiming(0.9, { duration: 150 });
     }
   }, [modalVisible, opacity, modalScale]);
 
-  const backdropAnimStyle = useAnimatedStyle(() => ({opacity: opacity.value}));
+  const backdropAnimStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const cardAnimStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{scale: modalScale.value}],
+    transform: [{ scale: modalScale.value }],
   }));
 
   const displayName = capitalize(user?.name || 'User');
@@ -103,7 +105,6 @@ export default function ProfileScreen() {
   const resetModal = () => {
     setActiveModal('none');
     setModalStep('confirm');
-    setGateInput('');
     setPassword('');
     setOldPassword('');
     setNewPassword('');
@@ -125,9 +126,13 @@ export default function ProfileScreen() {
     setModalStep('confirm');
   };
 
+  const { checkParentGate, openExternalUrl } = useModals();
+
   const startParentGate = () => {
-    setActiveModal('gate');
-    setModalStep('input');
+    checkParentGate(() => {
+      // This callback runs only after successful gate solve
+      Alert.alert('Success', 'Parental identity verified! Parental controls unlocked.');
+    });
   };
 
   const processResetPassword = async () => {
@@ -153,44 +158,53 @@ export default function ProfileScreen() {
 
   const processDeleteAccount = async () => {
     if (!password) {
-      setErrorMessage('Please enter your password to confirm.');
+      setErrorMessage('Please enter your password to proceed.');
       setModalStep('error');
       return;
     }
 
+    // Step forward to final confirmation instead of immediately deleting
+    setModalStep('final_confirm');
+  };
+
+
+
+  const executeFinalDelete = async () => {
     setModalStep('processing');
     try {
-      await AuthService.deleteAccount({
+      const response = await AuthService.deleteAccount({
         email: user?.email || '',
         password
       });
+
+      // If we reach here, the server responded with 2xx. 
+      // Most servers use 401/400 for errors, but just in case check the body if it's there.
+      const data = response.data as any;
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Incorrect password.');
+      }
+
       setModalStep('success');
       setTimeout(() => {
+        // Double check we are still on the delete modal before logging out
         resetModal();
         logout();
       }, 2000);
     } catch (error: any) {
-      setErrorMessage(error?.response?.data?.message || error?.message || 'Failed to delete account');
+      // Clear password for security if it failed
+      setPassword('');
+
+      const msg = error?.response?.data?.message || error?.message || 'Failed to delete account. Please verify your password.';
+      setErrorMessage(msg);
       setModalStep('error');
     }
   };
 
-  const verifyParentGate = () => {
-    /* 
-       INFO: REPLACE VALIDATION WITH YOUR LOGIC
-       Currently checking if input matches '18' (12 + 6)
-    */
-    if (gateInput === gateAnswer) {
-      setModalStep('success');
-      setTimeout(() => resetModal(), 1500);
-    } else {
-      setErrorMessage('Verification failed. Please solve the problem correctly to proceed.');
-      setModalStep('error');
-    }
-  };
+
+
 
   return (
-    <View style={[styles.root, {backgroundColor: colors.background}]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <StatusBar
         barStyle={isDark ? 'light-content' : 'dark-content'}
         backgroundColor="transparent"
@@ -201,20 +215,20 @@ export default function ProfileScreen() {
       <View
         style={[
           styles.header,
-          {paddingTop: insets.top + verticalScale(8)},
+          { paddingTop: insets.top + verticalScale(8) },
           contentStyle,
         ]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
-          style={[styles.backBtn, {backgroundColor: colors.card, borderColor: colors.divider}]}>
+          style={[styles.backBtn, { backgroundColor: colors.card, borderColor: colors.divider }]}>
           <ArrowLeft size={moderateScale(20)} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, {color: colors.text}]}>Profile</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Profile</Text>
       </View>
 
       <ScrollView
-        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(100)}}
+        contentContainerStyle={{ paddingBottom: insets.bottom + verticalScale(100) }}
         showsVerticalScrollIndicator={false}>
 
         {/* ── Avatar Section ───────────────────────── */}
@@ -222,23 +236,23 @@ export default function ProfileScreen() {
           <LinearGradient
             colors={colors.gradient.primary}
             locations={[0, 1]}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 1}}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.avatarOuter}>
             <View style={styles.avatarInner}>
               <Text style={styles.avatarText}>{avatarLetter}</Text>
             </View>
           </LinearGradient>
 
-          <Text style={[styles.nameText, {color: colors.text}]}>{displayName}</Text>
-          <Text style={[styles.emailText, {color: colors.textSecondary}]}>
+          <Text style={[styles.nameText, { color: colors.text }]}>{displayName}</Text>
+          <Text style={[styles.emailText, { color: colors.textSecondary }]}>
             {user?.email || 'No email'}
           </Text>
 
           {user?.role && (
-            <View style={[styles.badge, {backgroundColor: colors.primarySurface}]}>
+            <View style={[styles.badge, { backgroundColor: colors.primarySurface }]}>
               <Shield size={moderateScale(13)} color={colors.primary} />
-              <Text style={[styles.badgeText, {color: colors.primary}]}>
+              <Text style={[styles.badgeText, { color: colors.primary }]}>
                 {capitalize(user.role)}
               </Text>
             </View>
@@ -247,11 +261,11 @@ export default function ProfileScreen() {
 
         {/* ── Info Cards ───────────────────────────── */}
         <View style={[styles.cardsContainer, contentStyle]}>
-          <Text style={[styles.sectionLabel, {color: colors.textTertiary}]}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
             ACCOUNT
           </Text>
 
-          <View style={[styles.groupCard, {backgroundColor: colors.card, borderColor: colors.divider}]}>
+          <View style={[styles.groupCard, { backgroundColor: colors.card, borderColor: colors.divider }]}>
             <CardRow
               icon={<UserRound size={moderateScale(18)} color={colors.primary} />}
               iconBg={colors.primarySurface}
@@ -293,20 +307,20 @@ export default function ProfileScreen() {
 
         {/* ── Theme Picker ─────────────────────────── */}
         <View style={[styles.cardsContainer, contentStyle]}>
-          <Text style={[styles.sectionLabel, {color: colors.textTertiary}]}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
             APPEARANCE
           </Text>
 
-          <View style={[styles.groupCard, styles.themePad, {backgroundColor: colors.card, borderColor: colors.divider}]}>
+          <View style={[styles.groupCard, styles.themePad, { backgroundColor: colors.card, borderColor: colors.divider }]}>
             <View style={styles.themeHeader}>
               <Palette size={moderateScale(16)} color={colors.textSecondary} />
-              <Text style={[styles.themeHeaderText, {color: colors.text}]}>Theme</Text>
+              <Text style={[styles.themeHeaderText, { color: colors.text }]}>Theme</Text>
             </View>
-            <View style={[styles.themePicker, {backgroundColor: colors.background, borderColor: colors.divider}]}>
+            <View style={[styles.themePicker, { backgroundColor: colors.background, borderColor: colors.divider }]}>
               {([
-                {v: 'light' as ThemeMode, l: 'Light', I: Sun},
-                {v: 'dark' as ThemeMode, l: 'Dark', I: Moon},
-                {v: 'system' as ThemeMode, l: 'Auto', I: Monitor},
+                { v: 'light' as ThemeMode, l: 'Light', I: Sun },
+                { v: 'dark' as ThemeMode, l: 'Dark', I: Moon },
+                { v: 'system' as ThemeMode, l: 'Auto', I: Monitor },
               ]).map(opt => {
                 const active = mode === opt.v;
                 return (
@@ -319,8 +333,8 @@ export default function ProfileScreen() {
                       <LinearGradient
                         colors={colors.gradient.primary}
                         locations={[0, 1]}
-                        start={{x: 0, y: 0}}
-                        end={{x: 1, y: 1}}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
                         style={styles.themeOptionGradient}>
                         <opt.I size={moderateScale(16)} color="#fff" />
                         <Text style={styles.themeActiveLabel}>{opt.l}</Text>
@@ -328,7 +342,7 @@ export default function ProfileScreen() {
                     ) : (
                       <>
                         <opt.I size={moderateScale(16)} color={colors.textTertiary} />
-                        <Text style={[styles.themeLabel, {color: colors.textSecondary}]}>
+                        <Text style={[styles.themeLabel, { color: colors.textSecondary }]}>
                           {opt.l}
                         </Text>
                       </>
@@ -342,11 +356,11 @@ export default function ProfileScreen() {
 
         {/* ── Security & Support ───────────────────── */}
         <View style={[styles.cardsContainer, contentStyle]}>
-          <Text style={[styles.sectionLabel, {color: colors.textTertiary}]}>
+          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
             SECURITY & SUPPORT
           </Text>
 
-          <View style={[styles.groupCard, {backgroundColor: colors.card, borderColor: colors.divider}]}>
+          <View style={[styles.groupCard, { backgroundColor: colors.card, borderColor: colors.divider }]}>
             <TouchableOpacity activeOpacity={0.7} onPress={startResetPassword}>
               <CardRow
                 icon={<Key size={moderateScale(18)} color="#F43F5E" />}
@@ -357,7 +371,7 @@ export default function ProfileScreen() {
               />
             </TouchableOpacity>
             <Divider color={colors.divider} />
-            
+
             <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('PrivacyPolicy')}>
               <CardRow
                 icon={<FileText size={moderateScale(18)} color="#3B82F6" />}
@@ -369,11 +383,26 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <Divider color={colors.divider} />
 
-            <TouchableOpacity activeOpacity={0.7} onPress={startParentGate}>
+            {/* <TouchableOpacity activeOpacity={0.7} onPress={startParentGate}>
               <CardRow
                 icon={<Baby size={moderateScale(18)} color="#10B981" />}
                 iconBg={isDark ? '#064E3B' : '#ECFDF5'}
                 value="Parent Gate"
+                colors={colors}
+                showChevron
+              />
+            </TouchableOpacity> */}
+
+            <Divider color={colors.divider} />
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => openExternalUrl('https://sanfort.ilifelearn.com/')}
+            >
+              <CardRow
+                icon={<Lock size={moderateScale(18)} color="#6366F1" />}
+                iconBg={isDark ? '#1E1B4B' : '#EEF2FF'}
+                value="Visit Website"
                 colors={colors}
                 showChevron
               />
@@ -386,35 +415,35 @@ export default function ProfileScreen() {
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => setShowLogout(true)}
-            style={[styles.logoutRow, {backgroundColor: colors.card, borderColor: colors.divider}]}>
-            <View style={[styles.logoutIcon, {backgroundColor: isDark ? '#1E1B4B' : '#EEF2FF'}]}>
+            style={[styles.logoutRow, { backgroundColor: colors.card, borderColor: colors.divider }]}>
+            <View style={[styles.logoutIcon, { backgroundColor: isDark ? '#1E1B4B' : '#EEF2FF' }]}>
               <LogOut size={moderateScale(18)} color={colors.primary} />
             </View>
-            <Text style={[styles.logoutText, {color: colors.text}]}>Log Out</Text>
+            <Text style={[styles.logoutText, { color: colors.text }]}>Log Out</Text>
             <ChevronRight size={moderateScale(16)} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
 
         {/* ── Danger Zone ───────────────────────────── */}
         <View style={[styles.cardsContainer, contentStyle]}>
-          <Text style={[styles.sectionLabel, {color: colors.error}]}>DANGER ZONE</Text>
+          <Text style={[styles.sectionLabel, { color: colors.error }]}>DANGER ZONE</Text>
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={startDeleteAccount}
             style={[styles.logoutRow, {
-              backgroundColor: isDark ? '#2A1215' : '#FFF1F2', 
+              backgroundColor: isDark ? '#2A1215' : '#FFF1F2',
               borderColor: colors.error + '30',
             }]}>
-            <View style={[styles.logoutIcon, {backgroundColor: colors.error}]}>
+            <View style={[styles.logoutIcon, { backgroundColor: colors.error }]}>
               <Trash2 size={moderateScale(16)} color="#fff" />
             </View>
-            <Text style={[styles.logoutText, {color: colors.error, fontWeight: '700'}]}>Delete Account</Text>
+            <Text style={[styles.logoutText, { color: colors.error, fontWeight: '700' }]}>Delete Account</Text>
             <ChevronRight size={moderateScale(16)} color={colors.error + '60'} />
           </TouchableOpacity>
         </View>
 
         {/* ── App Version ──────────────────────────── */}
-        <Text style={[styles.versionText, {color: colors.textTertiary}]}>
+        <Text style={[styles.versionText, { color: colors.textTertiary }]}>
           iLife Learn v1.0.0
         </Text>
 
@@ -429,29 +458,29 @@ export default function ProfileScreen() {
         <View style={styles.modalRoot}>
           {/* Backdrop */}
           <Animated.View style={[styles.modalOverlay, backdropAnimStyle]}>
-            <TouchableOpacity 
-              activeOpacity={1} 
-              style={{flex: 1}} 
-              onPress={modalStep !== 'processing' ? resetModal : undefined} 
+            <TouchableOpacity
+              activeOpacity={1}
+              style={{ flex: 1 }}
+              onPress={modalStep !== 'processing' ? resetModal : undefined}
             />
           </Animated.View>
 
           {/* Card */}
           <View style={styles.modalCenter} pointerEvents="box-none">
-            <Animated.View style={[styles.modalCard, {backgroundColor: colors.card}, cardAnimStyle]}>
+            <Animated.View style={[styles.modalCard, { backgroundColor: colors.card }, cardAnimStyle]}>
               {/* ── Standard Error View ──────────────────────── */}
               {modalStep === 'error' && (
                 <>
-                  <View style={[styles.statusIcon, {backgroundColor: isDark ? '#450A0A' : '#FEF2F2'}]}>
-                    <Text style={{fontSize: 32}}>⚠️</Text>
+                  <View style={[styles.statusIcon, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }]}>
+                    <AlertTriangle size={moderateScale(32)} color="#EF4444" />
                   </View>
-                  <Text style={[styles.modalTitle, {color: colors.error}]}>Action Failed</Text>
-                  <Text style={[styles.modalDesc, {color: colors.textSecondary, textAlign: 'center'}]}>
+                  <Text style={[styles.modalTitle, { color: colors.error }]}>Action Failed</Text>
+                  <Text style={[styles.modalDesc, { color: colors.textSecondary, textAlign: 'center' }]}>
                     {errorMessage || "Something went wrong. Please try again later."}
                   </Text>
-                  <TouchableOpacity 
-                    style={[styles.modalBtn, {backgroundColor: colors.primary}]} 
-                    onPress={() => setModalStep(activeModal === 'gate' ? 'input' : 'confirm')}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => setModalStep('confirm')}>
                     <Text style={styles.modalBtnText}>Try Again</Text>
                   </TouchableOpacity>
                 </>
@@ -459,15 +488,15 @@ export default function ProfileScreen() {
 
               {activeModal === 'reset' && modalStep !== 'error' && (
                 <>
-                  <Text style={[styles.modalTitle, {color: colors.text}]}>Reset Password</Text>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Reset Password</Text>
                   {modalStep === 'confirm' && (
                     <>
-                      <Text style={[styles.modalDesc, {color: colors.textSecondary}]}>
-                        Updating password for <Text style={{fontWeight: '700'}}>{user?.email}</Text>
+                      <Text style={[styles.modalDesc, { color: colors.textSecondary }]}>
+                        Updating password for <Text style={{ fontWeight: '700' }}>{user?.email}</Text>
                       </Text>
-                      
+
                       <TextInput
-                        style={[styles.modalInput, styles.passwordInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
+                        style={[styles.modalInput, styles.passwordInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.divider }]}
                         placeholder="Current Password"
                         secureTextEntry
                         placeholderTextColor={colors.textTertiary}
@@ -476,7 +505,7 @@ export default function ProfileScreen() {
                       />
 
                       <TextInput
-                        style={[styles.modalInput, styles.passwordInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
+                        style={[styles.modalInput, styles.passwordInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.divider }]}
                         placeholder="New Password"
                         secureTextEntry
                         placeholderTextColor={colors.textTertiary}
@@ -484,7 +513,7 @@ export default function ProfileScreen() {
                         onChangeText={setNewPassword}
                       />
 
-                      <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.primary}]} onPress={processResetPassword}>
+                      <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={processResetPassword}>
                         <Text style={styles.modalBtnText}>Update Password</Text>
                       </TouchableOpacity>
                     </>
@@ -492,18 +521,18 @@ export default function ProfileScreen() {
                   {modalStep === 'processing' && (
                     <View style={styles.modalContent}>
                       <ActivityIndicator size="large" color={colors.primary} />
-                      <Text style={[styles.modalInfo, {color: colors.textTertiary}]}>Updating...</Text>
+                      <Text style={[styles.modalInfo, { color: colors.textTertiary }]}>Updating...</Text>
                     </View>
                   )}
                   {modalStep === 'success' && (activeModal === 'reset') && (
                     <>
-                      <View style={[styles.statusIcon, {backgroundColor: isDark ? '#064E3B' : '#ECFDF4'}]}>
-                        <Text style={{fontSize: 32}}>🔐</Text>
+                      <View style={[styles.statusIcon, { backgroundColor: isDark ? '#064E3B' : '#ECFDF4' }]}>
+                        <CheckCircle size={moderateScale(32)} color="#10B981" />
                       </View>
-                      <Text style={[styles.modalDesc, {color: colors.textSecondary, textAlign: 'center'}]}>
+                      <Text style={[styles.modalDesc, { color: colors.textSecondary, textAlign: 'center' }]}>
                         Password has been successfully updated!
                       </Text>
-                      <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.primary}]} onPress={resetModal}>
+                      <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={resetModal}>
                         <Text style={styles.modalBtnText}>Close</Text>
                       </TouchableOpacity>
                     </>
@@ -513,16 +542,31 @@ export default function ProfileScreen() {
 
               {activeModal === 'delete' && modalStep !== 'error' && (
                 <>
-                  <Text style={[styles.modalTitle, {color: colors.text}]}>Delete Account</Text>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Account</Text>
                   {modalStep === 'confirm' && (
                     <>
-                      <Text style={[styles.modalDesc, {color: colors.textSecondary}]}>
-                        Enter your password to permanently delete <Text style={{fontWeight: '700'}}>{user?.email}</Text>
+                      <Text style={[styles.modalDesc, { color: colors.textSecondary, marginBottom: verticalScale(16) }]}>
+                        Are you sure you want to delete your account? This will permanently remove <Text style={{ fontWeight: '700', color: colors.text }}>{user?.email}</Text>.
                       </Text>
 
+                      <View style={styles.warningContainer}>
+                        <Text style={styles.warningText}>
+                          Warning: This action cannot be undone. All your progress, favorites, and profile data will be lost forever.
+                        </Text>
+                      </View>
+
                       <TextInput
-                        style={[styles.modalInput, styles.passwordInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
-                        placeholder="Password"
+                        style={[
+                          styles.modalInput,
+                          styles.passwordInput,
+                          {
+                            backgroundColor: colors.background,
+                            color: colors.text,
+                            borderColor: colors.divider,
+                            marginTop: verticalScale(16)
+                          }
+                        ]}
+                        placeholder="Confirm with Password"
                         secureTextEntry
                         placeholderTextColor={colors.textTertiary}
                         value={password}
@@ -530,23 +574,56 @@ export default function ProfileScreen() {
                         autoFocus
                       />
 
-                      <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.error}]} onPress={processDeleteAccount}>
-                        <Text style={styles.modalBtnText}>Confirm Deletion</Text>
+                      <TouchableOpacity
+                        style={[styles.modalBtn, { backgroundColor: colors.error, marginTop: verticalScale(8) }]}
+                        onPress={processDeleteAccount}>
+                        <Text style={styles.modalBtnText}>Confirm Delete</Text>
                       </TouchableOpacity>
+                    </>
+                  )}
+
+                  {modalStep === 'final_confirm' && (
+                    <>
+                      <View style={[styles.statusIcon, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }]}>
+                        <Trash2 size={moderateScale(32)} color="#EF4444" />
+                      </View>
+                      <Text style={[styles.modalTitle, { color: colors.error }]}>Final Confirmation</Text>
+                      <Text style={[styles.modalDesc, { color: colors.textSecondary, marginBottom: verticalScale(16) }]}>
+                        Are you absolutely sure you want to delete your account? This action is <Text style={{ fontWeight: '800', color: colors.error }}>permanent</Text> and cannot be reversed.
+                      </Text>
+
+                      <View style={styles.warningContainer}>
+                        <Text style={styles.warningText}>
+                          Warning: All your progress, favorites, and profile data for <Text style={{ fontWeight: '700' }}>{user?.email}</Text> will be lost forever.
+                        </Text>
+                      </View>
+
+                      <View style={[styles.finalBtnRow, { marginTop: verticalScale(20) }]}>
+                        <TouchableOpacity
+                          style={[styles.finalBtn, styles.finalBtnNo, { borderColor: colors.divider }]}
+                          onPress={resetModal}>
+                          <Text style={[styles.finalBtnText, { color: colors.textSecondary }]}>No, Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.finalBtn, styles.finalBtnYes, { backgroundColor: colors.error }]}
+                          onPress={executeFinalDelete}>
+                          <Text style={[styles.finalBtnText, { color: '#fff' }]}>Yes, Delete</Text>
+                        </TouchableOpacity>
+                      </View>
                     </>
                   )}
                   {modalStep === 'processing' && (
                     <View style={styles.modalContent}>
                       <ActivityIndicator size="large" color={colors.error} />
-                      <Text style={[styles.modalInfo, {color: colors.textTertiary}]}>Wiping data...</Text>
+                      <Text style={[styles.modalInfo, { color: colors.textTertiary }]}>Wiping data...</Text>
                     </View>
                   )}
                   {modalStep === 'success' && (activeModal === 'delete') && (
                     <>
-                      <View style={[styles.statusIcon, {backgroundColor: isDark ? '#450A0A' : '#FEF2F2'}]}>
-                        <Text style={{fontSize: 32}}>👋</Text>
+                      <View style={[styles.statusIcon, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }]}>
+                        <UserX size={moderateScale(32)} color="#EF4444" />
                       </View>
-                      <Text style={[styles.modalDesc, {color: colors.textSecondary, textAlign: 'center'}]}>
+                      <Text style={[styles.modalDesc, { color: colors.textSecondary, textAlign: 'center' }]}>
                         Account deleted. Logging you out...
                       </Text>
                     </>
@@ -554,45 +631,9 @@ export default function ProfileScreen() {
                 </>
               )}
 
-              {activeModal === 'gate' && modalStep !== 'error' && (
-                <>
-                  <Text style={[styles.modalTitle, {color: colors.text}]}>Parent Gate</Text>
-                  {modalStep === 'input' && (
-                    <>
-                      <Text style={[styles.modalDesc, {color: colors.textSecondary}]}>
-                        Please solve this math problem to continue:
-                      </Text>
-                      <Text style={[styles.mathQuestion, {color: colors.primary}]}>12 + 6 = ?</Text>
-                      <TextInput
-                        style={[styles.modalInput, {backgroundColor: colors.background, color: colors.text, borderColor: colors.divider}]}
-                        placeholder="Enter answer"
-                        placeholderTextColor={colors.textTertiary}
-                        keyboardType="number-pad"
-                        value={gateInput}
-                        onChangeText={setGateInput}
-                        autoFocus
-                      />
-                      <TouchableOpacity style={[styles.modalBtn, {backgroundColor: colors.primary}]} onPress={verifyParentGate}>
-                        <Text style={styles.modalBtnText}>Verify</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                  {modalStep === 'success' && (activeModal === 'gate') && (
-                    <>
-                      <View style={[styles.statusIcon, {backgroundColor: isDark ? '#064E3B' : '#ECFDF4'}]}>
-                        <Text style={{fontSize: 32}}>🔑</Text>
-                      </View>
-                      <Text style={[styles.modalDesc, {color: colors.textSecondary, textAlign: 'center'}]}>
-                        Identity Verified! Access granted.
-                      </Text>
-                    </>
-                  )}
-                </>
-              )}
-
-              {modalStep !== 'processing' && modalStep !== 'success' && (
+              {modalStep !== 'processing' && modalStep !== 'success' && modalStep !== 'final_confirm' && (
                 <TouchableOpacity style={styles.modalCancel} onPress={resetModal}>
-                  <Text style={[styles.modalCancelText, {color: colors.textTertiary}]}>Cancel</Text>
+                  <Text style={[styles.modalCancelText, { color: colors.textTertiary }]}>Cancel</Text>
                 </TouchableOpacity>
               )}
             </Animated.View>
@@ -629,15 +670,15 @@ function CardRow({
 }) {
   return (
     <View style={styles.row}>
-      <View style={[styles.rowIcon, {backgroundColor: iconBg}]}>{icon}</View>
+      <View style={[styles.rowIcon, { backgroundColor: iconBg }]}>{icon}</View>
       <View style={styles.rowBody}>
-        {label && <Text style={[styles.rowLabel, {color: colors.textTertiary}]}>{label}</Text>}
+        {label && <Text style={[styles.rowLabel, { color: colors.textTertiary }]}>{label}</Text>}
         <Text
           style={[
-            styles.rowValue, 
-            {color: colors.text}, 
+            styles.rowValue,
+            { color: colors.text },
             mono && styles.mono,
-            !label && {marginTop: 0}
+            !label && { marginTop: 0 }
           ]}
           numberOfLines={1}>
           {value}
@@ -651,13 +692,13 @@ function CardRow({
 }
 
 // ─── Divider ──────────────────────────────────────────────────────────
-function Divider({color}: {color: string}) {
-  return <View style={[styles.divider, {backgroundColor: color}]} />;
+function Divider({ color }: { color: string }) {
+  return <View style={[styles.divider, { backgroundColor: color }]} />;
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: {flex: 1},
+  root: { flex: 1 },
 
   // Header
   header: {
@@ -761,7 +802,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: scale(12),
   },
-  rowBody: {flex: 1},
+  rowBody: { flex: 1 },
   rowLabel: {
     fontSize: moderateScale(11),
     fontWeight: '500',
@@ -884,11 +925,11 @@ const styles = StyleSheet.create({
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: {width: 0, height: 10},
+        shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.25,
         shadowRadius: 15,
       },
-      android: {elevation: 10},
+      android: { elevation: 10 },
     }),
   },
   modalTitle: {
@@ -961,4 +1002,44 @@ const styles = StyleSheet.create({
     height: verticalScale(48),
     marginBottom: verticalScale(12),
   },
+  warningContainer: {
+    width: '100%',
+    padding: scale(14),
+    backgroundColor: '#FFF1F2',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    marginBottom: verticalScale(4),
+  },
+  warningText: {
+    color: '#BE123C',
+    fontSize: moderateScale(12),
+    textAlign: 'center',
+    lineHeight: moderateScale(18),
+    fontWeight: '600',
+  },
+  finalBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: scale(10),
+  },
+  finalBtn: {
+    flex: 1,
+    height: verticalScale(48),
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finalBtnNo: {
+    borderWidth: 1.5,
+  },
+  finalBtnYes: {
+    // shadow
+  },
+  finalBtnText: {
+    fontSize: moderateScale(14),
+    fontWeight: '700',
+  },
 });
+
+

@@ -27,16 +27,19 @@ import Video, {
   type OnProgressData,
 } from 'react-native-video';
 import Orientation from 'react-native-orientation-locker';
+import {moderateScale} from 'react-native-size-matters';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
-  X,
-  Volume2,
-  VolumeX,
-  RotateCcw,
+  AlertCircle,
   ChevronDown,
   ChevronUp,
   Glasses,
+  Globe,
   MoreHorizontal,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  X,
 } from 'lucide-react-native';
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -522,7 +525,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
           />
         ) : (
           <View style={styles.noVideo}>
-            <Text style={styles.noVideoIcon}>🌐</Text>
+            <Globe size={moderateScale(48)} color="rgba(255,255,255,0.4)" strokeWidth={1.5} />
             <Text style={styles.noVideoText}>No video content available</Text>
           </View>
         )}
@@ -675,7 +678,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
         {/* ── Error overlay (only for actual errors) ── */}
         {videoError && (
           <View style={styles.errorOverlay}>
-            <Text style={styles.errorIcon}>!</Text>
+            <AlertCircle size={moderateScale(40)} color="#EF4444" strokeWidth={2.5} />
             <Text style={styles.errorTitle}>Failed to Load</Text>
             <Text style={styles.errorDesc}>
               Unable to load the WebVR experience.{'\n'}Check your connection and try again.

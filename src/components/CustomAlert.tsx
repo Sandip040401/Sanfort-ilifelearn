@@ -14,7 +14,9 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
+import {AlertTriangle, CheckCircle2, Info, XCircle} from 'lucide-react-native';
 import {useTheme} from '@/theme';
+import {moderateScale} from 'react-native-size-matters';
 
 export type AlertType = 'error' | 'success' | 'warning' | 'info';
 
@@ -30,11 +32,11 @@ export interface CustomAlertProps {
   onDismiss:  () => void;
 }
 
-const TYPE_CONFIG: Record<AlertType, {emoji: string; color: string; bg: string}> = {
-  error:   {emoji: '❌', color: '#EF4444', bg: '#FEF2F2'},
-  success: {emoji: '✅', color: '#22C55E', bg: '#F0FDF4'},
-  warning: {emoji: '⚠️', color: '#F59E0B', bg: '#FFFBEB'},
-  info:    {emoji: 'ℹ️', color: '#3B82F6', bg: '#EFF6FF'},
+const TYPE_CONFIG: Record<AlertType, {icon: any; color: string; bg: string}> = {
+  error:   {icon: XCircle, color: '#EF4444', bg: '#FEF2F2'},
+  success: {icon: CheckCircle2, color: '#22C55E', bg: '#F0FDF4'},
+  warning: {icon: AlertTriangle, color: '#F59E0B', bg: '#FFFBEB'},
+  info:    {icon: Info, color: '#3B82F6', bg: '#EFF6FF'},
 };
 
 export default function CustomAlert({
@@ -50,6 +52,7 @@ export default function CustomAlert({
 }: CustomAlertProps) {
   const {colors} = useTheme();
   const cfg      = TYPE_CONFIG[type];
+  const Icon     = cfg.icon;
 
   const scale   = useSharedValue(0.85);
   const opacity = useSharedValue(0);
@@ -100,7 +103,7 @@ export default function CustomAlert({
 
           {/* Icon circle */}
           <View style={[styles.iconCircle, {backgroundColor: cfg.bg}]}>
-            <Text style={styles.iconEmoji}>{cfg.emoji}</Text>
+            <Icon size={moderateScale(32)} color={cfg.color} strokeWidth={2.5} />
           </View>
 
           {/* Title */}
@@ -170,7 +173,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 16,
   },
-  iconEmoji: {fontSize: 32},
   title:     {fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 8},
   message:   {fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 20},
   divider:   {width: '100%', height: 1, marginBottom: 16},
@@ -185,3 +187,4 @@ const styles = StyleSheet.create({
   btnPriText:   {fontSize: 15, fontWeight: '700', color: '#fff'},
   btnSecText:   {fontSize: 15, fontWeight: '600'},
 });
+
