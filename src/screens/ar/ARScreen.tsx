@@ -33,6 +33,7 @@ import {
   TriangleAlert,
 } from 'lucide-react-native';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
+import ARInstructionModal from '@/components/ARInstructionModal';
 import { useScreenReady } from '@/hooks/useScreenReady';
 import { ARService } from '@/services';
 import { API_BASE_URL } from '@/config';
@@ -572,6 +573,8 @@ function ARScreenContent() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
   const { tabBarTranslateY } = useTabBarScroll();
   const lastScrollY = useRef(0);
+  const [instructionVisible, setInstructionVisible] = useState(false);
+  const [scanningModel, setScanningModel] = useState<ARModel | null>(null);
 
   const modelsQuery = useQuery({
     queryKey: ['ar-models'],
@@ -656,7 +659,7 @@ function ARScreenContent() {
     });
   };
 
-  const handleScanModel = async (model: ARModel) => {
+  const startActualScan = async (model: ARModel) => {
     if (Platform.OS !== 'android') {
       Alert.alert('Not Supported', 'AR Scan is currently available on Android only.');
       return;
@@ -713,6 +716,11 @@ function ARScreenContent() {
     }
   };
 
+  const handleScanModel = (model: ARModel) => {
+    setScanningModel(model);
+    setInstructionVisible(true);
+  };
+
   if (loading) {
     return <ARLoading />;
   }
@@ -731,6 +739,7 @@ function ARScreenContent() {
   }
 
   return (
+    <>
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <StatusBar translucent backgroundColor="transparent" barStyle={isDark ? 'light-content' : 'dark-content'} />
       {selectedEnvironment ? (
@@ -758,7 +767,20 @@ function ARScreenContent() {
           onScroll={handleScroll}
         />
       )}
+     
     </SafeAreaView>
+    
+     <ARInstructionModal
+        visible={instructionVisible}
+        onClose={() => setInstructionVisible(false)}
+        onStartScan={() => {
+          setInstructionVisible(false);
+          if (scanningModel) {
+            startActualScan(scanningModel);
+          }
+        }}
+      />
+    </>
   );
 }
 
