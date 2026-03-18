@@ -17,10 +17,10 @@ import {
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
-import {Eye, EyeOff, Lock, LogIn, Mail, Sparkles} from 'lucide-react-native';
+import {Eye, EyeOff, HelpCircle, Lock, LogIn, Mail, Sparkles} from 'lucide-react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import CustomAlert from '@/components/CustomAlert';
-import {useAuth} from '@/store';
+import {useAuth, useModals} from '@/store';
 import {useTheme} from '@/theme';
 import {AuthService} from '@/services';
 import type {AuthStackParamList} from '@/types';
@@ -48,6 +48,7 @@ function validateFields(email: string, password: string): FieldErrors {
 export default function LoginScreen({navigation}: Props) {
   const {colors} = useTheme();
   const {login}  = useAuth();
+  const {openExternalUrl} = useModals();
   const insets   = useSafeAreaInsets();
   const {width: screenWidth, height: screenHeight} = useWindowDimensions();
   const isTablet = screenWidth >= 768;
@@ -309,6 +310,15 @@ export default function LoginScreen({navigation}: Props) {
         onDismiss={() => setAlertVisible(false)}
       />
 
+      <TouchableOpacity
+        style={[styles.helpBtn, {backgroundColor: colors.surface, borderColor: colors.border}]}
+        onPress={() => openExternalUrl('https://ilifelearn.com/contact-us')}
+        activeOpacity={0.8}
+      >
+        <HelpCircle size={moderateScale(18)} color={colors.primary} />
+        <Text style={[styles.helpBtnText, {color: colors.textSecondary}]}>Need Help?</Text>
+      </TouchableOpacity>
+
     </SafeAreaView>
   );
 }
@@ -372,5 +382,26 @@ const styles = StyleSheet.create({
   },
   delText: {
     fontSize: moderateScale(13),
+  },
+  helpBtn: {
+    position: 'absolute',
+    bottom: verticalScale(30),
+    right: scale(20),
+    paddingHorizontal: scale(14),
+    height: verticalScale(40),
+    borderRadius: moderateScale(20),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  helpBtnText: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
   },
 });

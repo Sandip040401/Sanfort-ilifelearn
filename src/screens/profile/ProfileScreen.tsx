@@ -26,6 +26,8 @@ import {
   ChevronRight,
   FileText,
   Fingerprint,
+  Globe,
+  HelpCircle,
   Key,
   Lock,
   LogOut,
@@ -381,7 +383,23 @@ export default function ProfileScreen() {
                 showChevron
               />
             </TouchableOpacity>
+
             <Divider color={colors.divider} />
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => openExternalUrl('https://sanfort.ilifelearn.com/contact-us')}
+            >
+              <CardRow
+                icon={<HelpCircle size={moderateScale(18)} color="#6366F1" />}
+                iconBg={isDark ? '#1E1B4B' : '#EEF2FF'}
+                value="Contact Us"
+                colors={colors}
+                showChevron
+              />
+            </TouchableOpacity>
+
+            {/* <Divider color={colors.divider} /> */}
 
             {/* <TouchableOpacity activeOpacity={0.7} onPress={startParentGate}>
               <CardRow
@@ -400,13 +418,15 @@ export default function ProfileScreen() {
               onPress={() => openExternalUrl('https://sanfort.ilifelearn.com/')}
             >
               <CardRow
-                icon={<Lock size={moderateScale(18)} color="#6366F1" />}
+                icon={<Globe size={moderateScale(18)} color="#6366F1" />}
                 iconBg={isDark ? '#1E1B4B' : '#EEF2FF'}
                 value="Visit Website"
                 colors={colors}
                 showChevron
               />
             </TouchableOpacity>
+
+            
           </View>
         </View>
 
