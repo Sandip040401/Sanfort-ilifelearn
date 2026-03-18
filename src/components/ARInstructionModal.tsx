@@ -354,14 +354,16 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
+    maxWidth: scale(450),
     maxHeight: '85%',
+    minHeight:'0%',
     borderRadius: moderateScale(20),
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 10},
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 15,
-    elevation: 20,
+    elevation: 10,
     paddingBottom: verticalScale(10),
   },
   contentWrapper: {
@@ -371,6 +373,7 @@ const styles = StyleSheet.create({
   },
   stepContent: {
     width: '100%',
+    maxHeight:'100%',
   },
   warningHeader: {
     flexDirection: 'row',
