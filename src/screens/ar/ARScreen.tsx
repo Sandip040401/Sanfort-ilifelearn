@@ -11,11 +11,20 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
+  FlatList,
+  Dimensions,
 } from 'react-native';
-import Animated, { FadeIn, FadeInDown, LinearTransition, ZoomIn } from 'react-native-reanimated';
+import {
+  BottomSheetModal,
+  BottomSheetView,
+  BottomSheetBackdrop,
+  BottomSheetBackdropProps,
+} from '@gorhom/bottom-sheet';
+import Animated, { FadeIn, FadeInDown, FadeInUp, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
@@ -30,6 +39,9 @@ import {
   Image as ImageIcon,
   RefreshCcw,
   TriangleAlert,
+  Search,
+  Scan,
+  X,
 } from 'lucide-react-native';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
 import ARInstructionModal from '@/components/ARInstructionModal';
@@ -123,7 +135,28 @@ const getGalleryCardEntering = (index: number) =>
     : FadeInDown.delay(index * 100).duration(600).springify();
 const galleryLayoutTransition = isAndroid ? undefined : LinearTransition.springify();
 
+const { width: SCREEN_W } = Dimensions.get('window');
+const headerIconEntering = isAndroid ? FadeIn.duration(180) : ZoomIn.duration(600).springify();
+const headerCopyEntering = isAndroid ? FadeIn.duration(180) : FadeInUp.duration(600).springify();
+
+// -- Premium Design Constants (WebVR Style) --
+const H_PAD = scale(16);
+const GAP = scale(12);
+const CARD_MARGIN_BOTTOM = verticalScale(12);
+const CARD_BORDER_RADIUS = moderateScale(20);
+const GRADIENT_START = { x: 0, y: 0 } as const;
+const GRADIENT_END = { x: 1, y: 0 } as const;
+
+const HEADER_RAINBOW_COLORS = ['#FF6B6B', '#FF8557', '#FF9F43', '#87A274', '#3DAA8E', '#0EA5A4'] as const;
+const HEADER_MODELS_COLORS = ['#DA70D6', '#A35EEA', '#6C4CFF', '#5B6EEC', '#4A90D9'] as const;
+
 function getPreviewUri(model: ARModel) {
+  const thumbnail = (model as any).thumbnail || (model as any).thumbnail_url;
+  if (thumbnail) {
+    const raw = String(thumbnail);
+    if (raw.startsWith('http')) return raw;
+    return normalizeReferenceSource(raw);
+  }
   if (model.previewUrl) {
     return model.previewUrl;
   }
@@ -290,23 +323,105 @@ function EnvironmentGallery({
   onRefresh: () => void;
   topInset: number;
   bottomInset: number;
-  onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onScroll: (e: any) => void;
 }) {
-  const { isTablet, contentWidth, gap, cardWidth, worldCardHeight, isCompactCard } = useResponsiveLayout();
+  const { colors } = useTheme();
+  const { isTablet, isCompactCard } = useResponsiveLayout();
   const emojiSize = isCompactCard ? scale(42) : scale(48);
   const emojiRadius = isCompactCard ? moderateScale(14) : moderateScale(16);
 
+  const headerPaddingTop = useMemo(
+    () => ({ paddingTop: topInset + verticalScale(16) }),
+    [topInset]
+  );
+
+  const ListHeader = useMemo(() => (
+    <>
+      <View style={[styles.headerMain, headerPaddingTop]}>
+        <LinearGradient
+          colors={HEADER_RAINBOW_COLORS as unknown as string[]}
+          start={GRADIENT_START}
+          end={GRADIENT_END}
+          style={StyleSheet.absoluteFill}
+        />
+        <Animated.View
+          entering={headerIconEntering}
+          style={styles.bannerIconWrap}>
+          <Box size={moderateScale(24)} color="#fff" strokeWidth={1.8} />
+        </Animated.View>
+        <Animated.View entering={headerCopyEntering} style={{ flex: 1 }}>
+          <Text style={styles.headerTitleMain}>AR Worlds</Text>
+          <Text style={styles.headerSubMain}>
+            Explore 3D models in augmented reality!
+          </Text>
+        </Animated.View>
+        <View style={[styles.curve, { backgroundColor: colors.background }]} />
+      </View>
+
+      <View style={styles.sectionRow}>
+        <Text style={[styles.section, { color: colors.text }]}>Environments</Text>
+        <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>
+          {environments.length} available
+        </Text>
+      </View>
+    </>
+  ), [colors.background, colors.text, colors.textSecondary, environments.length, headerPaddingTop]);
+
+  const renderItem = useCallback(({ item, index }: { item: AREnvironmentView, index: number }) => {
+    const modelCount = getModelsForEnvironment(item, models).length;
+    return (
+      <Animated.View
+        entering={getGalleryCardEntering(index)}
+        layout={galleryLayoutTransition}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onEnvironmentSelect(item)}
+          style={[styles.worldCardWrap, { width: (SCREEN_W - H_PAD * 2 - GAP) / 2 }]}>
+          <View style={[styles.worldCard, isCompactCard && { padding: moderateScale(14) }]}>
+            <LinearGradient
+              colors={getEnvironmentColors(item)}
+              locations={getEnvironmentColors(item).length === 2 ? [0, 1] : [0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.worldCountBadge}>
+              <Text style={styles.worldCountText}>📦 {modelCount}</Text>
+            </View>
+
+            <View style={[styles.worldEmojiBubble, { width: emojiSize, height: emojiSize, borderRadius: emojiRadius }]}>
+              <Text style={styles.worldEmoji}>{item.emoji || '📦'}</Text>
+            </View>
+
+            <Text
+              style={[styles.worldName, isCompactCard && { fontSize: moderateScale(14) }]}
+              numberOfLines={1}>
+              {item.name || item.folderName}
+            </Text>
+
+            <Text
+              style={[styles.worldDescription, isCompactCard && { fontSize: moderateScale(10), lineHeight: moderateScale(14) }]}
+              numberOfLines={2}>
+              {item.description || `Explore ${modelCount} amazing 3D models`}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }, [models, isCompactCard, emojiSize, emojiRadius, onEnvironmentSelect]);
+
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.screenContent,
-        { paddingBottom: bottomInset },
-        isTablet && { alignItems: 'center' },
-      ]}
+    <FlatList
+      data={environments}
+      keyExtractor={(item) => item._id}
+      renderItem={renderItem}
+      numColumns={2}
+      columnWrapperStyle={styles.columnWrapper}
+      contentContainerStyle={{ paddingBottom: bottomInset }}
       onScroll={onScroll}
       scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
+      ListHeaderComponent={ListHeader}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -315,76 +430,8 @@ function EnvironmentGallery({
           colors={['#6C4CFF', '#DA70D6']}
           progressViewOffset={topInset + verticalScale(8)}
         />
-      }>
-      <Animated.View
-        entering={galleryHeroEntering}
-        style={[styles.worldHeroShadow, { marginTop: verticalScale(8), width: contentWidth, alignSelf: 'center' }]}>
-        <View style={styles.worldHero}>
-          <LinearGradient
-            colors={['#FF6B6B', '#FF8557', '#FF9F43', '#87A274', '#3DAA8E', '#0EA5A4']}
-            locations={[0, 0.2, 0.4, 0.6, 0.8, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: moderateScale(8) }}>
-            <View style={styles.worldHeroIconWrap}>
-              <Box size={moderateScale(22)} color="#fff" strokeWidth={2.1} />
-            </View>
-            <Text style={styles.worldHeroTitle}>AR Worlds</Text>
-          </View>
-          <Text style={styles.worldHeroCopy}>
-            Explore 3D models in augmented reality!{'\n'}Pick a world and start learning.
-          </Text>
-        </View>
-      </Animated.View>
-
-      <View style={[styles.worldGrid, { width: contentWidth, alignSelf: 'center', gap }]}>
-        {environments.map((environment, index) => {
-          const modelCount = getModelsForEnvironment(environment, models).length;
-          return (
-            <Animated.View
-              key={environment._id}
-              entering={getGalleryCardEntering(index)}
-              layout={galleryLayoutTransition}>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => onEnvironmentSelect(environment)}
-                style={[styles.worldCardWrap, { width: cardWidth, height: worldCardHeight }]}>
-                <View style={[styles.worldCard, isCompactCard && { padding: moderateScale(14) }]}>
-                  <LinearGradient
-                    colors={getEnvironmentColors(environment)}
-                    locations={getEnvironmentColors(environment).length === 2 ? [0, 1] : [0, 0.5, 1]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <View style={styles.worldCountBadge}>
-                    <Text style={styles.worldCountText}>📦 {modelCount}</Text>
-                  </View>
-
-                  <View style={[styles.worldEmojiBubble, { width: emojiSize, height: emojiSize, borderRadius: emojiRadius }]}>
-                    <Text style={styles.worldEmoji}>{environment.emoji || '📦'}</Text>
-                  </View>
-
-                  <Text
-                    style={[styles.worldName, isCompactCard && { fontSize: moderateScale(14) }]}
-                    numberOfLines={1}>
-                    {environment.name || environment.folderName}
-                  </Text>
-
-                  <Text
-                    style={[styles.worldDescription, isCompactCard && { fontSize: moderateScale(10), lineHeight: moderateScale(14) }]}
-                    numberOfLines={2}>
-                    {environment.description || `Explore ${modelCount} amazing 3D models`}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
-          );
-        })}
-      </View>
-    </ScrollView>
+      }
+    />
   );
 }
 
@@ -396,6 +443,8 @@ function ModelGallery({
   onScanModel,
   refreshing,
   onRefresh,
+  searchQuery,
+  onSearchChange,
   topInset,
   bottomInset,
   onScroll,
@@ -407,67 +456,47 @@ function ModelGallery({
   onScanModel: (model: ARModel) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  searchQuery: string;
+  onSearchChange: (text: string) => void;
   topInset: number;
   bottomInset: number;
-  onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onScroll: (e: any) => void;
 }) {
   const { colors } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
-  const { isTablet, contentWidth, gap, cardWidth, modelPreviewHeight } = useResponsiveLayout();
+  const { modelPreviewHeight } = useResponsiveLayout();
 
-  return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.modelScreenContent,
-        { paddingBottom: bottomInset },
-        isTablet && { alignItems: 'center' },
-      ]}
-      onScroll={onScroll}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor="#6C4CFF"
-          colors={['#6C4CFF', '#DA70D6']}
-          progressViewOffset={topInset + verticalScale(8)}
+  const headerPaddingTop = useMemo(
+    () => ({ paddingTop: topInset + verticalScale(10) }),
+    [topInset]
+  );
+
+  const ListHeader = useMemo(() => (
+    <>
+      <View style={[styles.headerGallery, headerPaddingTop]}>
+        <LinearGradient
+          colors={HEADER_MODELS_COLORS as unknown as string[]}
+          start={GRADIENT_START}
+          end={GRADIENT_END}
+          style={StyleSheet.absoluteFill}
         />
-      }>
-      <Animated.View
-        entering={galleryHeroEntering}
-        style={[styles.modelsHeroShadow, { marginTop: verticalScale(8), width: contentWidth, alignSelf: 'center' }]}>
-        <View style={styles.modelsHero}>
-          <LinearGradient
-            colors={['#DA70D6', '#A35EEA', '#6C4CFF', '#5B6EEC', '#4A90D9']}
-            locations={[0, 0.25, 0.5, 0.75, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.modelsHeroTopRow}>
-            <View style={styles.modelsHeroLeft}>
-              <TouchableOpacity onPress={onBack} activeOpacity={0.75} style={styles.backButton}>
-                <ChevronLeft size={moderateScale(20)} color="#fff" strokeWidth={2.4} />
-              </TouchableOpacity>
-              <View style={styles.modelsHeroCopyWrap}>
-                <View style={styles.modelsHeroHeadingRow}>
-                  <Cuboid size={moderateScale(20)} color="#fff" strokeWidth={2} />
-                  <Text style={styles.modelsHeroTitle}>3D Models</Text>
-                </View>
-                <Text style={styles.modelsHeroSubtitle} numberOfLines={1}>
-                  {(environment.name || environment.folderName)} • {models.length} models
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity onPress={onBack} activeOpacity={0.75} style={styles.worldsButton}>
-              <Text style={styles.worldsButtonText}>Worlds</Text>
-            </TouchableOpacity>
-          </View>
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.bannerIconWrap}
+          activeOpacity={0.7}>
+          <ChevronLeft size={moderateScale(24)} color="#fff" strokeWidth={2.4} />
+        </TouchableOpacity>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitleMain} numberOfLines={1}>
+            {(environment.name || environment.folderName)}
+          </Text>
+          <Text style={styles.headerSubMain}>
+            {models.length} models
+          </Text>
         </View>
-      </Animated.View>
+
+        <View style={[styles.curve, { backgroundColor: colors.background }]} />
+      </View>
 
       {!models.length ? (
         <View style={styles.emptyState}>
@@ -484,96 +513,108 @@ function ModelGallery({
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={[styles.modelsContent, { width: contentWidth, alignSelf: 'center' }]}>
-          <Text style={[styles.modelsCountText, { color: colors.textSecondary }]}>
-            <Text style={[styles.modelsCountStrong, { color: colors.text }]}>{models.length}</Text> models available
-          </Text>
-
-          <View style={[styles.modelsGrid, { gap }]}>
-            {models.map((model, index) => {
-              const previewUri = getPreviewUri(model);
-              const referenceSource = getReferenceImageSource(model);
-              const displayUri = referenceSource
-                ? normalizeReferenceForDisplay(referenceSource)
-                : previewUri;
-              const level = getModelLevel(model);
-              const stars = getLevelStars(level);
-
-              return (
-                <Animated.View
-                  key={getModelStableId(model, index)}
-                  entering={getGalleryCardEntering(index)}
-                  layout={galleryLayoutTransition}
-                  style={[styles.modelCardWrap, { width: cardWidth, backgroundColor: colors.card }]}>
-                  <View style={styles.modelGradient}>
-                    <LinearGradient
-                      colors={gradientColors}
-                      locations={gradientColors.length === 2 ? [0, 1] : [0, 0.5, 1]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <View style={[styles.modelPreviewShell, { height: modelPreviewHeight }]}>
-                      {displayUri ? (
-                        <Image
-                          source={{ uri: displayUri }}
-                          style={styles.modelPreviewImage}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <Text style={styles.modelFallbackEmoji}>{model.icon || environment.emoji || '🎨'}</Text>
-                      )}
-                    </View>
-
-                    <View style={styles.modelInfoRow}>
-                      <Text style={styles.modelName} numberOfLines={1}>
-                        {model.name}
-                      </Text>
-                      <View style={styles.modelStarsBadge}>
-                        <Text style={styles.modelStarsText}>{stars}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.modelActionsColumn}>
-                      <View style={styles.modelActionsRow}>
-                        <TouchableOpacity
-                          onPress={() => onOpenModel(model)}
-                          activeOpacity={0.85}
-                          style={styles.primaryAction}>
-                          <Cuboid size={moderateScale(14)} color="#121826" strokeWidth={2.1} />
-                          <Text style={styles.primaryActionText}>3D</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() =>
-                            onOpenModel(model, {
-                              openPainter: true,
-                              initialPaintMode: 'target',
-                            })
-                          }
-                          activeOpacity={0.85}
-                          style={styles.secondaryAction}>
-                          <ImageIcon size={moderateScale(14)} color="#fff" strokeWidth={2.1} />
-                          <Text style={styles.secondaryActionText}>Sheet</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <TouchableOpacity
-                        onPress={() => onScanModel(model)}
-                        activeOpacity={0.85}
-                        style={styles.scanAction}>
-                        <Box size={moderateScale(14)} color="#fff" strokeWidth={2.1} />
-                        <Text style={styles.scanActionText}>AR Scan</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </Animated.View>
-              );
-            })}
+        <>
+          <View style={styles.searchContainer}>
+            <Search size={moderateScale(18)} color="rgba(255,255,255,0.4)" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search models..."
+              placeholderTextColor="rgba(255,255,255,0.4)"
+              value={searchQuery}
+              onChangeText={onSearchChange}
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => onSearchChange('')}>
+                <X size={moderateScale(18)} color="rgba(255,255,255,0.4)" />
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
+          <View style={styles.modelsGridHeader}>
+            <Text style={[styles.modelsCountText, { color: colors.textSecondary }]}>
+              <Text style={[styles.modelsCountStrong, { color: colors.text }]}>{models.length}</Text> models available
+            </Text>
+          </View>
+        </>
       )}
-    </ScrollView>
+    </>
+  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
+
+  const renderItem = useCallback(({ item, index }: { item: ARModel, index: number }) => {
+    const previewUri = getPreviewUri(item);
+    const referenceSource = getReferenceImageSource(item);
+    const referenceUri = referenceSource ? normalizeReferenceForDisplay(referenceSource) : null;
+    
+    // Explicit priority: thumbnail/previewUri (which now includes .thumbnail) -> reference image
+    const displayUri = previewUri || referenceUri;
+    
+    const level = getModelLevel(item);
+    const stars = getLevelStars(level);
+
+    return (
+      <Animated.View
+        entering={getGalleryCardEntering(index)}
+        layout={galleryLayoutTransition}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => onOpenModel(item)}
+          style={[styles.modelCardWrap, { width: (SCREEN_W - H_PAD * 2 - GAP) / 2, backgroundColor: colors.card }]}>
+          <View style={styles.modelGradient}>
+            <LinearGradient
+              colors={gradientColors}
+              locations={gradientColors.length === 2 ? [0, 1] : [0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={[styles.modelPreviewShell, { height: modelPreviewHeight }]}>
+              {displayUri ? (
+                <Image
+                  source={{ uri: displayUri }}
+                  style={styles.modelPreviewImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={styles.modelFallbackEmoji}>{item.icon || environment.emoji || '🎨'}</Text>
+              )}
+            </View>
+
+            <View style={styles.modelInfoRow}>
+              <Text style={styles.modelName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <View style={styles.modelStarsBadge}>
+                <Text style={styles.modelStarsText}>{stars}</Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }, [colors.card, environment.emoji, gradientColors, modelPreviewHeight, onOpenModel, onScanModel]);
+
+  return (
+    <FlatList
+      data={models}
+      keyExtractor={(item, index) => getModelStableId(item, index)}
+      renderItem={renderItem}
+      numColumns={2}
+      columnWrapperStyle={styles.columnWrapper}
+      contentContainerStyle={{ paddingBottom: bottomInset }}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+      ListHeaderComponent={ListHeader}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#6C4CFF"
+          colors={['#6C4CFF', '#DA70D6']}
+          progressViewOffset={topInset + verticalScale(8)}
+        />
+      }
+    />
   );
 }
 
@@ -587,6 +628,10 @@ function ARScreenContent() {
   const lastScrollY = useRef(0);
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [scanningModel, setScanningModel] = useState<ARModel | null>(null);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
+  const [selectedModelForOptions, setSelectedModelForOptions] = useState<ARModel | null>(null);
+  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const snapPoints = useMemo(() => ['55%'], []);
 
   const modelsQuery = useQuery({
     queryKey: ['ar-models'],
@@ -619,6 +664,16 @@ function ARScreenContent() {
     () => getModelsForEnvironment(selectedEnvironment, models),
     [models, selectedEnvironment],
   );
+
+  const filteredModels = useMemo(() => {
+    if (!modelSearchQuery.trim()) return environmentModels;
+    const q = modelSearchQuery.toLowerCase().trim();
+    return environmentModels.filter(m => m.name?.toLowerCase().includes(q));
+  }, [environmentModels, modelSearchQuery]);
+
+  useEffect(() => {
+    setModelSearchQuery('');
+  }, [selectedEnvironmentId]);
 
   const loading = !screenReady || modelsQuery.isPending || foldersQuery.isPending;
   const refreshing = modelsQuery.isRefetching || foldersQuery.isRefetching;
@@ -663,6 +718,7 @@ function ARScreenContent() {
     model: ARModel,
     opts?: { openPainter?: boolean; initialPaintMode?: string },
   ) => {
+    bottomSheetModalRef.current?.dismiss();
     navigation.navigate('ARViewer', {
       modelId: getModelStableId(model),
       environmentId: selectedEnvironment?._id,
@@ -670,6 +726,26 @@ function ARScreenContent() {
       initialPaintMode: opts?.initialPaintMode === 'target' ? 'target' : 'model',
     });
   };
+
+  const openModelOptions = useCallback((model: ARModel) => {
+    setSelectedModelForOptions(model);
+    // Use requestAnimationFrame to ensure the state update is processed
+    // before presenting the modal for a smoother transition
+    requestAnimationFrame(() => {
+      bottomSheetModalRef.current?.present();
+    });
+  }, []);
+
+  const renderBackdrop = useCallback(
+    (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        opacity={0.5}
+        enableTouchThrough={false}
+      />
+    ),
+    []
+  );
 
   const startActualScan = async (model: ARModel) => {
     if (Platform.OS !== 'android') {
@@ -725,6 +801,8 @@ function ARScreenContent() {
       );
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
+    } finally {
+      bottomSheetModalRef.current?.dismiss();
     }
   };
 
@@ -751,18 +829,19 @@ function ARScreenContent() {
   }
 
   return (
-    <>
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <StatusBar translucent backgroundColor="transparent" barStyle={isDark ? 'light-content' : 'dark-content'} />
       {selectedEnvironment ? (
         <ModelGallery
           environment={selectedEnvironment}
-          models={environmentModels}
+          models={filteredModels}
           onBack={() => setSelectedEnvironmentId(null)}
-          onOpenModel={handleOpenModel}
+          onOpenModel={openModelOptions}
           onScanModel={handleScanModel}
           refreshing={refreshing}
           onRefresh={refreshAll}
+          searchQuery={modelSearchQuery}
+          onSearchChange={setModelSearchQuery}
           topInset={insets.top}
           bottomInset={bottomInset}
           onScroll={handleScroll}
@@ -780,9 +859,27 @@ function ARScreenContent() {
         />
       )}
      
-    </SafeAreaView>
-    
-     <ARInstructionModal
+      <BottomSheetModal
+        ref={bottomSheetModalRef}
+        index={0}
+        snapPoints={snapPoints}
+        backdropComponent={renderBackdrop}
+        enablePanDownToClose
+        handleIndicatorStyle={{ backgroundColor: '#D1D5DB', width: scale(60) }}
+        backgroundStyle={{ backgroundColor: colors.card, borderTopLeftRadius: moderateScale(32), borderTopRightRadius: moderateScale(32) }}>
+        <BottomSheetView style={styles.sheetContent}>
+          {selectedModelForOptions && (
+            <ARModelOptionsSheet
+              model={selectedModelForOptions}
+              onView3D={() => handleOpenModel(selectedModelForOptions)}
+              onViewSheet={() => handleOpenModel(selectedModelForOptions, { openPainter: true, initialPaintMode: 'target' })}
+              onScan={() => handleScanModel(selectedModelForOptions)}
+            />
+          )}
+        </BottomSheetView>
+      </BottomSheetModal>
+
+      <ARInstructionModal
         visible={instructionVisible}
         onClose={() => setInstructionVisible(false)}
         onStartScan={() => {
@@ -792,7 +889,80 @@ function ARScreenContent() {
           }
         }}
       />
-    </>
+    </View>
+  );
+}
+
+function ARModelOptionsSheet({
+  model,
+  onView3D,
+  onViewSheet,
+  onScan,
+}: {
+  model: ARModel;
+  onView3D: () => void;
+  onViewSheet: () => void;
+  onScan: () => void;
+}) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={styles.sheetInner}>
+      <Text style={[styles.sheetTitle, { color: colors.text }]}>{model.name}</Text>
+      <Text style={[styles.sheetSub, { color: colors.textSecondary }]}>
+        Choose how to explore this model
+      </Text>
+
+      <View style={styles.sheetActions}>
+        <TouchableOpacity activeOpacity={0.8} onPress={onView3D} style={styles.sheetButtonWrap}>
+          <LinearGradient
+            colors={['#8B5CF6', '#3B82F6']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.sheetButtonGradient}
+          />
+          <View style={styles.sheetButtonIconWrap}>
+            <Cuboid size={moderateScale(32)} color="#fff" strokeWidth={2} />
+          </View>
+          <View style={styles.sheetButtonTexts}>
+            <Text style={styles.sheetButtonTitle}>3D View</Text>
+            <Text style={styles.sheetButtonSub}>Interactive 3D model viewer</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity activeOpacity={0.8} onPress={onViewSheet} style={styles.sheetButtonWrap}>
+          <LinearGradient
+            colors={['#FF6B00', '#FF0055']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.sheetButtonGradient}
+          />
+          <View style={styles.sheetButtonIconWrap}>
+            <ImageIcon size={moderateScale(32)} color="#fff" strokeWidth={2} />
+          </View>
+          <View style={styles.sheetButtonTexts}>
+            <Text style={styles.sheetButtonTitle}>Coloring Sheet</Text>
+            <Text style={styles.sheetButtonSub}>View information and details</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity activeOpacity={0.8} onPress={onScan} style={styles.sheetButtonWrap}>
+          <LinearGradient
+            colors={['#00C853', '#009688']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.sheetButtonGradient}
+          />
+          <View style={styles.sheetButtonIconWrap}>
+            <Scan size={moderateScale(32)} color="#fff" strokeWidth={2} />
+          </View>
+          <View style={styles.sheetButtonTexts}>
+            <Text style={styles.sheetButtonTitle}>AR Scan</Text>
+            <Text style={styles.sheetButtonSub}>View in augmented reality</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -867,61 +1037,120 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
-  worldHeroShadow: {
-    borderRadius: moderateScale(20),
+  headerMain: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: verticalScale(30),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(5),
+    overflow: 'hidden',
+  },
+  headerGallery: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: verticalScale(30),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(5),
+    overflow: 'hidden',
+  },
+  headerTitleMain: {
+    fontSize: moderateScale(24),
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: verticalScale(2),
+  },
+  headerSubMain: {
+    fontSize: moderateScale(13),
+    color: 'rgba(255,255,255,1)',
+  },
+  headerTitleGallery: {
+    fontSize: moderateScale(20),
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: verticalScale(2),
+  },
+  headerSubGallery: {
+    fontSize: moderateScale(12),
+    color: 'rgba(255,255,255,0.7)',
+  },
+  curve: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: verticalScale(10),
+    borderTopLeftRadius: moderateScale(16),
+    borderTopRightRadius: moderateScale(16),
+  },
+  bannerIconWrap: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: moderateScale(12),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginRight: scale(4),
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: H_PAD,
+    marginBottom: verticalScale(10),
+    marginTop: verticalScale(14),
+  },
+  section: {
+    fontSize: moderateScale(20),
+    fontWeight: '700',
+  },
+  sectionCount: {
+    fontSize: moderateScale(12),
+  },
+  columnWrapper: {
+    justifyContent: 'flex-start',
+    gap: GAP,
+    paddingHorizontal: H_PAD,
+  },
+  backBtn: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: moderateScale(12),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  headerInfo: { flex: 1 },
+  worldsButtonInHeader: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: moderateScale(12),
+    paddingHorizontal: scale(14),
+    paddingVertical: verticalScale(8),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  modelsGridHeader: {
+    paddingHorizontal: H_PAD,
+    paddingTop: verticalScale(14),
+  },
+  worldCardWrap: {
+    marginBottom: CARD_MARGIN_BOTTOM,
+    borderRadius: CARD_BORDER_RADIUS,
+    overflow: 'hidden',
     ...(isAndroid
       ? androidCardBorder
       : {
           shadowColor: '#000',
           shadowOffset: { width: 0, height: verticalScale(4) },
-          shadowOpacity: 0.2,
-          shadowRadius: moderateScale(12),
-        }),
-  },
-  worldHero: {
-    borderRadius: moderateScale(20),
-    padding: moderateScale(16),
-    overflow: 'hidden',
-  },
-  worldHeroIconWrap: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: moderateScale(10),
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  worldHeroTitle: {
-    fontSize: moderateScale(20),
-    fontWeight: '800',
-    color: '#fff',
-  },
-  worldHeroCopy: {
-    marginTop: verticalScale(4),
-    fontSize: moderateScale(11),
-    lineHeight: moderateScale(16),
-    color: 'rgba(255,255,255,0.9)',
-  },
-  worldGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: verticalScale(14),
-    gap: scale(10),
-  },
-  worldCardWrap: {
-    borderRadius: moderateScale(20),
-    overflow: 'hidden',
-    ...(isAndroid
-      ? androidCardBorder
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: verticalScale(3) },
           shadowOpacity: 0.15,
           shadowRadius: moderateScale(8),
         }),
   },
   worldCard: {
-    flex: 1,
+    height: verticalScale(160),
     padding: moderateScale(18),
     justifyContent: 'center',
   },
@@ -1208,5 +1437,82 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: '600',
     color: '#fff',
+  },
+  sheetContent: {
+    flex: 1,
+    paddingHorizontal: scale(20),
+    paddingBottom: verticalScale(20),
+  },
+  sheetInner: {
+    alignItems: 'center',
+    paddingTop: verticalScale(12),
+  },
+  sheetTitle: {
+    fontSize: moderateScale(26),
+    fontWeight: '900',
+    marginBottom: verticalScale(4),
+  },
+  sheetSub: {
+    fontSize: moderateScale(14),
+    fontWeight: '500',
+    marginBottom: verticalScale(24),
+  },
+  sheetActions: {
+    width: '100%',
+    gap: verticalScale(14),
+  },
+  sheetButtonWrap: {
+    height: verticalScale(85),
+    borderRadius: moderateScale(22),
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(20),
+  },
+  sheetButtonGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sheetButtonIconWrap: {
+    width: scale(54),
+    height: scale(54),
+    borderRadius: moderateScale(16),
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: scale(16),
+  },
+  sheetButtonTexts: {
+    flex: 1,
+  },
+  sheetButtonTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: verticalScale(2),
+  },
+  sheetButtonSub: {
+    fontSize: moderateScale(12),
+    color: 'rgba(255,255,255,0.92)',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginHorizontal: H_PAD,
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(6),
+    paddingHorizontal: scale(14),
+    height: verticalScale(48),
+    borderRadius: moderateScale(24),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    gap: scale(10),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: moderateScale(14),
+    color: '#fff',
+    padding: 0,
+    height: '100%',
   },
 });

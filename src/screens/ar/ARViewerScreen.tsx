@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -12,16 +12,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useNavigation, useRoute} from '@react-navigation/native';
-import type {RouteProp} from '@react-navigation/native';
-import type {StackNavigationProp} from '@react-navigation/stack';
-import {useQuery} from '@tanstack/react-query';
+import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import { useQuery } from '@tanstack/react-query';
 import LinearGradient from 'react-native-linear-gradient';
-import {WebView} from 'react-native-webview';
-import Video, {type VideoRef} from 'react-native-video';
+import { WebView } from 'react-native-webview';
+import Video, { type VideoRef } from 'react-native-video';
 import {
+  Activity,
   Brush,
   ChevronLeft,
   ChevronRight,
@@ -29,22 +30,32 @@ import {
   Cuboid,
   Grid2X2,
   Image as ImageIcon,
+  Lightbulb,
   Menu,
+  Palette,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Search,
   Settings2,
+  Sparkles,
   Volume1,
   Volume2,
   VolumeX,
   X,
   Minus,
 } from 'lucide-react-native';
-import {ARService} from '@/services';
-import {API_BASE_URL} from '@/config';
-import type {ARAudioTrack, ARModel, MainStackParamList} from '@/types';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import {
+  BottomSheetModal,
+  BottomSheetView,
+  BottomSheetBackdrop,
+} from '@gorhom/bottom-sheet';
+import { ARService } from '@/services';
+import { API_BASE_URL } from '@/config';
+import ARInstructionModal from '@/components/ARInstructionModal';
+import type { ARAudioTrack, ARModel, MainStackParamList } from '@/types';
 import {
   type AREnvironmentView,
   getBrowsableEnvironments,
@@ -53,20 +64,68 @@ import {
   sortLanguages,
   sortLevels,
 } from './ar.data';
-import {buildARViewerHtml, buildColorSheetHtml} from './arViewerHtml';
-import {openModelInAR, openModelInARFromBase64} from './nativeAR';
+import { buildARViewerHtml, buildColorSheetHtml } from './arViewerHtml';
+import { openModelInAR, openModelInARFromBase64 } from './nativeAR';
 
 type ARViewerRouteProp = RouteProp<MainStackParamList, 'ARViewer'>;
 type ARViewerNavigationProp = StackNavigationProp<MainStackParamList, 'ARViewer'>;
 
 const LIGHTING_OPTIONS = [
-  {name: 'sunset', label: '🌅 Sunset', bgColors: ['#1a0a2e', '#4a1c5c', '#d4576b', '#f4a460'] as string[]},
-  {name: 'dawn', label: '🌄 Dawn', bgColors: ['#0d1b2a', '#1b263b', '#e63946', '#ffbe0b'] as string[]},
-  {name: 'night', label: '🌙 Night', bgColors: ['#0b1226', '#07102a', '#0a0e1a', '#0b1226'] as string[]},
-  {name: 'warehouse', label: '🏢 Studio', bgColors: ['#2d3436', '#4a4a4a', '#636e72', '#2d3436'] as string[]},
-  {name: 'forest', label: '🌲 Forest', bgColors: ['#0a1d10', '#1a3c28', '#2d5a3d', '#4a7c59'] as string[]},
-  {name: 'apartment', label: '🏠 Room', bgColors: ['#f5f5dc', '#d4c4a8', '#c9b896', '#f5f5dc'] as string[]},
+  { name: 'sunset', label: 'Sunset', bgColors: ['#1a0a2e', '#4a1c5c', '#d4576b', '#f4a460'] as string[] },
+  { name: 'dawn', label: 'Dawn', bgColors: ['#0d1b2a', '#1b263b', '#e63946', '#ffbe0b'] as string[] },
+  { name: 'night', label: 'Night', bgColors: ['#0b1226', '#07102a', '#0a0e1a', '#0b1226'] as string[] },
+  { name: 'warehouse', label: 'Studio', bgColors: ['#2d3436', '#4a4a4a', '#636e72', '#2d3436'] as string[] },
+  { name: 'forest', label: 'Forest', bgColors: ['#0a1d10', '#1a3c28', '#2d5a3d', '#4a7c59'] as string[] },
+  { name: 'apartment', label: 'Room', bgColors: ['#f5f5dc', '#d4c4a8', '#c9b896', '#f5f5dc'] as string[] },
 ];
+
+const CustomSlider = ({
+  value,
+  min,
+  max,
+  onChange,
+  color = '#6C4CFF',
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  color?: string;
+}) => {
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  const handleGesture = (event: any) => {
+    if (trackWidth <= 0) return;
+    const { x } = event.nativeEvent;
+    const ratio = Math.max(0, Math.min(1, x / trackWidth));
+    const newVal = Math.round(min + ratio * (max - min));
+    onChange(newVal);
+  };
+
+  const filling = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+
+  return (
+    <PanGestureHandler
+      onGestureEvent={handleGesture}
+      onHandlerStateChange={(e) => {
+        if (e.nativeEvent.state === State.ACTIVE || e.nativeEvent.state === State.BEGAN) {
+          handleGesture(e);
+        }
+      }}
+      activeOffsetX={[-5, 5]}
+      failOffsetY={[-20, 20]}
+    >
+      <View
+        style={styles.customSliderContainer}
+        onLayout={e => setTrackWidth(e.nativeEvent.layout.width)}>
+        <View style={styles.customSliderTrack}>
+          <View style={[styles.customSliderFill, { width: `${filling}%`, backgroundColor: color }]} />
+        </View>
+        <View style={[styles.customSliderThumb, { left: `${filling}%`, backgroundColor: '#fff' }]} />
+      </View>
+    </PanGestureHandler>
+  );
+};
 
 const COLOR_SWATCHES = ['#ff0000', '#00b894', '#0984e3', '#fdcb6e', '#6c5ce7', '#e17055', '#00cec9', '#fd79a8'];
 const TARGET_ASSETS: Record<string, string> = {
@@ -172,7 +231,7 @@ function PanelButton({
       activeOpacity={0.75}
       style={[
         styles.panelButton,
-        active ? {backgroundColor: color, borderColor: color} : styles.panelButtonInactive,
+        active ? { backgroundColor: color, borderColor: color } : styles.panelButtonInactive,
       ]}>
       <Text style={[styles.panelButtonText, active && styles.panelButtonTextActive]}>{label}</Text>
     </TouchableOpacity>
@@ -183,7 +242,7 @@ export default function ARViewerScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<ARViewerNavigationProp>();
   const route = useRoute<ARViewerRouteProp>();
-  const {modelId, environmentId, openPainter = false, initialPaintMode = 'model'} = route.params;
+  const { modelId, environmentId, openPainter = false, initialPaintMode = 'model' } = route.params;
 
   const webViewRef = useRef<WebView>(null);
   const sheetWebViewRef = useRef<WebView>(null);
@@ -192,29 +251,35 @@ export default function ARViewerScreen() {
   const [loadingModel, setLoadingModel] = useState(true);
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [environment, setEnvironment] = useState('sunset');
-  const [autoRotate, setAutoRotate] = useState(true);
-  const [wireframe, setWireframe] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [showLeftMenu, setShowLeftMenu] = useState(false);
-  const [showRightPanel, setShowRightPanel] = useState(false);
   const [animations, setAnimations] = useState<string[]>([]);
   const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null);
-  const [paintMode, setPaintMode] = useState<'model' | 'target'>('model');
-  const [paintingEnabled, setPaintingEnabled] = useState(false);
-  const [textureDisplayMode, setTextureDisplayMode] = useState<'original' | 'model-paint' | 'target-paint'>('original');
-  const [targetTextureDataUrl, setTargetTextureDataUrl] = useState<string | null>(null);
-  const [showTargetPainter, setShowTargetPainter] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportStatusText, setExportStatusText] = useState('');
-  const [selectedLanguage, setSelectedLanguage] = useState<string | null>(null);
-  const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [autoRotate, setAutoRotate] = useState(false);
+  const [wireframe, setWireframe] = useState(false);
+  const [environment, setEnvironment] = useState('sunset');
+  const [showLeftMenu, setShowLeftMenu] = useState(false);
+  const [activeControlCategory, setActiveControlCategory] = useState<string | null>(null);
+  const [selectedAudio, setSelectedAudio] = useState<ARAudioTrack | null>(null);
+  const [availableAudios, setAvailableAudios] = useState<ARAudioTrack[]>([]);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
+  const [selectedLevel, setSelectedLevel] = useState<string>('');
   const [audioPlaying, setAudioPlaying] = useState(false);
-  const [volume] = useState(100);
-  const [assetSearchTerm, setAssetSearchTerm] = useState('');
+  const [volume, setVolume] = useState(70);
+  const [paintingEnabled, setPaintingEnabled] = useState(false);
+  const [brushColor, setBrushColor] = useState(COLOR_SWATCHES[0]);
+  const [brushSize, setBrushSize] = useState(32);
   const [showBrushControls, setShowBrushControls] = useState(false);
-  const [brushColor, setBrushColor] = useState(COLOR_SWATCHES[0] || '#ff0000');
-  const [brushSize, setBrushSize] = useState(12);
+  const [showTargetPainter, setShowTargetPainter] = useState(false);
+  const [targetTextureDataUrl, setTargetTextureDataUrl] = useState<string | null>(null);
+  const [textureDisplayMode, setTextureDisplayMode] = useState<'original' | 'model-paint' | 'target-paint'>('original');
+  const [paintMode, setPaintMode] = useState<'model' | 'target'>('model');
+  const [isExporting, setIsExporting] = useState(false);
+  const [instructionVisible, setInstructionVisible] = useState(false);
+  const [exportStatusText, setExportStatusText] = useState('');
+  const [assetSearchTerm, setAssetSearchTerm] = useState('');
+
+  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const snapPoints = useMemo(() => ['45%'], []);
 
   useEffect(() => {
     StatusBar.setBarStyle('light-content');
@@ -285,10 +350,9 @@ export default function ARViewerScreen() {
     return currentEnvModels.filter(model => model.name?.toLowerCase().includes(query));
   }, [assetSearchTerm, currentEnvModels]);
 
-  const availableAudios = useMemo(
-    () => (audioQuery.data?.audios || []) as ARAudioTrack[],
-    [audioQuery.data?.audios],
-  );
+  useEffect(() => {
+    setAvailableAudios((audioQuery.data?.audios || []) as ARAudioTrack[]);
+  }, [audioQuery.data?.audios]);
 
   const uniqueLanguages = useMemo(
     () => sortLanguages([...new Set(availableAudios.map(audio => audio.language))]),
@@ -304,18 +368,18 @@ export default function ARViewerScreen() {
     );
   }, [availableAudios, selectedLanguage]);
 
-  const selectedAudio = useMemo(
-    () =>
+  useEffect(() => {
+    setSelectedAudio(
       availableAudios.find(
         audio => audio.language === selectedLanguage && audio.level === selectedLevel,
       ) || null,
-    [availableAudios, selectedLanguage, selectedLevel],
-  );
+    );
+  }, [availableAudios, selectedLanguage, selectedLevel]);
 
   useEffect(() => {
     if (!uniqueLanguages.length) {
-      setSelectedLanguage(null);
-      setSelectedLevel(null);
+      setSelectedLanguage('');
+      setSelectedLevel('');
       return;
     }
     setSelectedLanguage(current => (current && uniqueLanguages.includes(current) ? current : uniqueLanguages[0]));
@@ -323,7 +387,7 @@ export default function ARViewerScreen() {
 
   useEffect(() => {
     if (!uniqueLevels.length) {
-      setSelectedLevel(null);
+      setSelectedLevel('');
       return;
     }
     setSelectedLevel(current => (current && uniqueLevels.includes(current) ? current : uniqueLevels[0]));
@@ -334,7 +398,6 @@ export default function ARViewerScreen() {
     setViewerError(null);
     setProgress(0);
     setShowLeftMenu(false);
-    setShowRightPanel(false);
     setAudioPlaying(false);
     setAssetSearchTerm('');
     setPaintingEnabled(false);
@@ -343,9 +406,11 @@ export default function ARViewerScreen() {
     setShowTargetPainter(false);
     setPaintMode('model');
     setBrushColor(COLOR_SWATCHES[0] || '#ff0000');
-    setBrushSize(12);
+    setBrushSize(32);
     setIsExporting(false);
     setExportStatusText('');
+    setActiveControlCategory(null);
+    bottomSheetModalRef.current?.dismiss();
   }, [modelId]);
 
   useEffect(() => {
@@ -366,18 +431,18 @@ export default function ARViewerScreen() {
     if (loadingModel) {
       return;
     }
-    sendToWebView({type: 'enablePaint', value: paintingEnabled});
+    sendToWebView({ type: 'enablePaint', value: paintingEnabled });
     if (textureDisplayMode === 'original') {
-      sendToWebView({type: 'showOriginalTexture'});
+      sendToWebView({ type: 'showOriginalTexture' });
       return;
     }
     if (textureDisplayMode === 'model-paint') {
-      sendToWebView({type: 'showPaintTexture'});
+      sendToWebView({ type: 'showPaintTexture' });
       return;
     }
     if (textureDisplayMode === 'target-paint') {
       if (targetTextureDataUrl) {
-        sendToWebView({type: 'applyTargetTexture', dataUrl: targetTextureDataUrl});
+        sendToWebView({ type: 'applyTargetTexture', dataUrl: targetTextureDataUrl });
       }
     }
   }, [loadingModel, paintingEnabled, targetTextureDataUrl, textureDisplayMode]);
@@ -421,7 +486,7 @@ export default function ARViewerScreen() {
       return undefined;
     }
     const uri = ARService.getAudioStreamUrlById(selectedAudio.gridfsId) || '';
-    return uri ? {uri} : undefined;
+    return uri ? { uri } : undefined;
   }, [selectedAudio?.gridfsId]);
 
   const currentLighting =
@@ -430,8 +495,24 @@ export default function ARViewerScreen() {
   const viewerLoading = modelsQuery.isPending || foldersQuery.isPending || !currentModel;
   const topBarTop = insets.top + verticalScale(4);
   const topBarHeight = verticalScale(44);
-  const webViewTop = topBarTop + topBarHeight + verticalScale(4);
-  const bottomBarHeight = insets.bottom + verticalScale(68);
+  const webViewTop = topBarTop + topBarHeight;
+  const bottomBarHeight = insets.bottom + verticalScale(83);
+
+  const openCategory = useCallback((category: string) => {
+    if (category === 'sheet') {
+      setShowTargetPainter(true);
+      return;
+    }
+    setActiveControlCategory(category);
+    bottomSheetModalRef.current?.present();
+  }, []);
+
+  const renderBackdrop = useCallback(
+    (props: any) => (
+      <BottomSheetBackdrop {...props} disappearsAt={-1} appearsAt={0} opacity={0.3} />
+    ),
+    [],
+  );
 
   const sendToWebView = (payload: object) => {
     webViewRef.current?.postMessage(JSON.stringify(payload));
@@ -442,13 +523,13 @@ export default function ARViewerScreen() {
   };
 
   useEffect(() => {
-    sendToWebView({type: 'setBrushColor', value: brushColor});
-    sendToSheetWebView({type: 'setBrushColor', value: brushColor});
+    sendToWebView({ type: 'setBrushColor', value: brushColor });
+    sendToSheetWebView({ type: 'setBrushColor', value: brushColor });
   }, [brushColor]);
 
   useEffect(() => {
-    sendToWebView({type: 'setBrushSize', value: brushSize});
-    sendToSheetWebView({type: 'setBrushSize', value: brushSize});
+    sendToWebView({ type: 'setBrushSize', value: brushSize });
+    sendToSheetWebView({ type: 'setBrushSize', value: brushSize });
   }, [brushSize]);
 
   const handleWebMessage = (event: any) => {
@@ -484,7 +565,7 @@ export default function ARViewerScreen() {
         setLoadingModel(false);
         setIsExporting(false);
       }
-    } catch {}
+    } catch { }
   };
 
   const handleRetry = () => {
@@ -506,7 +587,7 @@ export default function ARViewerScreen() {
     const nextLevels = sortLevels(
       [...new Set(availableAudios.filter(audio => audio.language === language).map(audio => audio.level))],
     );
-    setSelectedLevel(nextLevels[0] || null);
+    setSelectedLevel(nextLevels[0] || '');
   };
 
   const handleLevelChange = (level: string) => {
@@ -537,14 +618,18 @@ export default function ARViewerScreen() {
     }
   };
 
-  const handleOpenAR = async () => {
+  const handleOpenAR = () => {
+    setInstructionVisible(true);
+  };
+
+  const proceedToAR = async () => {
     if (!currentModel || !modelUrl) {
       return;
     }
     if (textureDisplayMode !== 'original') {
       setIsExporting(true);
       setExportStatusText('Preparing Custom AR Model...');
-      sendToWebView({type: 'exportGLB'});
+      sendToWebView({ type: 'exportGLB' });
       return;
     }
     await openModelInAR({
@@ -599,7 +684,7 @@ export default function ARViewerScreen() {
 
       <LinearGradient colors={currentLighting.bgColors} locations={[0, 0.33, 0.67, 1]} style={StyleSheet.absoluteFill} />
 
-      <View style={[styles.topBar, {top: topBarTop, height: topBarHeight}]}>
+      <View style={[styles.topBar, { top: topBarTop, height: topBarHeight }]}>
         <TouchableOpacity
           onPress={() => {
             setAudioPlaying(false);
@@ -616,23 +701,23 @@ export default function ARViewerScreen() {
         </Text>
 
         <View style={styles.topBarActions}>
-          <TouchableOpacity
+          {/* <TouchableOpacity
             onPress={() => {
               const next = !wireframe;
               setWireframe(next);
-              sendToWebView({type: 'toggleWireframe', value: next});
+              sendToWebView({ type: 'toggleWireframe', value: next });
             }}
             style={[
               styles.iconPill,
               wireframe && styles.iconPillActive,
             ]}>
             <Grid2X2 size={moderateScale(15)} color="#fff" strokeWidth={2.1} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           <TouchableOpacity
             onPress={() => {
               const next = !autoRotate;
               setAutoRotate(next);
-              sendToWebView({type: 'toggleRotate', value: next});
+              sendToWebView({ type: 'toggleRotate', value: next });
             }}
             style={[
               styles.iconPill,
@@ -643,10 +728,10 @@ export default function ARViewerScreen() {
         </View>
       </View>
 
-      <View style={[styles.viewerShell, {marginTop: webViewTop, marginBottom: bottomBarHeight}]}>
+      <View style={[styles.viewerShell, { marginTop: webViewTop, marginBottom: bottomBarHeight }]}>
         <WebView
           ref={webViewRef}
-          source={{html: viewerHtml, baseUrl: 'https://learn-api.eduzon.ai'}}
+          source={{ html: viewerHtml, baseUrl: 'https://learn-api.eduzon.ai' }}
           style={styles.webView}
           originWhitelist={['*']}
           javaScriptEnabled
@@ -661,7 +746,7 @@ export default function ARViewerScreen() {
           scalesPageToFit={Platform.OS !== 'ios'}
           startInLoadingState={false}
           onShouldStartLoadWithRequest={(request) => {
-            const {url} = request;
+            const { url } = request;
             return url.startsWith('http') || url.startsWith('about:') || url.startsWith('data:');
           }}
           onMessage={handleWebMessage}
@@ -711,7 +796,7 @@ export default function ARViewerScreen() {
         <TouchableOpacity
           onPress={() => {
             setShowLeftMenu(true);
-            setShowRightPanel(false);
+            bottomSheetModalRef.current?.dismiss();
           }}
           activeOpacity={0.8}
           style={styles.sideToggleLeft}>
@@ -720,21 +805,8 @@ export default function ARViewerScreen() {
         </TouchableOpacity>
       )}
 
-      {!showRightPanel && (
-        <TouchableOpacity
-          onPress={() => {
-            setShowRightPanel(true);
-            setShowLeftMenu(false);
-          }}
-          activeOpacity={0.8}
-          style={styles.sideToggleRight}>
-          <Settings2 size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-          <Text style={styles.sideToggleText}>Controls</Text>
-        </TouchableOpacity>
-      )}
-
       {showLeftMenu && (
-        <View style={[styles.sidePanel, {left: scale(8), top: webViewTop, bottom: bottomBarHeight - verticalScale(8)}]}>
+        <View style={[styles.sidePanel, { left: scale(8), top: webViewTop, bottom: bottomBarHeight - verticalScale(8) }]}>
           <View style={styles.sidePanelHeader}>
             <View style={styles.sidePanelTitleRow}>
               <View style={styles.sidePanelIconBubble}>
@@ -748,7 +820,7 @@ export default function ARViewerScreen() {
           </View>
 
           <ScrollView style={styles.sidePanelScroll} showsVerticalScrollIndicator={false}>
-            {renderSection('Paint Mode', '🎨', (
+            {/* {renderSection('Paint Mode', '🎨', (
               <View style={styles.panelButtonRow}>
                 <PanelButton
                   label="🎲 3D Paint"
@@ -758,8 +830,8 @@ export default function ARViewerScreen() {
                     setPaintingEnabled(true);
                     setTextureDisplayMode('model-paint');
                     setBrushColor(COLOR_SWATCHES[0] || '#ff0000');
-                    sendToWebView({type: 'enablePaint', value: true});
-                    sendToWebView({type: 'showPaintTexture'});
+                    sendToWebView({ type: 'enablePaint', value: true });
+                    sendToWebView({ type: 'showPaintTexture' });
                   }}
                   color="#6C4CFF"
                 />
@@ -769,13 +841,13 @@ export default function ARViewerScreen() {
                   onPress={() => {
                     setPaintMode('target');
                     setPaintingEnabled(false);
-                    sendToWebView({type: 'enablePaint', value: false});
+                    sendToWebView({ type: 'enablePaint', value: false });
                     setShowTargetPainter(true);
                   }}
                   color="#DA70D6"
                 />
               </View>
-            ))}
+            ))} */}
 
             {renderSection('World', '🌍', (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -818,19 +890,19 @@ export default function ARViewerScreen() {
 
                   {filteredEnvModels.map(model => {
                     const isSelected = getModelStableId(model) === modelId;
-                  const previewUri = (() => {
-                    if (model.previewUrl) {
-                      return model.previewUrl;
-                    }
-                    if (model.previewImage) {
-                      const raw = String(model.previewImage);
-                      if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                        return raw;
+                    const previewUri = (() => {
+                      if (model.previewUrl) {
+                        return model.previewUrl;
                       }
-                    }
-                    const previewModelId = model._id || model.id;
-                    return previewModelId ? ARService.getPreviewImageUrl(previewModelId) : null;
-                  })();
+                      if (model.previewImage) {
+                        const raw = String(model.previewImage);
+                        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+                          return raw;
+                        }
+                      }
+                      const previewModelId = model._id || model.id;
+                      return previewModelId ? ARService.getPreviewImageUrl(previewModelId) : null;
+                    })();
 
                     return (
                       <TouchableOpacity
@@ -847,7 +919,7 @@ export default function ARViewerScreen() {
                         ]}>
                         <View style={styles.assetThumb}>
                           {previewUri ? (
-                            <Image source={{uri: previewUri}} resizeMode="contain" style={styles.assetThumbImage} />
+                            <Image source={{ uri: previewUri }} resizeMode="contain" style={styles.assetThumbImage} />
                           ) : (
                             <Text style={styles.assetThumbEmoji}>{currentEnvironment.emoji || '🎨'}</Text>
                           )}
@@ -867,333 +939,272 @@ export default function ARViewerScreen() {
         </View>
       )}
 
-      {showRightPanel && (
-        <View style={[styles.sidePanel, {right: scale(8), top: webViewTop, bottom: bottomBarHeight - verticalScale(8)}]}>
-          <View style={styles.sidePanelHeader}>
-            <View style={styles.sidePanelTitleRow}>
-              <View style={[styles.sidePanelIconBubble, styles.sidePanelIconBubblePink]}>
-                <Settings2 size={moderateScale(16)} color="#DA70D6" strokeWidth={2} />
+      <TouchableOpacity
+        onPress={() => {
+          const next = textureDisplayMode !== 'model-paint';
+          if (next) {
+            setTextureDisplayMode('model-paint');
+            setPaintingEnabled(true);
+            sendToWebView({ type: 'enablePaint', value: true });
+            sendToWebView({ type: 'showPaintTexture' });
+          } else {
+            setTextureDisplayMode('original');
+            setPaintingEnabled(false);
+            sendToWebView({ type: 'enablePaint', value: false });
+            sendToWebView({ type: 'showOriginalTexture' });
+          }
+        }}
+        style={[styles.paintSwitch, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }, textureDisplayMode === 'model-paint' && styles.paintSwitchActive]}>
+        <View style={[styles.paintSwitchThumb, textureDisplayMode === 'model-paint' && styles.paintSwitchThumbActive]} />
+        <Text style={styles.paintSwitchLabel}>{textureDisplayMode === 'model-paint' ? '3D' : 'OFF'}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={handleOpenAR}
+        style={[styles.arButton, { bottom: verticalScale(bottomBarHeight) }]}>
+        <Cuboid size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
+        <Text style={styles.arButtonText}>AR</Text>
+      </TouchableOpacity>
+
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + verticalScale(8) }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.controlBarContent}>
+          {[
+            { id: 'animation', label: 'Animation', icon: Sparkles },
+            ...(paintingEnabled ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
+            { id: 'audio', label: 'Audio', icon: Volume2 },
+            { id: 'lighting', label: 'Lighting', icon: Lightbulb },
+            { id: 'sheet', label: 'Sheet', icon: ImageIcon },
+          ].map(cat => (
+            <TouchableOpacity
+              key={cat.id}
+              onPress={() => openCategory(cat.id)}
+              style={styles.controlBarItem}>
+              <View style={[
+                styles.controlIconWrap,
+                activeControlCategory === cat.id && styles.controlIconWrapActive
+              ]}>
+                <cat.icon size={moderateScale(20)} color="#fff" strokeWidth={1.5} />
               </View>
-              <Text style={styles.sidePanelTitle}>Controls</Text>
-            </View>
-            <TouchableOpacity onPress={() => setShowRightPanel(false)}>
-              <ChevronRight size={moderateScale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
+              <Text style={styles.controlLabel}>{cat.label}</Text>
             </TouchableOpacity>
-          </View>
+          ))}
+        </ScrollView>
+      </View>
 
-          <ScrollView style={styles.sidePanelScroll} showsVerticalScrollIndicator={false}>
-            {renderSection('Display Texture', '🎨', (
-              <View style={styles.panelButtonRow}>
-                <PanelButton
-                  label="Original"
-                  active={textureDisplayMode === 'original'}
-                  onPress={() => {
-                    setTextureDisplayMode('original');
-                    setPaintingEnabled(false);
-                    sendToWebView({type: 'enablePaint', value: false});
-                    sendToWebView({type: 'showOriginalTexture'});
-                  }}
-                  color="#555"
-                />
-                {paintMode === 'model' && (
-                  <PanelButton
-                    label="3D Paint"
-                    active={textureDisplayMode === 'model-paint'}
+      <BottomSheetModal
+        ref={bottomSheetModalRef}
+        index={0}
+        snapPoints={snapPoints}
+        backdropComponent={renderBackdrop}
+        enablePanDownToClose
+        onDismiss={() => setActiveControlCategory(null)}
+        handleIndicatorStyle={{ backgroundColor: 'rgba(255,255,255,0.3)', width: scale(40) }}
+        backgroundStyle={{ backgroundColor: 'rgb(20,20,40)', borderTopLeftRadius: moderateScale(24), borderTopRightRadius: moderateScale(24) }}>
+        <BottomSheetView style={styles.sheetContent}>
+          {activeControlCategory === 'animation' && (
+            <View style={styles.sheetInner}>
+              <Text style={styles.sheetTitle}>Animations</Text>
+              <View style={[styles.chipRow, styles.sheetRow]}>
+                {animations.map((animation, idx) => (
+                  <TouchableOpacity
+                    key={animation}
                     onPress={() => {
-                      setTextureDisplayMode('model-paint');
-                      setPaintingEnabled(true);
-                      sendToWebView({type: 'enablePaint', value: true});
-                      sendToWebView({type: 'showPaintTexture'});
+                      setSelectedAnimation(animation);
+                      sendToWebView({ type: 'setAnimation', value: animation });
+                      NativeModules.ARNativeModule?.setAnimation?.(idx);
                     }}
-                    color="#FF9F43"
-                  />
-                )}
-                {paintMode === 'target' && (
-                  <PanelButton
-                    label="Sheet"
-                    active={textureDisplayMode === 'target-paint'}
-                    onPress={() => {
-                      setPaintingEnabled(false);
-                      sendToWebView({type: 'enablePaint', value: false});
-                      if (targetTextureDataUrl) {
-                        setTextureDisplayMode('target-paint');
-                        sendToWebView({type: 'applyTargetTexture', dataUrl: targetTextureDataUrl});
-                        return;
-                      }
-                      setShowTargetPainter(true);
-                    }}
-                    color="#DA70D6"
-                  />
-                )}
+                    style={[
+                      styles.choiceChip,
+                      selectedAnimation === animation && styles.choiceChipTeal,
+                    ]}>
+                    <Text style={styles.choiceChipText}>{animation}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            ))}
+            </View>
+          )}
 
-            {renderSection('Audio', '🔊', (
-              <View>
-                <View style={styles.audioTrackCard}>
-                  <Text style={styles.audioTrackText} numberOfLines={1}>
-                    {selectedAudio
-                      ? selectedAudio.audioName || selectedAudio.filename || selectedAudio.gridfsId
-                      : 'No audio available'}
-                  </Text>
+          {activeControlCategory === 'audio' && (
+            <View style={styles.sheetInner}>
+              <Text style={styles.sheetTitle}>Audio Settings</Text>
+              <View style={styles.audioSheetContent}>
+                <View style={[styles.audioPlayButton, audioPlaying && styles.audioPlayButtonActive, { alignSelf: 'center', marginBottom: verticalScale(16) }]}>
+                  <TouchableOpacity onPress={toggleAudio}>
+                    {audioPlaying ? <Pause size={moderateScale(32)} color="#fff" /> : <Play size={moderateScale(32)} color="#fff" />}
+                  </TouchableOpacity>
                 </View>
 
                 {!!uniqueLanguages.length && (
                   <>
                     <Text style={styles.controlSubLabel}>Language</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.controlRow}>
-                      {uniqueLanguages.map(language => (
+                    <View style={[styles.chipRow, styles.sheetRow]}>
+                      {uniqueLanguages.map(lang => (
                         <TouchableOpacity
-                          key={language}
-                          onPress={() => handleLanguageChange(language)}
-                          style={[
-                            styles.choiceChip,
-                            selectedLanguage === language && styles.choiceChipTeal,
-                          ]}>
-                          <Text style={styles.choiceChipText}>{language}</Text>
+                          key={lang}
+                          onPress={() => handleLanguageChange(lang)}
+                          style={[styles.choiceChip, selectedLanguage === lang && styles.choiceChipTeal]}>
+                          <Text style={styles.choiceChipText}>{lang}</Text>
                         </TouchableOpacity>
                       ))}
-                    </ScrollView>
+                    </View>
                   </>
                 )}
-
                 {!!uniqueLevels.length && (
                   <>
                     <Text style={styles.controlSubLabel}>Level</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.controlRow}>
+                    <View style={[styles.chipRow, styles.sheetRow]}>
                       {uniqueLevels.map(level => (
                         <TouchableOpacity
                           key={level}
                           onPress={() => handleLevelChange(level)}
-                          style={[
-                            styles.choiceChip,
-                            selectedLevel === level && styles.choiceChipPink,
-                          ]}>
+                          style={[styles.choiceChip, selectedLevel === level && styles.choiceChipPink]}>
                           <Text style={styles.choiceChipText}>{level}</Text>
                         </TouchableOpacity>
                       ))}
-                    </ScrollView>
+                    </View>
                   </>
                 )}
-
-                <View style={styles.audioFooterRow}>
-                  <TouchableOpacity
-                    onPress={toggleAudio}
-                    style={[
-                      styles.audioPlayButton,
-                      audioPlaying && styles.audioPlayButtonActive,
-                    ]}>
-                    {audioPlaying ? (
-                      <Pause size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-                    ) : (
-                      <Play size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-                    )}
-                  </TouchableOpacity>
+                <View style={styles.audioVolumeRow}>
                   {volume === 0 ? (
-                    <VolumeX size={moderateScale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
+                    <VolumeX size={moderateScale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
                   ) : volume < 50 ? (
-                    <Volume1 size={moderateScale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
+                    <Volume1 size={moderateScale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
                   ) : (
-                    <Volume2 size={moderateScale(16)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
+                    <Volume2 size={moderateScale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
                   )}
+                  <CustomSlider
+                    value={volume}
+                    min={0}
+                    max={100}
+                    onChange={setVolume}
+                    color="#0EA5A4"
+                  />
                   <Text style={styles.volumeText}>{volume}%</Text>
                 </View>
               </View>
-            ))}
+            </View>
+          )}
 
-            {renderSection('Animation', '🎬', (
-              <View>
-                {!!animations.length && (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.controlRow}>
-                    {animations.map((animation, index) => (
-                      <TouchableOpacity
-                        key={`${animation}-${index}`}
-                        onPress={() => {
-                          setSelectedAnimation(animation);
-                          sendToWebView({type: 'setAnimation', value: animation});
-                          NativeModules.ARNativeModule?.setAnimation?.(index);
-                        }}
-                        style={[
-                          styles.choiceChip,
-                          selectedAnimation === animation && styles.choiceChipPink,
-                        ]}>
-                        <Text style={styles.choiceChipText}>{animation}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
-
-                <View style={styles.panelButtonRow}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const next = !isPlaying;
-                      setIsPlaying(next);
-                      sendToWebView({type: 'togglePlay', value: next});
-                    }}
-                    style={[
-                      styles.largeControlButton,
-                      isPlaying && styles.largeControlButtonPink,
-                    ]}>
-                    {isPlaying ? (
-                      <Pause size={moderateScale(14)} color="#fff" strokeWidth={2.2} />
-                    ) : (
-                      <Play size={moderateScale(14)} color="#fff" strokeWidth={2.2} />
-                    )}
-                    <Text style={styles.largeControlButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-
-            {renderSection('Lighting', '💡', (
+          {activeControlCategory === 'lighting' && (
+            <View style={styles.sheetInner}>
+              <Text style={styles.sheetTitle}>Environment Lighting</Text>
               <View style={styles.lightingGrid}>
                 {LIGHTING_OPTIONS.map(light => (
                   <TouchableOpacity
                     key={light.name}
                     onPress={() => setEnvironment(light.name)}
-                    activeOpacity={0.75}
-                    style={[
-                      styles.lightingChip,
-                      environment === light.name && styles.lightingChipActive,
-                    ]}>
-                    <LinearGradient colors={light.bgColors} locations={[0, 0.33, 0.67, 1]} style={styles.lightingSwatch} />
+                    style={[styles.lightingChip, environment === light.name && styles.lightingChipActive]}>
+                    <LinearGradient colors={light.bgColors} style={styles.lightingSwatch} />
                     <Text style={styles.lightingChipText}>{light.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      <View style={[styles.bottomBar, {paddingBottom: insets.bottom + verticalScale(8)}]}>
-        <View style={styles.bottomBarRow}>
-          {!!availableAudios.length && (
-            <TouchableOpacity
-              onPress={toggleAudio}
-              style={[
-                styles.bottomIconButton,
-                audioPlaying && styles.bottomIconButtonPrimary,
-              ]}>
-              {audioPlaying ? (
-                <Pause size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-              ) : (
-                <Play size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-              )}
-            </TouchableOpacity>
-          )}
-
-          {selectedAudio && (
-            <View style={styles.bottomInfo}>
-              <Text style={styles.bottomInfoMeta} numberOfLines={1}>
-                {selectedLanguage} • {selectedLevel}
-              </Text>
-              <Text style={styles.bottomInfoTitle} numberOfLines={1}>
-                {selectedAudio.audioName || selectedAudio.filename || selectedAudio.gridfsId}
-              </Text>
             </View>
           )}
 
-          {paintingEnabled && (
-            <TouchableOpacity
-              onPress={() => setShowBrushControls(current => !current)}
-              style={[
-                styles.bottomIconButton,
-                showBrushControls && styles.bottomIconButtonSecondary,
-              ]}>
-              <Brush size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-            </TouchableOpacity>
+          {activeControlCategory === 'paint' && (
+            <View style={styles.sheetInner}>
+
+              <View style={styles.brushHeader}>
+                <Text style={styles.brushTitle}>🖌️ Brush Settings</Text>
+              </View>
+
+              <Text style={styles.controlSubLabel}>Color</Text>
+              <View style={styles.colorRow}>
+                {COLOR_SWATCHES.map(color => (
+                  <TouchableOpacity
+                    key={color}
+                    onPress={() => setBrushColor(color)}
+                    style={[
+                      styles.colorSwatch,
+                      { backgroundColor: color },
+                      brushColor === color && styles.colorSwatchActive,
+                    ]}
+                  />
+                ))}
+              </View>
+
+              <Text style={styles.controlSubLabel}>Size: {brushSize}px</Text>
+              <View style={styles.brushSizeRow}>
+                <TouchableOpacity
+                  onPress={() => setBrushSize(current => Math.max(1, current - 4))}
+                  style={styles.brushSizeButton}>
+                  <Minus size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+                <View style={styles.customSliderContainer}>
+                  <CustomSlider
+                    value={brushSize}
+                    min={1}
+                    max={128}
+                    onChange={setBrushSize}
+                    color={brushColor}
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={() => setBrushSize(current => Math.min(128, current + 4))}
+                  style={styles.brushSizeButton}>
+                  <Plus size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.brushActionsRow}>
+                <PanelButton
+                  label="Clear"
+                  active={false}
+                  onPress={() => {
+                    sendToWebView({ type: 'clearPaint' });
+                    sendToSheetWebView({ type: 'clear' });
+                  }}
+                  color="#EF4444"
+                />
+                <PanelButton
+                  label="Original"
+                  active={false}
+                  onPress={() => {
+                    setTextureDisplayMode('original');
+                    setPaintingEnabled(false);
+                    sendToWebView({ type: 'enablePaint', value: false });
+                    sendToWebView({ type: 'showOriginalTexture' });
+                  }}
+                  color="#3B82F6"
+                />
+              </View>
+            </View>
           )}
 
-          <TouchableOpacity
-            onPress={() => {
-              setPaintMode('target');
-              setPaintingEnabled(false);
-              setShowBrushControls(false);
-              setShowTargetPainter(true);
-            }}
-            style={styles.bottomIconButtonSecondary}>
-            <ImageIcon size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleOpenAR}
-            style={styles.arButton}>
-            <Cuboid size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
-            <Text style={styles.arButtonText}>AR</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {showBrushControls && (
-        <View style={[styles.brushPanel, {bottom: insets.bottom + verticalScale(78)}]}>
-          <View style={styles.brushHeader}>
-          <Text style={styles.brushTitle}>🖌️ Brush Settings</Text>
-            <TouchableOpacity onPress={() => setShowBrushControls(false)}>
-              <X size={moderateScale(20)} color="rgba(255,255,255,0.5)" strokeWidth={2.2} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.controlSubLabel}>Color</Text>
-          <View style={styles.colorRow}>
-            {COLOR_SWATCHES.map(color => (
+          {activeControlCategory === 'sheet' && (
+            <View style={styles.sheetInner}>
+              <Text style={styles.sheetTitle}>Coloring Sheet</Text>
+              <Text style={styles.sheetSub}>Apply a 2D drawing as a texture to the model</Text>
               <TouchableOpacity
-                key={color}
-                onPress={() => setBrushColor(color)}
-                style={[
-                  styles.colorSwatch,
-                  {backgroundColor: color},
-                  brushColor === color && styles.colorSwatchActive,
-                ]}
-              />
-            ))}
-          </View>
-
-          <Text style={styles.controlSubLabel}>Size: {brushSize}px</Text>
-          <View style={styles.brushSizeRow}>
-            <TouchableOpacity
-              onPress={() => setBrushSize(current => Math.max(1, current - 4))}
-              style={styles.brushSizeButton}>
-              <Minus size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
-            </TouchableOpacity>
-            <View style={styles.brushTrack}>
-              <View style={[styles.brushFill, {width: `${(brushSize / 128) * 100}%`, backgroundColor: brushColor}]} />
+                onPress={() => {
+                  bottomSheetModalRef.current?.dismiss();
+                  setShowTargetPainter(true);
+                }}
+                style={styles.sheetPrimaryButton}>
+                <ImageIcon size={moderateScale(20)} color="#fff" />
+                <Text style={styles.sheetPrimaryButtonText}>Open Painter</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              onPress={() => setBrushSize(current => Math.min(128, current + 4))}
-              style={styles.brushSizeButton}>
-              <Plus size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
-            </TouchableOpacity>
-          </View>
+          )}
+        </BottomSheetView>
+      </BottomSheetModal>
 
-          <View style={styles.brushActionsRow}>
-            <PanelButton
-              label="Clear"
-              active={false}
-              onPress={() => {
-                sendToWebView({type: 'clearPaint'});
-                sendToSheetWebView({type: 'clear'});
-              }}
-              color="#EF4444"
-            />
-            <PanelButton
-              label="Original"
-              active={false}
-              onPress={() => {
-                setTextureDisplayMode('original');
-                setPaintingEnabled(false);
-                sendToWebView({type: 'enablePaint', value: false});
-                sendToWebView({type: 'showOriginalTexture'});
-              }}
-              color="#3B82F6"
-            />
-          </View>
-        </View>
-      )}
+      <ARInstructionModal
+        visible={instructionVisible}
+        onClose={() => setInstructionVisible(false)}
+        onStartScan={() => {
+          setInstructionVisible(false);
+          proceedToAR();
+        }}
+      />
 
       {showTargetPainter && (
         <View style={styles.targetPainterOverlay}>
-          <View style={[styles.targetPainterHeader, {paddingTop: insets.top + verticalScale(8)}]}>
+          <View style={[styles.targetPainterHeader, { paddingTop: insets.top + verticalScale(8) }]}>
             <Text style={styles.targetPainterTitle}>🖼️ Coloring Sheet</Text>
             <TouchableOpacity
               onPress={() => setShowTargetPainter(false)}
@@ -1205,7 +1216,7 @@ export default function ARViewerScreen() {
           <View style={styles.targetPainterBody}>
             <WebView
               ref={sheetWebViewRef}
-              source={{html: colorSheetHtml, baseUrl: targetUrl}}
+              source={{ html: colorSheetHtml, baseUrl: targetUrl }}
               style={styles.targetPainterWebView}
               originWhitelist={['*']}
               javaScriptEnabled
@@ -1213,7 +1224,7 @@ export default function ARViewerScreen() {
               allowFileAccess
               allowUniversalAccessFromFileURLs
               onShouldStartLoadWithRequest={(request) => {
-                const {url} = request;
+                const { url } = request;
                 return (
                   url.startsWith('http') ||
                   url.startsWith('about:') ||
@@ -1226,7 +1237,7 @@ export default function ARViewerScreen() {
                   const data = JSON.parse(event.nativeEvent.data);
                   if (data.type === 'textureReady') {
                     setTargetTextureDataUrl(data.dataUrl);
-                    sendToWebView({type: 'applyTargetTexture', dataUrl: data.dataUrl});
+                    sendToWebView({ type: 'applyTargetTexture', dataUrl: data.dataUrl });
                     setTextureDisplayMode('target-paint');
                     setShowTargetPainter(false);
                     setPaintMode('target');
@@ -1241,7 +1252,7 @@ export default function ARViewerScreen() {
                       setViewerError(data.message || 'Coloring sheet failed');
                     }
                   }
-                } catch {}
+                } catch { }
               }}
             />
           </View>
@@ -1254,7 +1265,7 @@ export default function ARViewerScreen() {
                   onPress={() => setBrushColor(color)}
                   style={[
                     styles.targetPainterColorSwatch,
-                    {backgroundColor: color},
+                    { backgroundColor: color },
                     brushColor === color && styles.targetPainterColorSwatchActive,
                   ]}
                 />
@@ -1262,14 +1273,14 @@ export default function ARViewerScreen() {
             </View>
           </ScrollView>
 
-          <View style={[styles.targetPainterFooter, {paddingBottom: insets.bottom + verticalScale(12)}]}>
+          <View style={[styles.targetPainterFooter, { paddingBottom: insets.bottom + verticalScale(12) }]}>
             <TouchableOpacity
               onPress={() => setShowTargetPainter(false)}
               style={styles.targetPainterSecondary}>
               <Text style={styles.targetPainterSecondaryText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => sendToSheetWebView({type: 'export'})}
+              onPress={() => sendToSheetWebView({ type: 'export' })}
               style={styles.targetPainterPrimary}>
               <Text style={styles.targetPainterPrimaryText}>Apply To Model</Text>
             </TouchableOpacity>
@@ -1335,7 +1346,7 @@ const styles = StyleSheet.create({
   topBarTitle: {
     flex: 1,
     textAlign: 'center',
-    marginHorizontal: scale(6),
+    marginRight: scale(40),
     fontSize: moderateScale(13),
     fontWeight: '700',
     color: '#fff',
@@ -1366,6 +1377,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(11,18,38,0.78)',
     paddingHorizontal: scale(24),
+    zIndex: 50,
   },
   overlayTitle: {
     marginTop: verticalScale(12),
@@ -1583,11 +1595,15 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(10),
   },
   choiceChip: {
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(5),
-    borderRadius: moderateScale(8),
-    marginRight: scale(6),
+    paddingHorizontal: scale(11),
+    paddingVertical: verticalScale(6),
+    borderRadius: moderateScale(10),
     backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(8),
   },
   choiceChipTeal: {
     backgroundColor: '#0EA5A4',
@@ -1596,9 +1612,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#DA70D6',
   },
   choiceChipText: {
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(12),
     color: '#fff',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   audioFooterRow: {
     flexDirection: 'row',
@@ -1642,30 +1658,33 @@ const styles = StyleSheet.create({
   lightingGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: scale(6),
+    gap: scale(10),
+    paddingVertical: verticalScale(10),
   },
   lightingChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(6),
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(8),
-    borderRadius: moderateScale(10),
+    gap: scale(10),
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
+    borderRadius: moderateScale(14),
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'transparent',
+    minWidth: '45%',
   },
   lightingChipActive: {
     backgroundColor: 'rgba(108,76,255,0.4)',
     borderColor: 'rgba(108,76,255,0.5)',
   },
   lightingSwatch: {
-    width: scale(22),
-    height: scale(22),
-    borderRadius: moderateScale(6),
+    width: scale(36),
+    height: scale(32),
+    borderRadius: moderateScale(8),
   },
   lightingChipText: {
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(13),
+    fontWeight: '600',
     color: '#fff',
   },
   bottomBar: {
@@ -1673,8 +1692,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: scale(12),
-    paddingTop: verticalScale(8),
+    paddingHorizontal: scale(9),
+    paddingTop: verticalScale(4),
     backgroundColor: 'rgba(20,20,40,0.9)',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.08)',
@@ -1712,8 +1731,175 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+  paintSwitch: {
+    width: scale(65),
+    height: verticalScale(28),
+    borderRadius: moderateScale(14),
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: scale(2),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    position: 'absolute',
+    left: scale(10),
+    zIndex: 40,
+  },
+  paintSwitchActive: {
+    backgroundColor: 'rgba(108,76,255,0.3)',
+  },
+  paintSwitchThumb: {
+    width: scale(22),
+    height: scale(22),
+    borderRadius: moderateScale(11),
+    backgroundColor: '#fff',
+  },
+  paintSwitchThumbActive: {
+    transform: [{ translateX: scale(37) }],
+    backgroundColor: '#6C4CFF',
+  },
+  paintSwitchLabel: {
+    position: 'absolute',
+    right: scale(8),
+    fontSize: moderateScale(8),
+    fontWeight: '900',
+    color: '#fff',
+  },
+  paintSwitchText: {
+    fontSize: moderateScale(14),
+    color: '#fff',
+    fontWeight: '600',
+  },
+  paintSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(12),
+    marginBottom: verticalScale(20),
+  },
+  brushSettingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    padding: moderateScale(12),
+    borderRadius: moderateScale(12),
+  },
+  brushSettingsText: {
+    color: '#fff',
+    fontSize: moderateScale(14),
+    fontWeight: '600',
+  },
+  sheetPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(10),
+    backgroundColor: '#6C4CFF',
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(14),
+    marginTop: verticalScale(10),
+  },
+  sheetPrimaryButtonText: {
+    color: '#fff',
+    fontSize: moderateScale(15),
+    fontWeight: '700',
+  },
+  controlBarContent: {
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    gap: scale(24),
+    marginHorizontal:'auto'
+  },
+  controlBarItem: {
+    alignItems: 'center',
+    gap: verticalScale(6),
+  },
+  controlIconWrap: {
+    width: scale(43),
+    height: scale(43),
+    borderRadius: moderateScale(8),
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  controlIconWrapActive: {
+    backgroundColor: 'rgba(108,76,255,0.25)',
+    borderColor: '#6C4CFF',
+  },
+  controlLabel: {
+    fontSize: moderateScale(9),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+  },
+  sheetContent: {
+    flex: 1,
+    paddingHorizontal: scale(20),
+    paddingTop: verticalScale(10),
+  },
+  sheetInner: {
+    flex: 1,
+  },
+  sheetTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: verticalScale(16),
+  },
+  sheetSub: {
+    fontSize: moderateScale(13),
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: verticalScale(20),
+  },
+  sheetRow: {
+    marginBottom: verticalScale(20),
+  },
+  audioSheetContent: {
+    paddingBottom: verticalScale(20),
+  },
+  audioVolumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(12),
+    marginTop: verticalScale(16),
+  },
+  volumeSlider: {
+    flex: 1,
+    height: verticalScale(4),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 2,
+  },
+  customSliderContainer: {
+    flex: 1,
+    height: verticalScale(30),
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  customSliderTrack: {
+    height: verticalScale(4),
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  customSliderFill: {
+    height: '100%',
+  },
+  customSliderThumb: {
+    position: 'absolute',
+    width: moderateScale(16),
+    height: moderateScale(16),
+    borderRadius: moderateScale(8),
+    marginLeft: -moderateScale(8),
+    top: verticalScale(7),
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+  },
   arButton: {
-    backgroundColor: 'rgba(14,165,164,0.5)',
+    backgroundColor: 'rgba(14,165,164)',
     borderRadius: moderateScale(12),
     paddingHorizontal: scale(14),
     paddingVertical: verticalScale(10),
@@ -1722,6 +1908,10 @@ const styles = StyleSheet.create({
     gap: scale(4),
     borderWidth: 1,
     borderColor: 'rgba(14,165,164,0.3)',
+    position: 'absolute',
+    
+    right: scale(10),
+    zIndex: 45,
   },
   arButtonText: {
     fontSize: moderateScale(12),
@@ -1777,17 +1967,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: moderateScale(8),
     padding: moderateScale(6),
-  },
-  brushTrack: {
-    flex: 1,
-    height: verticalScale(6),
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: moderateScale(3),
-    overflow: 'hidden',
-  },
-  brushFill: {
-    height: '100%',
-    borderRadius: moderateScale(3),
   },
   brushActionsRow: {
     flexDirection: 'row',
