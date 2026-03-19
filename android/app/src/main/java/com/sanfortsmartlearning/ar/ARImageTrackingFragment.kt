@@ -20,7 +20,7 @@ class ARImageTrackingFragment : ArFragment() {
     val config = super.onCreateSessionConfig(session).apply {
       focusMode = Config.FocusMode.AUTO
       updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-      // Use environmental HDR for realistic lighting that matches the real room
+      // ENVIRONMENTAL_HDR for realistic lighting (compatible with ARCore 1.31 + Sceneform 1.23)
       lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
       planeFindingMode = Config.PlaneFindingMode.DISABLED
       // Enable depth occlusion if supported (model hides behind real objects)

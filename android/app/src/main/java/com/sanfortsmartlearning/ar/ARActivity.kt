@@ -209,37 +209,37 @@ class ARActivity : AppCompatActivity() {
             try {
                 val scene = sceneView.scene
 
-                // 1. Primary Directional Light (The Sun)
+                // 1. Primary Directional Light (The Sun) — balanced warm light
                 val sun =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(3000f)
-                                .setColor(SfColor(1.0f, 0.98f, 0.95f))
+                                .setIntensity(3500f)
+                                .setColor(SfColor(1.0f, 0.97f, 0.93f))
                                 .setShadowCastingEnabled(true)
                                 .build()
                 val sunNode = Node()
                 sunNode.light = sun
                 sunNode.setParent(scene)
-                sunNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 1.0f, 0.0f), -45f)
+                sunNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.8f, 0.3f), -50f)
 
                 // Disable shadow receiving on the floor right from the start
                 arFragment.arSceneView.planeRenderer.isShadowReceiver = false
 
                 // 2. Add Ambient Fill Lights to match Three.js
-                // Top Light
+                // Top Light — cool sky fill
                 val skyLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(1500f)
-                                .setColor(SfColor(0.95f, 0.95f, 1.0f))
+                                .setIntensity(1800f)
+                                .setColor(SfColor(0.92f, 0.95f, 1.0f))
                                 .build()
                 val skyNode = Node()
                 skyNode.light = skyLight
                 skyNode.setParent(scene)
                 skyNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.0f, 0.0f), -90f)
 
-                // Bottom Light (subtle fill to avoid pitch-black undersides)
+                // Bottom Light (fill to avoid pitch-black undersides)
                 val groundLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(800f)
+                                .setIntensity(1000f)
                                 .setColor(SfColor(1.0f, 0.98f, 0.95f))
                                 .build()
                 val groundNode = Node()
@@ -247,9 +247,19 @@ class ARActivity : AppCompatActivity() {
                 groundNode.setParent(scene)
                 groundNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.0f, 0.0f), 90f)
 
-                // 3. Set exposure
+                // 3. Back rim light for depth separation
+                val rimLight =
+                        Light.builder(Light.Type.DIRECTIONAL)
+                                .setIntensity(600f)
+                                .setColor(SfColor(0.98f, 0.96f, 1.0f))
+                                .build()
+                val rimNode = Node()
+                rimNode.light = rimLight
+                rimNode.setParent(scene)
+                rimNode.localRotation = Quaternion.axisAngle(Vector3(-0.3f, 1.0f, -0.8f), 135f)
+
+                // 4. Set exposure and dynamic resolution
                 sceneView.renderer?.let { renderer ->
-                    // Use a safer way to set dynamic resolution if previous way failed
                     try {
                         renderer.setDynamicResolutionEnabled(true)
                     } catch (e: Exception) {}
@@ -849,6 +859,13 @@ class ARActivity : AppCompatActivity() {
                             isModelLoading = false
                             renderable.isShadowCaster = true
                             renderable.isShadowReceiver = true
+                            // Tune material PBR properties for more vivid rendering
+                            for (i in 0 until renderable.submeshCount) {
+                                runCatching {
+                                    val material = renderable.getMaterial(i)
+                                    material.setFloat("reflectance", 0.4f)
+                                }
+                            }
                             placeModel(hitResult, renderable)
                         }
                     }

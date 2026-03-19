@@ -367,11 +367,16 @@ class ARScannerActivity : AppCompatActivity() {
       pendingTextureSignature = null
       pendingTextureStreak = 0
       hasDetectedUserColoring = false
-      lastAcceptedTextureBitmap = null
       pendingColorConsensusBySize.clear()
       // Keep model visible — texture pipeline will update it in-place
       trackedNodes.values.forEach { trackedNode ->
         trackedNode.modelNode.isEnabled = true
+      }
+      // Instantly re-apply last known texture if available (no wait for next frame)
+      val cachedBitmap = lastAcceptedTextureBitmap
+      if (cachedBitmap != null && !cachedBitmap.isRecycled) {
+        val stats = computeTextureStats(cachedBitmap)
+        applyPageTextureToTrackedNodes(cachedBitmap, stats.signature, stats, "toggle-restore")
       }
     }
   }
@@ -569,8 +574,8 @@ class ARScannerActivity : AppCompatActivity() {
           val bloomInstance = bloomClass.getDeclaredConstructor().newInstance()
 
           bloomClass.getDeclaredField("enabled").apply { isAccessible = true; set(bloomInstance, true) }
-          bloomClass.getDeclaredField("strength").apply { isAccessible = true; setFloat(bloomInstance, 0.08f) }
-          bloomClass.getDeclaredField("resolution").apply { isAccessible = true; setInt(bloomInstance, 320) }
+          bloomClass.getDeclaredField("strength").apply { isAccessible = true; setFloat(bloomInstance, 0.06f) }
+          bloomClass.getDeclaredField("resolution").apply { isAccessible = true; setInt(bloomInstance, 384) }
 
           val setBloom = viewClass.getMethod("setBloomOptions", bloomClass)
           setBloom.invoke(filamentView, bloomInstance)
@@ -610,7 +615,7 @@ class ARScannerActivity : AppCompatActivity() {
       peekTouchListenerAttached = true
     }
     // Apply post-processing (FXAA, Bloom, MSAA) once scene is ready
-    // Post-processing disabled for stability/smoothness on low-end devices.
+    applyPostProcessing()
   }
 
   private fun isARCoreSupported(): Boolean {
@@ -639,26 +644,26 @@ class ARScannerActivity : AppCompatActivity() {
       PerformanceTier.LOW ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 170L,
-              textureRefreshIntervalMs = 240L,
-              minTextureApplyIntervalMs = 260L,
-              textureSampleSizePx = 64,
+              colorRefreshIntervalMs = 120L,
+              textureRefreshIntervalMs = 180L,
+              minTextureApplyIntervalMs = 200L,
+              textureSampleSizePx = 52,
           )
       PerformanceTier.MEDIUM ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 150L,
-              textureRefreshIntervalMs = 200L,
-              minTextureApplyIntervalMs = 220L,
-              textureSampleSizePx = 80,
+              colorRefreshIntervalMs = 80L,
+              textureRefreshIntervalMs = 120L,
+              minTextureApplyIntervalMs = 140L,
+              textureSampleSizePx = 64,
           )
       PerformanceTier.HIGH ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 120L,
-              textureRefreshIntervalMs = 170L,
-              minTextureApplyIntervalMs = 190L,
-              textureSampleSizePx = 96,
+              colorRefreshIntervalMs = 60L,
+              textureRefreshIntervalMs = 80L,
+              minTextureApplyIntervalMs = 100L,
+              textureSampleSizePx = 80,
           )
     }
   }
@@ -667,7 +672,7 @@ class ARScannerActivity : AppCompatActivity() {
 
   private fun textureRefreshIntervalMs(inPerformanceRelief: Boolean): Long {
     return if (inPerformanceRelief) {
-      (performanceProfile.textureRefreshIntervalMs * 3L).coerceAtMost(450L)
+      (performanceProfile.textureRefreshIntervalMs * 2L).coerceAtMost(350L)
     } else {
       performanceProfile.textureRefreshIntervalMs
     }
@@ -675,7 +680,7 @@ class ARScannerActivity : AppCompatActivity() {
 
   private fun minTextureApplyIntervalMs(inPerformanceRelief: Boolean): Long {
     return if (inPerformanceRelief) {
-      (performanceProfile.minTextureApplyIntervalMs * 3L).coerceAtMost(550L)
+      (performanceProfile.minTextureApplyIntervalMs * 2L).coerceAtMost(400L)
     } else {
       performanceProfile.minTextureApplyIntervalMs
     }
@@ -683,7 +688,7 @@ class ARScannerActivity : AppCompatActivity() {
 
   private fun textureSampleSizePx(inPerformanceRelief: Boolean): Int {
     return if (inPerformanceRelief) {
-      (performanceProfile.textureSampleSizePx * 2 / 3).coerceAtLeast(80)
+      (performanceProfile.textureSampleSizePx * 3 / 4).coerceAtLeast(96)
     } else {
       performanceProfile.textureSampleSizePx
     }
@@ -720,6 +725,7 @@ class ARScannerActivity : AppCompatActivity() {
     loadFuture
         .thenAccept { renderable: ModelRenderable ->
           android.util.Log.i("ARScannerActivity", "Loaded model renderable from $assetUri")
+          seedRenderableTint(renderable)
           sharedRenderable = renderable
           instructionText.text = instructionForTrackingState()
           hideLoading()
@@ -757,6 +763,7 @@ class ARScannerActivity : AppCompatActivity() {
     loadFuture
         .thenAccept { renderable: ModelRenderable ->
           android.util.Log.i("ARScannerActivity", "Loaded model renderable from file: $filePath")
+          seedRenderableTint(renderable)
           sharedRenderable = renderable
           instructionText.text = instructionForTrackingState()
           hideLoading()
@@ -832,6 +839,24 @@ class ARScannerActivity : AppCompatActivity() {
         TrackingState.TRACKING -> {
           anyTracking = true
           lastTrackingActiveTimeMs = now
+
+          // Detect sheet switch: if existing node's position jumped far,
+          // the user moved to a different physical sheet (same reference image).
+          val existingNode = trackedNodes[image.index]
+          if (existingNode != null) {
+            val oldPos = existingNode.anchorNode.worldPosition
+            val newPos = Vector3(image.centerPose.tx(), image.centerPose.ty(), image.centerPose.tz())
+            val dx = newPos.x - oldPos.x
+            val dy = newPos.y - oldPos.y
+            val dz = newPos.z - oldPos.z
+            val jumpDistSq = (dx * dx) + (dy * dy) + (dz * dz)
+            if (jumpDistSq > SHEET_SWITCH_DISTANCE_SQ) {
+              android.util.Log.i("ARScannerActivity", "Sheet switch detected (dist=${sqrt(jumpDistSq)}m). Recreating node.")
+              removeTrackedNode(image.index)
+              // Fall through to create new node below
+            }
+          }
+
           if (!trackedNodes.containsKey(image.index)) {
             if (trackedNodes.isEmpty()) {
               firstTrackDetectedTimeMs = now
@@ -889,21 +914,43 @@ class ARScannerActivity : AppCompatActivity() {
     }
 
     if (trackedNodes.isNotEmpty()) {
-      // Offload heavy color sampling to background thread to keep UI smooth.
-      // Only dispatch to Main for the final material-apply step.
+      // Camera image sampling must happen on GL/main thread (ARCore frame valid only here).
+      // Pixel processing (sanitize) runs on background thread to keep GL thread smooth.
+      // Final material apply dispatches back to main thread.
       if (!isSamplingInFlight) {
-        isSamplingInFlight = true
-        samplingScope.launch {
-          try {
-            // Run sampling + pixel processing on background thread
-            withContext(Dispatchers.Main) {
-              applyLiveTint(frame, sceneView)
+        val sampledBitmap = quickSampleTextureBitmap(frame, sceneView)
+        if (sampledBitmap != null) {
+          isSamplingInFlight = true
+          samplingScope.launch {
+            try {
+              // Heavy pixel processing on background thread
+              val sanitized = sanitizeSampledTexture(sampledBitmap)
+              if (sanitized != null) {
+                val stats = computeTextureStats(sanitized)
+                val now = SystemClock.elapsedRealtime()
+                if (shouldAcceptTextureUpdate(stats, now)) {
+                  val sig = stats.signature
+                  val changed = isTextureSignatureSignificantlyChanged(lastTextureSignature, sig)
+                  val ageMs = now - lastTextureApplyTimeMs
+                  if (!textureMaterialBuildInFlight &&
+                      (!hasAppliedPageTexture || changed || ageMs >= FORCE_TEXTURE_MATERIAL_REFRESH_MS)
+                  ) {
+                    // Apply texture on main thread
+                    withContext(Dispatchers.Main) {
+                      applyPageTextureToTrackedNodes(sanitized, sig, stats, "live")
+                    }
+                  }
+                }
+              }
+            } catch (e: Exception) {
+              android.util.Log.w("ARScannerActivity", "Sampling coroutine error", e)
+            } finally {
+              isSamplingInFlight = false
             }
-          } catch (e: Exception) {
-            android.util.Log.w("ARScannerActivity", "Sampling coroutine error", e)
-          } finally {
-            isSamplingInFlight = false
           }
+        } else {
+          // No texture sampled — try solid tint fallback on main thread (lightweight)
+          applyLiveTintFallback(frame, sceneView)
         }
       }
     } else if (!modelEverCreated || (now - lastTrackingActiveTimeMs) > TRACKING_GRACE_PERIOD_MS) {
@@ -954,6 +1001,9 @@ class ARScannerActivity : AppCompatActivity() {
     val modelUnitSize = modelBounds.horizontalSize
     val baseScale =
         (targetSizeMeters / modelUnitSize).coerceIn(MIN_MODEL_SCALE, MAX_MODEL_SCALE)
+    // Model faces the same direction as the printed image on the sheet.
+    // The anchor node already inherits the image's world rotation from ARCore,
+    // so the model's local yaw just needs the standard offset for the GLB facing direction.
     val baseRotation = composeModelRotation(DEFAULT_USER_YAW_DEGREES)
     val baseSurfaceOffsetY = computeSurfaceOffsetY(modelBounds, baseRotation, baseScale)
     // Center the model on the page by counteracting the GLB's internal geometry offset.
@@ -1046,14 +1096,38 @@ class ARScannerActivity : AppCompatActivity() {
     addGroundShadowPlane(anchorNode, image.extentX, image.extentZ)
 
     // Keep model visible immediately — show neutral white while page texture loads.
-    // Previously this hid the model, causing a 1+ second invisible gap.
     trackedNode.modelNode.isEnabled = true
     if (isLiveColoringEnabled) {
-      // Apply neutral white tint so model appears clean while real page texture loads
-      applySolidTintToTrackedNode(trackedNode, 0.95f, 0.95f, 0.93f, "initial")
+      // Synchronously attach white material so model never appears black
+      val template = liveTintMaterialTemplate
+      if (template != null) {
+        val whiteMaterial = template.makeCopy()
+        applyTintToMaterial(whiteMaterial, 0.95f, 0.95f, 0.93f, 0f)
+        attachMaterialToTrackedNode(trackedNode, whiteMaterial)
+        trackedNode.tintApplied = true
+        trackedNode.lastSolidTintColor = android.graphics.Color.rgb(242, 242, 237)
+      } else {
+        // Fallback async path if template not ready yet
+        applySolidTintToTrackedNode(trackedNode, 0.95f, 0.95f, 0.93f, "initial")
+      }
     }
     // Start float/animation immediately so model appears alive from the start.
     ensureTrackedNodeAnimation(trackedNode)
+
+    // Boom pop-in animation for child-friendly wow effect
+    trackedNode.modelNode.localScale = Vector3(0.01f, 0.01f, 0.01f)
+    ValueAnimator.ofFloat(0f, 1f).apply {
+      duration = 500L
+      interpolator = android.view.animation.OvershootInterpolator(1.3f)
+      addUpdateListener { anim ->
+        val progress = anim.animatedValue as Float
+        val currentScale = baseScale * progress
+        trackedNode.modelNode.localScale = Vector3(currentScale, currentScale, currentScale)
+      }
+      start()
+    }
+    hapticFeedback("medium")
+
     return trackedNode
   }
 
@@ -1228,7 +1302,7 @@ class ARScannerActivity : AppCompatActivity() {
     // Sun-like directional light for realistic shadows
     val sunLight =
         Light.builder(Light.Type.DIRECTIONAL)
-            .setColor(com.google.ar.sceneform.rendering.Color(1f, 0.95f, 0.9f))
+            .setColor(com.google.ar.sceneform.rendering.Color(1f, 0.96f, 0.92f))
             .setIntensity(DIRECTIONAL_LIGHT_INTENSITY)
             .setShadowCastingEnabled(true)
             .build()
@@ -1238,6 +1312,21 @@ class ARScannerActivity : AppCompatActivity() {
       localPosition = Vector3(0f, 2f, -1f)
       localRotation = Quaternion.lookRotation(Vector3(0.15f, -1f, 0.3f), Vector3.up())
       light = sunLight
+    }
+
+    // Secondary fill light from opposite side for balanced illumination
+    val fillDirLight =
+        Light.builder(Light.Type.DIRECTIONAL)
+            .setColor(com.google.ar.sceneform.rendering.Color(0.94f, 0.96f, 1f))
+            .setIntensity(DIRECTIONAL_LIGHT_INTENSITY * 0.4f)
+            .setShadowCastingEnabled(false)
+            .build()
+
+    Node().apply {
+      setParent(scene)
+      localPosition = Vector3(0f, 1.5f, 1f)
+      localRotation = Quaternion.lookRotation(Vector3(-0.2f, -0.8f, -0.5f), Vector3.up())
+      light = fillDirLight
     }
   }
 
@@ -1702,7 +1791,12 @@ class ARScannerActivity : AppCompatActivity() {
     }
   }
 
+  private var textureResetGeneration = 0
+
   private fun resetLiveColoringStateForNewTarget() {
+    // Remove ALL old tracked nodes so previous model colors don't leak
+    trackedNodes.keys.toList().forEach { removeTrackedNode(it) }
+    textureResetGeneration++
     hasAppliedPageTexture = false
     textureMaterialBuildInFlight = false
     lastTextureSignature = null
@@ -1741,55 +1835,34 @@ class ARScannerActivity : AppCompatActivity() {
     loggedMissingTintTemplate = false
   }
 
-  private fun applyLiveTint(frame: Frame, sceneView: ArSceneView) {
-    if (!isLiveColoringEnabled || showOriginalColors) return
-
+  /**
+   * Fast camera sampling on the GL/main thread. Returns a raw bitmap (not sanitized)
+   * that can be processed on a background thread. Returns null if sampling is not due
+   * or the page is not visible.
+   */
+  private fun quickSampleTextureBitmap(frame: Frame, sceneView: ArSceneView): Bitmap? {
+    if (!isLiveColoringEnabled || showOriginalColors) return null
     val now = SystemClock.elapsedRealtime()
     val colorRefreshIntervalMs = colorRefreshIntervalMs()
-    if (now - lastTintUpdateTimeMs < colorRefreshIntervalMs) {
-      return
-    }
+    if (now - lastTintUpdateTimeMs < colorRefreshIntervalMs) return null
     lastTintUpdateTimeMs = now
+    if (textureMaterialBuildInFlight) return null
     val inPerformanceRelief = now < performanceReliefUntilMs
     val textureRefreshIntervalMs = textureRefreshIntervalMs(inPerformanceRelief)
-    val minTextureApplyIntervalMs = minTextureApplyIntervalMs(inPerformanceRelief)
     val textureSampleSize = textureSampleSizePx(inPerformanceRelief)
-
-    if (textureMaterialBuildInFlight) {
-      return
+    if ((now - lastTextureApplyTimeMs) < textureRefreshIntervalMs && hasAppliedPageTexture) {
+      return null
     }
+    return sampleTrackedPageTexture(frame, sceneView, textureSampleSize)
+  }
 
-    val trackedTextureBitmap =
-        if ((now - lastTextureApplyTimeMs) >= textureRefreshIntervalMs || !hasAppliedPageTexture) {
-          sampleTrackedPageTexture(frame, sceneView, textureSampleSize)
-        } else {
-          null
-        }
-    val sanitizedTextureBitmap = trackedTextureBitmap?.let { sanitizeSampledTexture(it) }
-    if (sanitizedTextureBitmap != null) {
-      val textureStats = computeTextureStats(sanitizedTextureBitmap)
-      val textureSignature = textureStats.signature
-      if (!shouldAcceptTextureUpdate(textureStats, now)) {
-        return
-      }
-      val textureChanged = isTextureSignatureSignificantlyChanged(lastTextureSignature, textureSignature)
-      val textureAgeMs = now - lastTextureApplyTimeMs
-      if ((now - lastTextureDebugLogTimeMs) >= 900L) {
-        lastTextureDebugLogTimeMs = now
-        android.util.Log.i(
-            "ARScannerActivity",
-            "Texture sample ready signature=$textureSignature size=${sanitizedTextureBitmap.width}x${sanitizedTextureBitmap.height}",
-        )
-      }
-      if (!textureMaterialBuildInFlight &&
-          (!hasAppliedPageTexture ||
-              (textureChanged && textureAgeMs >= minTextureApplyIntervalMs) ||
-              textureAgeMs >= FORCE_TEXTURE_MATERIAL_REFRESH_MS)
-      ) {
-        applyPageTextureToTrackedNodes(sanitizedTextureBitmap, textureSignature, textureStats, "live")
-      }
-      return
-    }
+  /**
+   * Lightweight fallback: when texture sampling misses (page not visible etc.),
+   * fall back to solid tint from a single-color page sample. Runs on main thread.
+   */
+  private fun applyLiveTintFallback(frame: Frame, sceneView: ArSceneView) {
+    if (!isLiveColoringEnabled || showOriginalColors) return
+    val now = SystemClock.elapsedRealtime()
     if (firstTrackDetectedTimeMs > 0L &&
         (now - firstTrackDetectedTimeMs) < TEXTURE_ONLY_WARMUP_MS &&
         !hasAppliedPageTexture
@@ -1801,24 +1874,14 @@ class ARScannerActivity : AppCompatActivity() {
     ) {
       return
     }
-    // Removed hasDetectedUserColoring guard — page texture should always apply
-    // even on uncolored pages, so the model shows the printed design immediately.
-    if ((now - lastTextureMissLogTimeMs) >= 1200L) {
-      lastTextureMissLogTimeMs = now
-      android.util.Log.w("ARScannerActivity", "Tracked page texture sampling missed; using color tint fallback.")
-    }
-    if (!ENABLE_SOLID_TINT_FALLBACK) {
-      return
-    }
+    if (!ENABLE_SOLID_TINT_FALLBACK) return
 
     val trackedSampleColor = sampleTrackedPageColor(frame, sceneView)
     if (trackedSampleColor == null && (now - lastSampleMissLogTimeMs) >= 1200L) {
       lastSampleMissLogTimeMs = now
-      android.util.Log.w("ARScannerActivity", "Tracked page color sampling missed; using fallback tint source.")
     }
-    val candidateColor = trackedSampleColor
     val sampledColor =
-        candidateColor?.let { stabilizeSampledColor(it, now) }
+        trackedSampleColor?.let { stabilizeSampledColor(it, now) }
             ?: lastAcceptedSampleColor?.takeIf { (now - lastAcceptedSampleTimeMs) <= COLOR_HOLD_ON_NOISE_MS }
     if (sampledColor == null) {
       if (now - lastAcceptedSampleTimeMs > COLOR_HOLD_ON_NOISE_MS) {
@@ -1831,26 +1894,12 @@ class ARScannerActivity : AppCompatActivity() {
 
     val tint = computeVisibleTint(sampledColor)
     val smoothedTint = smoothTint(tint, lastTintVector)
-    if (!isTintSignificantlyChanged(smoothedTint, lastTintVector)) {
-      return
-    }
+    if (!isTintSignificantlyChanged(smoothedTint, lastTintVector)) return
 
     lastTintVector = smoothedTint
-    val red = smoothedTint[0]
-    val green = smoothedTint[1]
-    val blue = smoothedTint[2]
-    if (now - lastTintDebugLogTimeMs >= 900L) {
-      lastTintDebugLogTimeMs = now
-      val trackedHex = trackedSampleColor?.let { "#${Integer.toHexString(it)}" } ?: "null"
-      android.util.Log.i(
-          "ARScannerActivity",
-          "Live tint rgb=(${(red * 255f).toInt()}, ${(green * 255f).toInt()}, ${(blue * 255f).toInt()}) tracked=$trackedHex",
-      )
-    }
-
     hasAppliedPageTexture = false
     trackedNodes.values.forEach { trackedNode ->
-      applySolidTintToTrackedNode(trackedNode, red, green, blue, "live")
+      applySolidTintToTrackedNode(trackedNode, smoothedTint[0], smoothedTint[1], smoothedTint[2], "live")
     }
   }
 
@@ -1890,46 +1939,19 @@ class ARScannerActivity : AppCompatActivity() {
     val delta = colorDistanceRgb(previousSignature, candidateSignature)
     val changedRatio = computeGridChangedRatio(previousStats.gridColors, candidateStats.gridColors)
 
+    // Only reject if nearly ALL grid cells changed drastically at once — full hand covering
     if (changedRatio >= HAND_OCCLUSION_CHANGE_RATIO && delta >= HAND_OCCLUSION_MIN_DELTA) {
-      pendingTextureSignature = null
-      pendingTextureStreak = 0
       return false
     }
 
+    // Very aggressive spike: huge color jump in a very short window — likely full occlusion
     if (delta >= MAX_TEXTURE_SPIKE_DELTA && (nowMs - lastTextureApplyTimeMs) <= MAX_TEXTURE_SPIKE_WINDOW_MS) {
-      pendingTextureSignature = null
-      pendingTextureStreak = 0
       return false
     }
 
-    if (delta >= MIN_TEXTURE_SIGNATURE_DELTA) {
-      pendingTextureSignature = null
-      pendingTextureStreak = 0
-      return true
-    }
-
-    if (delta < MIN_TEXTURE_SIGNATURE_DELTA) {
-      pendingTextureSignature = null
-      pendingTextureStreak = 0
-      return true
-    }
-
-    if (pendingTextureSignature == null ||
-        colorDistanceRgb(candidateSignature, pendingTextureSignature!!) > PENDING_TEXTURE_MATCH_DELTA
-    ) {
-      pendingTextureSignature = candidateSignature
-      pendingTextureStreak = 1
-      return false
-    }
-
-    pendingTextureStreak += 1
-    val requiredStreak =
-        if (changedRatio <= LOCAL_SKETCH_MAX_CHANGE_RATIO) {
-          MIN_PENDING_TEXTURE_STREAK_LOCAL
-        } else {
-          MIN_PENDING_TEXTURE_STREAK
-        }
-    return pendingTextureStreak >= requiredStreak
+    // Accept all other updates — pixel-level skin/occluder rejection in sanitizeSampledTexture
+    // handles partial hand presence, so frame-level gating should be minimal.
+    return true
   }
 
   private fun sampleTrackedPageTexture(
@@ -1973,6 +1995,7 @@ class ARScannerActivity : AppCompatActivity() {
       return
     }
     textureMaterialBuildInFlight = true
+    val capturedGeneration = textureResetGeneration
 
     val sampler =
         Texture.Sampler.builder()
@@ -1986,6 +2009,11 @@ class ARScannerActivity : AppCompatActivity() {
         .setSampler(sampler)
         .build()
         .thenAccept { texture ->
+          // Discard stale texture if a new sheet was scanned in the meantime
+          if (capturedGeneration != textureResetGeneration) {
+            textureMaterialBuildInFlight = false
+            return@thenAccept
+          }
           var appliedCount = 0
           trackedNodes.values.forEach { trackedNode ->
             val texturedMaterials =
@@ -2095,8 +2123,8 @@ class ARScannerActivity : AppCompatActivity() {
     MaterialFactory.makeOpaqueWithTexture(this, texture)
         .thenAccept { generatedMaterial ->
           runCatching { generatedMaterial.setFloat(MaterialFactory.MATERIAL_METALLIC, 0f) }
-          runCatching { generatedMaterial.setFloat(MaterialFactory.MATERIAL_ROUGHNESS, 0.72f) }
-          runCatching { generatedMaterial.setFloat("reflectance", 0.35f) }
+          runCatching { generatedMaterial.setFloat(MaterialFactory.MATERIAL_ROUGHNESS, 0.95f) }
+          runCatching { generatedMaterial.setFloat("reflectance", 0.04f) }
           trackedNode.tintMaterial = generatedMaterial
           val attachResult = attachMaterialToTrackedNode(trackedNode, generatedMaterial)
           trackedNode.usesTintMaterial = attachResult.applied
@@ -2131,9 +2159,11 @@ class ARScannerActivity : AppCompatActivity() {
       runCatching { material.setFloat4("baseColorFactor", 1f, 1f, 1f, 1f) }
       runCatching { material.setFloat3("emissiveFactor", 0f, 0f, 0f) }
       runCatching { material.setFloat("emissiveStrength", 0f) }
+      // Fully diffuse: no metallic sheen, high roughness, near-zero reflectance
+      // so environmental HDR lighting does NOT tint the sampled crayon colors.
       runCatching { material.setFloat(MaterialFactory.MATERIAL_METALLIC, 0f) }
-      runCatching { material.setFloat(MaterialFactory.MATERIAL_ROUGHNESS, 0.72f) }
-      runCatching { material.setFloat("reflectance", 0.35f) }
+      runCatching { material.setFloat(MaterialFactory.MATERIAL_ROUGHNESS, 0.95f) }
+      runCatching { material.setFloat("reflectance", 0.04f) }
     }
     return true
   }
@@ -2547,124 +2577,113 @@ class ARScannerActivity : AppCompatActivity() {
   private fun sanitizeSampledTexture(bitmap: Bitmap): Bitmap? {
     val outputWidth = bitmap.width
     val outputHeight = bitmap.height
-    if (outputWidth <= 0 || outputHeight <= 0) {
-      return bitmap
-    }
-    if (outputWidth != outputHeight) {
-      return bitmap
-    }
+    if (outputWidth <= 0 || outputHeight <= 0) return bitmap
+    if (outputWidth != outputHeight) return bitmap
 
-    // Full-page masks: true = pixel falls inside the bear body coloring region.
-    // Background (forest, sky, border) pixels will be set to WHITE so the 3D model
-    // shows clean white for uncolored areas instead of the background scene colors.
-    val useDirectTexture = USE_DIRECT_SUBJECT_TEXTURE
     val subjectMask = getFullPageSubjectMask(outputWidth)
-    val refPixels = if (useDirectTexture) null else getFullPageReferencePixels(outputWidth)
-
-    val currentPixels = getPooledIntArray(outputWidth * outputHeight)
+    val totalPixels = outputWidth * outputHeight
+    val currentPixels = getPooledIntArray(totalPixels)
     bitmap.getPixels(currentPixels, 0, outputWidth, 0, 0, outputWidth, outputHeight)
 
     val previousBitmap =
         lastAcceptedTextureBitmap?.takeIf { it.width == outputWidth && it.height == outputHeight }
     val previousPixels =
         previousBitmap?.let {
-          getPooledIntArray(outputWidth * outputHeight).also { buffer ->
+          getPooledIntArray(totalPixels).also { buffer ->
             it.getPixels(buffer, 0, outputWidth, 0, 0, outputWidth, outputHeight)
           }
         }
-    val colorConsensus =
-        pendingColorConsensusBySize.getOrPut(outputWidth) {
-          IntArray(outputWidth * outputHeight)
-        }
 
-    if (previousPixels != null) {
-      val occlusionRatio = estimateOcclusionRatio(currentPixels, previousPixels, refPixels, subjectMask)
-      if (occlusionRatio >= MAX_FRAME_OCCLUSION_RATIO) {
-        return Bitmap.createBitmap(previousPixels, outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
-      }
-    }
-
+    // ── Single optimized pass: classify each pixel ──
+    // Reuse a single HSV array to avoid per-pixel allocation
+    val hsv = FloatArray(3)
     var coloredCount = 0
-    var redAcc = 0L
-    var greenAcc = 0L
-    var blueAcc = 0L
-    for (index in currentPixels.indices) {
-      if (!subjectMask[index]) continue
+
+    for (index in 0 until totalPixels) {
+      // Outside subject mask → clean WHITE (background, forest, border)
+      if (!subjectMask[index]) {
+        currentPixels[index] = android.graphics.Color.WHITE
+        continue
+      }
+
       val camPixel = currentPixels[index]
-      val stableUserColored =
-          if (useDirectTexture) {
-            !(isLikelySkinTone(camPixel) || isLikelyNeutralOccluder(camPixel))
-          } else {
-            val refPixel = refPixels?.get(index)
-            val isUserColored = isLikelyUserDrawingPixel(camPixel, refPixel)
-            updateAndCheckColorConsensus(colorConsensus, index, isUserColored)
-          }
-      if (stableUserColored) {
-        redAcc += android.graphics.Color.red(camPixel)
-        greenAcc += android.graphics.Color.green(camPixel)
-        blueAcc += android.graphics.Color.blue(camPixel)
+      val previous = previousPixels?.get(index)
+      val red = android.graphics.Color.red(camPixel)
+      val green = android.graphics.Color.green(camPixel)
+      val blue = android.graphics.Color.blue(camPixel)
+      android.graphics.Color.colorToHSV(camPixel, hsv)
+      val sat = hsv[1]
+      val value = hsv[2]
+      val chroma = max(red, max(green, blue)) - min(red, min(green, blue))
+
+      // 1) Very dark pixel → shadow/outline/artifact → WHITE
+      if (value < 0.12f) {
+        currentPixels[index] = previous ?: android.graphics.Color.WHITE
+        continue
+      }
+
+      // 2) Skin tone → hand is here → keep previous or WHITE
+      if (isLikelySkinToneHsv(hsv, red, green, blue)) {
+        currentPixels[index] = previous ?: android.graphics.Color.WHITE
+        continue
+      }
+
+      // 3) Grey/neutral → shadow, forest background, pencil line → WHITE
+      if ((value in 0.05f..0.58f && sat <= 0.20f) || (sat <= 0.08f && value < 0.70f)) {
+        currentPixels[index] = previous ?: android.graphics.Color.WHITE
+        continue
+      }
+
+      // 4) Near-white / uncolored paper → clean WHITE
+      //    Camera sees white paper as slightly warm/cool; normalize to pure white.
+      if (sat < 0.08f && value >= 0.78f && chroma <= 30) {
+        currentPixels[index] = android.graphics.Color.WHITE
+        continue
+      }
+
+      // 5) ═══ This pixel has real COLOR (crayon/marker) ═══
+      //    Must have meaningful saturation and chroma to be treated as user coloring.
+      if (sat >= MIN_DRAWING_SATURATION && chroma >= MIN_DRAWING_CHROMA) {
         coloredCount++
+        // Apply gentle boost to make crayon colors vivid on 3D model
+        val boosted = boostDrawingPixel(camPixel)
+        // Blend with previous to smooth out camera noise frame-to-frame
+        currentPixels[index] =
+            if (previous != null) blendRgb(previous, boosted, TEXTURE_BLEND_ALPHA) else boosted
+      } else {
+        // Low saturation, low chroma — ambiguous pixel (faint color or lighting artifact)
+        // Keep previous if available, otherwise white
+        currentPixels[index] = previous ?: android.graphics.Color.WHITE
       }
     }
 
     val hasUserColoring = coloredCount >= MIN_COLORED_PIXELS_FOR_TEXTURE
     if (hasUserColoring) {
       hasDetectedUserColoring = true
+      fillWhiteHoles(currentPixels, subjectMask, outputWidth, outputHeight)
     }
 
     if ((now() - lastTextureDebugLogTimeMs) >= 2000L) {
       android.util.Log.i(
           "ARScannerActivity",
-          "Full-page texture: colored px=$coloredCount hasColoring=$hasUserColoring",
+          "Texture sanitize: coloredPx=$coloredCount hasColoring=$hasUserColoring size=${outputWidth}x${outputHeight}",
       )
     }
 
-    for (index in currentPixels.indices) {
-      val camPixel = currentPixels[index]
-      val previous = previousPixels?.get(index)
-
-      // Outside bear body region → WHITE so model background is clean, not forest colors
-      if (!subjectMask[index]) {
-        currentPixels[index] = android.graphics.Color.WHITE
-        continue
-      }
-
-      // Skin/hand → reject, keep previous or white
-      if (isLikelySkinTone(camPixel)) {
-        currentPixels[index] = previous ?: android.graphics.Color.WHITE
-        continue
-      }
-
-      if (isLikelyNeutralOccluder(camPixel)) {
-        currentPixels[index] = previous ?: android.graphics.Color.WHITE
-        continue
-      }
-
-      if (useDirectTexture) {
-        val boosted = boostDrawingPixel(camPixel)
-        currentPixels[index] =
-            if (previous != null) blendRgb(previous, boosted, TEXTURE_BLEND_ALPHA) else boosted
-        continue
-      }
-
-      val refPixel = refPixels?.get(index)
-      val isUserColored = isLikelyUserDrawingPixel(camPixel, refPixel)
-      val stableUserColored = updateAndCheckColorConsensus(colorConsensus, index, isUserColored)
-
-      currentPixels[index] = if (stableUserColored) {
-        // User colored here → show the crayon color faithfully
-        val boosted = boostDrawingPixel(camPixel)
-        if (previous != null) blendRgb(previous, boosted, TEXTURE_BLEND_ALPHA) else boosted
-      } else {
-        // Not colored yet → hold previous or white (uncolored bear stays white)
-        previous ?: android.graphics.Color.WHITE
-      }
-    }
-
-    if (hasUserColoring) {
-      fillWhiteHoles(currentPixels, subjectMask, outputWidth, outputHeight)
-    }
     return Bitmap.createBitmap(currentPixels, outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+  }
+
+  /** Fast skin-tone check using pre-computed HSV and RGB values (no re-allocation) */
+  private fun isLikelySkinToneHsv(hsv: FloatArray, red: Int, green: Int, blue: Int): Boolean {
+    val hue = hsv[0]
+    val sat = hsv[1]
+    val value = hsv[2]
+    val hsvSkinMatch = hue in 8f..24f && sat in 0.18f..0.50f && value in 0.30f..0.95f
+    val delta = red - green
+    val rgbSkinMatch =
+        red in 110..235 && green in 60..195 && blue in 30..160 &&
+            red > green && red > blue && delta in 15..70
+    return hsvSkinMatch && rgbSkinMatch
   }
 
   private fun updateAndCheckColorConsensus(
@@ -2724,6 +2743,11 @@ class ARScannerActivity : AppCompatActivity() {
   private fun isLikelyNeutralOccluder(colorInt: Int): Boolean {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(colorInt, hsv)
+    return isNeutralOccluderHsv(hsv)
+  }
+
+  /** Fast neutral-occluder check using pre-computed HSV (no allocation) */
+  private fun isNeutralOccluderHsv(hsv: FloatArray): Boolean {
     val value = hsv[2]
     val saturation = hsv[1]
     return (value in 0.05f..0.55f && saturation <= 0.22f) || value < 0.08f
@@ -2753,6 +2777,21 @@ class ARScannerActivity : AppCompatActivity() {
 
     val deltaSq = colorDistanceSq(cameraPixel, referencePixel)
     if (deltaSq < DELTA_COLORED_THRESHOLD_SQ) {
+      return false
+    }
+
+    // Pixel differs from reference — but is it actually CRAYON COLOR or just lighting variation?
+    // Grey/neutral pixels that differ from reference are lighting/shadow artifacts, not coloring.
+    // Require meaningful color: saturation AND chroma above thresholds.
+    if (saturation < MIN_DRAWING_SATURATION_WITH_REF && chroma < MIN_DRAWING_CHROMA_WITH_REF) {
+      return false
+    }
+    // Very dark pixels are shadows, not crayon strokes
+    if (value < 0.12f) {
+      return false
+    }
+    // Near-white pixels are paper/lighting glare, not coloring
+    if (saturation < 0.04f && value > 0.85f) {
       return false
     }
 
@@ -2857,8 +2896,10 @@ class ARScannerActivity : AppCompatActivity() {
     if (hsv[1] <= 0.02f && hsv[2] >= 0.88f) {
       return colorInt
     }
-    val satBoost = if (hsv[1] < 0.35f) 1.25f else 1.12f
-    val valBoost = if (hsv[2] < 0.55f) 1.18f else 1.08f
+    // Gentle boost — just enough to make crayon colors pop on the 3D model
+    // without shifting the perceived hue. Keep it subtle so green stays green.
+    val satBoost = if (hsv[1] < 0.35f) 1.15f else 1.08f
+    val valBoost = if (hsv[2] < 0.55f) 1.12f else 1.05f
     hsv[1] = (hsv[1] * satBoost).coerceIn(0f, 1f)
     hsv[2] = ((hsv[2] * valBoost) + 0.02f).coerceIn(0f, 1f)
     return android.graphics.Color.HSVToColor(android.graphics.Color.alpha(colorInt), hsv)
@@ -2909,33 +2950,14 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun isLikelySkinTone(colorInt: Int): Boolean {
-    val red = android.graphics.Color.red(colorInt)
-    val green = android.graphics.Color.green(colorInt)
-    val blue = android.graphics.Color.blue(colorInt)
-
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(colorInt, hsv)
-    val hue = hsv[0]
-    val sat = hsv[1]
-    val value = hsv[2]
-
-    // True skin tones are warm (hue 5–28°) and LOW saturation (< 0.60).
-    // Orange/red crayons have hue 25–50° and saturation > 0.65 — not skin.
-    // This prevents orange, red, and warm crayon colors from being rejected.
-    val hsvSkinMatch = hue in 5f..28f && sat in 0.14f..0.58f && value in 0.28f..0.98f
-
-    // RGB: red-dominant, muted (not neon). delta cap avoids flagging vivid orange.
-    val delta = red - green
-    val rgbSkinMatch =
-        red in 100..240 &&
-            green in 55..200 &&
-            blue in 28..165 &&
-            red > green &&
-            red > blue &&
-            delta in 10..85
-
-    // Both conditions must agree — reduces false positives from bright crayon colors.
-    return hsvSkinMatch && rgbSkinMatch
+    return isLikelySkinToneHsv(
+        hsv,
+        android.graphics.Color.red(colorInt),
+        android.graphics.Color.green(colorInt),
+        android.graphics.Color.blue(colorInt),
+    )
   }
 
   private fun getReferenceSubjectMask(outputSize: Int): BooleanArray? {
@@ -3753,10 +3775,10 @@ class ARScannerActivity : AppCompatActivity() {
     val blue = android.graphics.Color.blue(colorInt)
     val average = (red + green + blue) / 3
     val chroma = max(red, max(green, blue)) - min(red, min(green, blue))
-    return hsv[1] <= 0.10f &&
-        hsv[2] >= 0.85f &&
-        chroma <= 30 &&
-        average >= 190
+    return hsv[1] <= 0.07f &&
+        hsv[2] >= 0.87f &&
+        chroma <= 25 &&
+        average >= 200
   }
 
   /**
@@ -3885,20 +3907,26 @@ class ARScannerActivity : AppCompatActivity() {
     private val PREFERRED_ANIMATION_NAME_HINTS = listOf("idle", "walk", "eat", "run")
     private const val FRAME_PROCESS_INTERVAL_MS = 50L
     private const val COLOR_REFRESH_INTERVAL_MS = 80L
-    private const val TEXTURE_REFRESH_INTERVAL_MS = 100L
-    private const val TEXTURE_REFRESH_INTERVAL_MS_RELIEF = 400L
-    private const val MIN_TEXTURE_APPLY_INTERVAL_MS = 120L
-    private const val MIN_TEXTURE_APPLY_INTERVAL_MS_RELIEF = 500L
-    private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 2000L
+    private const val TEXTURE_REFRESH_INTERVAL_MS = 80L
+    private const val TEXTURE_REFRESH_INTERVAL_MS_RELIEF = 300L
+    private const val MIN_TEXTURE_APPLY_INTERVAL_MS = 100L
+    private const val MIN_TEXTURE_APPLY_INTERVAL_MS_RELIEF = 400L
+    private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 400L
     private const val TEXTURE_HOLD_AFTER_SAMPLE_MISS_MS = 10000L
-    private const val DELTA_COLORED_THRESHOLD_SQ = 320   // more permissive for lighter crayons/pencils
+    private const val DELTA_COLORED_THRESHOLD_SQ = 800   // ~28 RGB distance; must differ substantially from reference
+    // Minimum color saturation/chroma for a pixel to be considered "user colored" even when
+    // it differs from the reference. Prevents lighting/shadow artifacts from being treated as coloring.
+    private const val MIN_DRAWING_SATURATION_WITH_REF = 0.06f
+    private const val MIN_DRAWING_CHROMA_WITH_REF = 12
     private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 3
     private const val TEXTURE_ONLY_WARMUP_MS = 200L
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
-    private const val ANCHOR_SMOOTHING_ALPHA = 0.25f
-    private const val ANCHOR_JITTER_THRESHOLD_SQ = 0.000004f  // ~2mm movement threshold
-    private const val ANCHOR_ROTATION_SMOOTHING_ALPHA = 0.22f
-    private const val ANCHOR_ROTATION_JITTER_THRESHOLD = 0.0012f
+    // If tracked image position jumps more than ~15cm, assume different physical sheet
+    private const val SHEET_SWITCH_DISTANCE_SQ = 0.0225f  // 0.15m squared
+    private const val ANCHOR_SMOOTHING_ALPHA = 0.35f
+    private const val ANCHOR_JITTER_THRESHOLD_SQ = 0.000002f  // ~1.4mm movement threshold - smoother
+    private const val ANCHOR_ROTATION_SMOOTHING_ALPHA = 0.30f
+    private const val ANCHOR_ROTATION_JITTER_THRESHOLD = 0.0008f
     private const val PAGE_FIT_RATIO = 0.35f
     private const val PAGE_MODEL_OFFSET_X_RATIO = 0.0f
     private const val PAGE_MODEL_OFFSET_Z_RATIO = -0.08f
@@ -3910,11 +3938,11 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SURFACE_LIFT_EPSILON = 0.0015f
     private const val MIN_MODEL_SCALE = 0.02f
     private const val MAX_MODEL_SCALE = 0.38f
-    private const val DIRECTIONAL_LIGHT_INTENSITY = 1100f
-    private const val FILL_LIGHT_KEY_INTENSITY = 950f
-    private const val FILL_LIGHT_BACK_INTENSITY = 700f
-    private const val FILL_LIGHT_SIDE_INTENSITY = 520f
-    private const val FILL_LIGHT_RADIUS = 2.2f
+    private const val DIRECTIONAL_LIGHT_INTENSITY = 1400f
+    private const val FILL_LIGHT_KEY_INTENSITY = 1200f
+    private const val FILL_LIGHT_BACK_INTENSITY = 900f
+    private const val FILL_LIGHT_SIDE_INTENSITY = 680f
+    private const val FILL_LIGHT_RADIUS = 2.8f
     private const val TINT_LIGHT_INTENSITY = 300f
     private const val TINT_LIGHT_RADIUS = 1.3f
     private const val TINT_LIGHT_HEIGHT_METERS = 0.19f
@@ -3927,11 +3955,11 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MIN_ROTATION_DELTA_DEGREES = 0.35f
     private const val MIN_COLORING_SATURATION = 0.03f
     private const val MIN_COLORING_BRIGHTNESS = 0.05f
-    private const val TINT_SMOOTHING_ALPHA = 0.68f
-    private const val MIN_TINT_DELTA = 0.04f
-    private const val BASE_EMISSIVE_BOOST = 0.28f
-    private const val EXTRA_EMISSIVE_BOOST_DARK_SCENES = 0.48f
-    private const val MAX_EMISSIVE_VALUE = 1.20f
+    private const val TINT_SMOOTHING_ALPHA = 0.78f
+    private const val MIN_TINT_DELTA = 0.025f
+    private const val BASE_EMISSIVE_BOOST = 0.35f
+    private const val EXTRA_EMISSIVE_BOOST_DARK_SCENES = 0.55f
+    private const val MAX_EMISSIVE_VALUE = 1.40f
     private const val COLOR_HOLD_ON_NOISE_MS = 700L
     private const val MIN_MATERIAL_REBUILD_INTERVAL_MS = 180L
     private const val ANIMATION_PLAYBACK_SPEED = 0.72f
@@ -3950,19 +3978,19 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SUBJECT_TEXTURE_MIN_SAMPLE_POINTS = 20
     private const val SUBJECT_TEXTURE_INSET_RATIO_X = 0.03f
     private const val SUBJECT_TEXTURE_INSET_RATIO_Y = 0.04f
-    private const val SUBJECT_MASK_EROSION_RADIUS_PX = 1
-    private const val TEXTURE_BLEND_ALPHA = 0.82f
+    private const val SUBJECT_MASK_EROSION_RADIUS_PX = 2
+    private const val TEXTURE_BLEND_ALPHA = 0.65f
     // Increased so vivid sketch colors are not wrongly rejected as skin
     private const val SKIN_REJECT_MIN_DELTA = 55
     private const val HAND_OCCLUSION_SKIN_RATIO = 0.08f
-    private const val MIN_PENDING_SAMPLE_STREAK = 2
-    private const val MIN_ACCEPTED_COLOR_SWITCH_DELTA = 36
-    private const val PENDING_COLOR_MATCH_DELTA = 14
+    private const val MIN_PENDING_SAMPLE_STREAK = 1
+    private const val MIN_ACCEPTED_COLOR_SWITCH_DELTA = 28
+    private const val PENDING_COLOR_MATCH_DELTA = 18
     private const val MIN_PENDING_TEXTURE_STREAK = 1
     private const val MIN_PENDING_TEXTURE_STREAK_LOCAL = 1
-    private const val PENDING_TEXTURE_MATCH_DELTA = 12
-    private const val MAX_TEXTURE_SPIKE_DELTA = 90
-    private const val MAX_TEXTURE_SPIKE_WINDOW_MS = 7000L
+    private const val PENDING_TEXTURE_MATCH_DELTA = 14
+    private const val MAX_TEXTURE_SPIKE_DELTA = 200
+    private const val MAX_TEXTURE_SPIKE_WINDOW_MS = 600L
     // Very high — texture updates are NOT blocked during active drawing
     private const val HAND_OCCLUSION_CHANGE_RATIO = 0.95f
     private const val HAND_OCCLUSION_MIN_DELTA = 200
@@ -3971,17 +3999,17 @@ class ARScannerActivity : AppCompatActivity() {
     private const val TEXTURE_STATS_GRID = 6
     private const val ENABLE_MODEL_ANIMATION = true
     private const val ENABLE_SOLID_TINT_FALLBACK = false
-    private const val HIGH_FRAME_WORK_DURATION_MS = 14L
-    private const val PERFORMANCE_RELIEF_WINDOW_MS = 1500L
+    private const val HIGH_FRAME_WORK_DURATION_MS = 18L
+    private const val PERFORMANCE_RELIEF_WINDOW_MS = 1000L
     private const val CENTER_TEXTURE_FALLBACK_WIDTH_RATIO = 0.22f
     private const val CENTER_TEXTURE_FALLBACK_HEIGHT_RATIO = 0.18f
-    private const val MIN_TEXTURE_SIGNATURE_DELTA = 12
+    private const val MIN_TEXTURE_SIGNATURE_DELTA = 4
     private const val MATERIAL_BINDING_BASE_COLOR = 0
     private const val MATERIAL_BINDING_SCENEFORM_TEXTURE = 1
     private const val MATERIAL_BINDING_BASE_COLOR_MAP = 2
     private const val MATERIAL_BINDING_BASE_COLOR_TEXTURE_NAME = 3
     private const val MATERIAL_BINDING_ALBEDO = 4
-    private const val REFERENCE_MASK_TARGET_WIDTH_PX = 420
+    private const val REFERENCE_MASK_TARGET_WIDTH_PX = 512
     private const val REFERENCE_SUBJECT_MAX_SATURATION = 0.15f
     private const val REFERENCE_SUBJECT_MIN_BRIGHTNESS = 0.80f
     private const val REFERENCE_SUBJECT_MAX_BRIGHTNESS = 1.0f
@@ -3989,11 +4017,11 @@ class ARScannerActivity : AppCompatActivity() {
     private const val REFERENCE_SUBJECT_MIN_AVERAGE_RGB = 185
     // Fill thresholds for the uncolored bear body — allows cream/off-white.
     // Sandy ground (sat≈0.41), green trees (sat≈0.56), sky (sat≈0.45) still fail.
-    private const val REFERENCE_FILL_MIN_BRIGHTNESS = 0.76f
+    private const val REFERENCE_FILL_MIN_BRIGHTNESS = 0.78f
     private const val REFERENCE_FILL_MAX_BRIGHTNESS = 1.0f
-    private const val REFERENCE_FILL_MAX_SATURATION = 0.26f
-    private const val REFERENCE_FILL_MAX_CHROMA = 60
-    private const val REFERENCE_FILL_MIN_AVERAGE_RGB = 168
+    private const val REFERENCE_FILL_MAX_SATURATION = 0.18f
+    private const val REFERENCE_FILL_MAX_CHROMA = 40
+    private const val REFERENCE_FILL_MIN_AVERAGE_RGB = 180
     private const val MIN_SUBJECT_MASK_PIXELS = 600
     private const val MIN_FULL_PAGE_SUBJECT_COVERAGE_RATIO = 0.04f
     private const val SUBJECT_COMPONENT_MAX_AREA_RATIO = 0.58f
@@ -4011,16 +4039,16 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MAX_TRACKED_PAGE_EDGE_RATIO = 3.9f
     private const val MIN_PIXEL_COLOR_CONSENSUS = 1
     private const val MAX_PIXEL_COLOR_CONSENSUS = 3
-    private const val MAX_FRAME_OCCLUSION_RATIO = 0.24f
+    private const val MAX_FRAME_OCCLUSION_RATIO = 0.55f
     private const val OCCLUSION_PREVIOUS_DELTA_THRESHOLD_SQ = 2200
     private const val OCCLUSION_REFERENCE_DELTA_THRESHOLD_SQ = 2600
-    private const val MIN_DRAWING_SATURATION = 0.035f
-    private const val MIN_DRAWING_VALUE = 0.06f
-    private const val MIN_DRAWING_CHROMA = 8
+    private const val MIN_DRAWING_SATURATION = 0.06f
+    private const val MIN_DRAWING_VALUE = 0.12f
+    private const val MIN_DRAWING_CHROMA = 12
     private const val MAX_REFERENCE_HUE_SHIFT_DEGREES = 8f
     private const val MAX_REFERENCE_SAT_SHIFT = 0.08f
     private const val MAX_REFERENCE_VALUE_SHIFT = 0.10f
-    private const val USE_DIRECT_SUBJECT_TEXTURE = false
+    private const val USE_DIRECT_SUBJECT_TEXTURE = true
     private val SUBJECT_MASK_SEED_POINTS =
         listOf(
             0.50f to 0.40f,  // upper body / head area
