@@ -10,8 +10,9 @@ def reactAutolinkLockFiles = files(
 )
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+    def npxCommand = System.getProperty('os.name').toLowerCase().contains('windows') ? "npx.cmd" : "npx"
     ex.autolinkLibrariesFromCommand(
-        ["npx", "@react-native-community/cli", "config"],
+        [npxCommand, "@react-native-community/cli", "config"],
         file("../"),
         reactAutolinkLockFiles,
     )
