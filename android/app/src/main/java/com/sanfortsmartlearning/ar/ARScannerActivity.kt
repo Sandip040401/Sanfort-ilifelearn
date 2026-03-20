@@ -24,8 +24,12 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.HorizontalScrollView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import android.app.Dialog
+import android.view.Gravity
+import android.view.WindowManager
 import com.sanfortsmartlearning.R
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.AugmentedImage
@@ -294,6 +298,16 @@ class ARScannerActivity : AppCompatActivity() {
     window.decorView.post { attachSceneUpdateListenerIfReady() }
   }
 
+  override fun onPause() {
+    super.onPause()
+    // Stop audio when app goes to background
+    if (isAudioPlaying) {
+      mediaPlayer?.pause()
+      isAudioPlaying = false
+      runCatching { audioLabel.text = "Let's Spell" }
+    }
+  }
+
   override fun onDestroy() {
     gpuTextureProcessor?.release()
     gpuTextureProcessor = null
@@ -378,7 +392,7 @@ class ARScannerActivity : AppCompatActivity() {
 
     // ── Audio icon — colorful circle ──
     btnAudio.background = createGradientCircleDrawable("#FFEAA7", "#FDCB6E")
-    btnAudio.setOnClickListener { toggleAudio() }
+    audioContainer.setOnClickListener { showAudioSettingsSheet() }
 
     // ── Toggle container — vibrant gradient card ──
     val toggleContainer = findViewById<LinearLayout>(R.id.toggleColoursContainer)
@@ -773,7 +787,8 @@ class ARScannerActivity : AppCompatActivity() {
 
   private fun playCurrentAudio() {
     val entry = allAudios.firstOrNull {
-      it.language == selectedLanguage && it.level == selectedLevel
+      it.language.equals(selectedLanguage, ignoreCase = true) &&
+          it.level.equals(selectedLevel, ignoreCase = true)
     } ?: allAudios.firstOrNull() ?: return
 
     if (entry.audioUrl.isBlank()) return
@@ -803,6 +818,256 @@ class ARScannerActivity : AppCompatActivity() {
     }.onFailure {
       android.util.Log.w("ARScannerActivity", "Audio playback failed", it)
     }
+  }
+
+  // ── Audio Settings Bottom Sheet ──
+  private fun showAudioSettingsSheet() {
+    if (allAudios.isEmpty()) {
+      Toast.makeText(this, "No audio available", Toast.LENGTH_SHORT).show()
+      return
+    }
+
+    val density = resources.displayMetrics.density
+    val dp = { v: Float -> (v * density).toInt() }
+
+    val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar)
+    dialog.window?.apply {
+      setDimAmount(0.4f)
+      setGravity(Gravity.BOTTOM)
+      setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
+      addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+      attributes.windowAnimations = android.R.style.Animation_InputMethod
+    }
+
+    // ── Root container ──
+    val root = LinearLayout(this).apply {
+      orientation = LinearLayout.VERTICAL
+      setBackgroundColor(Color.parseColor("#1A1A2E"))
+      setPadding(dp(24f), dp(12f), dp(24f), dp(28f))
+    }
+    // Round top corners
+    val rootBg = GradientDrawable().apply {
+      setColor(Color.parseColor("#1A1A2E"))
+      cornerRadii = floatArrayOf(dp(24f).toFloat(), dp(24f).toFloat(), dp(24f).toFloat(), dp(24f).toFloat(), 0f, 0f, 0f, 0f)
+    }
+    root.background = rootBg
+
+    // ── Handle bar ──
+    val handle = View(this).apply {
+      val handleBg = GradientDrawable().apply {
+        setColor(Color.parseColor("#44FFFFFF"))
+        cornerRadius = dp(3f).toFloat()
+      }
+      background = handleBg
+    }
+    val handleParams = LinearLayout.LayoutParams(dp(48f), dp(5f)).apply {
+      gravity = android.view.Gravity.CENTER_HORIZONTAL
+      bottomMargin = dp(16f)
+    }
+    root.addView(handle, handleParams)
+
+    // ── Title row with close button ──
+    val titleRow = LinearLayout(this).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = android.view.Gravity.CENTER_VERTICAL
+    }
+    val title = TextView(this).apply {
+      text = "Audio Settings"
+      setTextColor(Color.WHITE)
+      textSize = 20f
+      setTypeface(typeface, android.graphics.Typeface.BOLD)
+    }
+    titleRow.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+
+    val closeBtn = TextView(this).apply {
+      text = "\u2715"
+      setTextColor(Color.WHITE)
+      textSize = 18f
+      gravity = android.view.Gravity.CENTER
+      val closeBg = GradientDrawable().apply {
+        setColor(Color.parseColor("#2D2D44"))
+        cornerRadius = dp(16f).toFloat()
+      }
+      background = closeBg
+      setPadding(dp(10f), dp(6f), dp(10f), dp(6f))
+      setOnClickListener { dialog.dismiss() }
+    }
+    titleRow.addView(closeBtn, LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    ))
+
+    val titleRowParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { bottomMargin = dp(20f) }
+    root.addView(titleRow, titleRowParams)
+
+    // ── Unique languages ──
+    val languages = allAudios.map { it.language }.distinct().sorted()
+    if (selectedLanguage.isBlank() || languages.none { it.equals(selectedLanguage, ignoreCase = true) }) {
+      selectedLanguage = languages.firstOrNull() ?: ""
+    }
+
+    // ── Language label ──
+    val langLabel = TextView(this).apply {
+      text = "Language"
+      setTextColor(Color.parseColor("#B0B0B0"))
+      textSize = 13f
+      setTypeface(typeface, android.graphics.Typeface.BOLD)
+      letterSpacing = 0.06f
+    }
+    val langLabelParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { bottomMargin = dp(10f) }
+    root.addView(langLabel, langLabelParams)
+
+    // ── Language chips scroll ──
+    val langScroll = HorizontalScrollView(this).apply {
+      isHorizontalScrollBarEnabled = false
+      overScrollMode = View.OVER_SCROLL_NEVER
+    }
+    val langRow = LinearLayout(this).apply {
+      orientation = LinearLayout.HORIZONTAL
+    }
+
+    // ── Level label + chips (will be rebuilt when language changes) ──
+    val levelLabel = TextView(this).apply {
+      text = "Level"
+      setTextColor(Color.parseColor("#B0B0B0"))
+      textSize = 13f
+      setTypeface(typeface, android.graphics.Typeface.BOLD)
+      letterSpacing = 0.06f
+    }
+    val levelLabelParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { topMargin = dp(18f); bottomMargin = dp(10f) }
+
+    val levelScroll = HorizontalScrollView(this).apply {
+      isHorizontalScrollBarEnabled = false
+      overScrollMode = View.OVER_SCROLL_NEVER
+    }
+    val levelRow = LinearLayout(this).apply {
+      orientation = LinearLayout.HORIZONTAL
+    }
+    levelScroll.addView(levelRow)
+
+    // ── Play button ──
+    val playBtn = TextView(this).apply {
+      text = if (isAudioPlaying) "Stop" else "Play Audio"
+      setTextColor(Color.WHITE)
+      textSize = 16f
+      setTypeface(typeface, android.graphics.Typeface.BOLD)
+      gravity = android.view.Gravity.CENTER
+      setPadding(0, dp(14f), 0, dp(14f))
+      background = GradientDrawable(
+          GradientDrawable.Orientation.LEFT_RIGHT,
+          intArrayOf(Color.parseColor("#00B894"), Color.parseColor("#00CEC9"))
+      ).apply { cornerRadius = dp(16f).toFloat() }
+    }
+
+    fun buildLevelChips() {
+      levelRow.removeAllViews()
+      val levels = allAudios
+          .filter { it.language.equals(selectedLanguage, ignoreCase = true) }
+          .map { it.level }.distinct().sorted()
+      if (selectedLevel.isBlank() || levels.none { it.equals(selectedLevel, ignoreCase = true) }) {
+        selectedLevel = levels.firstOrNull() ?: ""
+      }
+      levels.forEachIndexed { idx, level ->
+        val chip = TextView(this).apply {
+          text = level.replaceFirstChar { it.uppercase() }
+          setTextColor(Color.WHITE)
+          textSize = 13f
+          setTypeface(typeface, android.graphics.Typeface.BOLD)
+          gravity = android.view.Gravity.CENTER
+          setPadding(dp(18f), dp(10f), dp(18f), dp(10f))
+          val isSelected = level.equals(selectedLevel, ignoreCase = true)
+          background = GradientDrawable().apply {
+            cornerRadius = dp(12f).toFloat()
+            if (isSelected) {
+              setColor(Color.parseColor("#E040FB"))
+            } else {
+              setColor(Color.parseColor("#2D2D44"))
+              setStroke(dp(1f), Color.parseColor("#40FFFFFF"))
+            }
+          }
+        }
+        val chipParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { if (idx > 0) marginStart = dp(8f) }
+        chip.setOnClickListener {
+          selectedLevel = level
+          buildLevelChips()
+        }
+        levelRow.addView(chip, chipParams)
+      }
+    }
+
+    fun buildLanguageChips() {
+      langRow.removeAllViews()
+      languages.forEachIndexed { idx, lang ->
+        val chip = TextView(this).apply {
+          text = lang
+          setTextColor(Color.WHITE)
+          textSize = 13f
+          setTypeface(typeface, android.graphics.Typeface.BOLD)
+          gravity = android.view.Gravity.CENTER
+          setPadding(dp(18f), dp(10f), dp(18f), dp(10f))
+          val isSelected = lang.equals(selectedLanguage, ignoreCase = true)
+          background = GradientDrawable().apply {
+            cornerRadius = dp(12f).toFloat()
+            if (isSelected) {
+              setColor(Color.parseColor("#6C5CE7"))
+            } else {
+              setColor(Color.parseColor("#2D2D44"))
+              setStroke(dp(1f), Color.parseColor("#40FFFFFF"))
+            }
+          }
+        }
+        val chipParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { if (idx > 0) marginStart = dp(8f) }
+        chip.setOnClickListener {
+          selectedLanguage = lang
+          buildLanguageChips()
+          buildLevelChips()
+        }
+        langRow.addView(chip, chipParams)
+      }
+    }
+
+    buildLanguageChips()
+    langScroll.addView(langRow)
+    val langScrollParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    )
+    root.addView(langScroll, langScrollParams)
+
+    root.addView(levelLabel, levelLabelParams)
+    buildLevelChips()
+    val levelScrollParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    )
+    root.addView(levelScroll, levelScrollParams)
+
+    // ── Play button ──
+    val playParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+    ).apply { topMargin = dp(24f) }
+    playBtn.setOnClickListener {
+      if (isAudioPlaying) {
+        mediaPlayer?.pause()
+        isAudioPlaying = false
+        audioLabel.text = "Let's Spell"
+        playBtn.text = "Play Audio"
+      } else {
+        playCurrentAudio()
+        dialog.dismiss()
+      }
+    }
+    root.addView(playBtn, playParams)
+
+    dialog.setContentView(root)
+    dialog.show()
   }
 
   // ══════════════════════════════════════════════════════════════════

@@ -189,7 +189,7 @@ const HEADER_MODELS_COLORS = ['#DA70D6', '#A35EEA', '#6C4CFF', '#5B6EEC', '#4A90
 function getPreviewUri(model: ARModel) {
   const modelId = model._id || model.id || (model as any).id;
 
-  // 1. Prioritize Thumbnail route from API (as configured in ARService.getThumbnailImageUrl)
+  // 1. Prioritize Thumbnail route from API
   if (modelId) {
     return ARService.getThumbnailImageUrl(String(modelId));
   }
@@ -301,22 +301,22 @@ function getEnvironmentColors(environment: AREnvironmentView) {
 function ARLoading() {
   const { colors } = useTheme();
   const { contentWidth, gap, cardWidth, worldCardHeight } = useResponsiveLayout();
-  
+
   return (
     <View style={[styles.loadingRoot, { backgroundColor: colors.background }]}>
       <View style={{ width: contentWidth, alignSelf: 'center' }}>
-        <Skeleton 
-          width={contentWidth} 
-          height={verticalScale(100)} 
+        <Skeleton
+          width={contentWidth}
+          height={verticalScale(100)}
           borderRadius={moderateScale(20)}
           style={{ marginTop: verticalScale(8), marginBottom: verticalScale(14) }}
         />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton 
+            <Skeleton
               key={i}
-              width={cardWidth} 
-              height={worldCardHeight} 
+              width={cardWidth}
+              height={worldCardHeight}
               borderRadius={moderateScale(20)}
             />
           ))}
@@ -490,14 +490,14 @@ function EnvironmentGallery({
   );
 }
 
-function ModelPreviewImage({ 
-  thumbnailUri, 
-  previewUri, 
+function ModelPreviewImage({
+  thumbnailUri,
+  previewUri,
   fallbackIcon,
-  style 
-}: { 
-  thumbnailUri?: string | null; 
-  previewUri?: string | null; 
+  style
+}: {
+  thumbnailUri?: string | null;
+  previewUri?: string | null;
   fallbackIcon: string;
   style: any;
 }) {
@@ -606,7 +606,7 @@ function ModelGallery({
         </View>
       ) : (
         <>
-          <View style={[styles.searchContainer, { 
+          <View style={[styles.searchContainer, {
             backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
             borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
           }]}>
@@ -639,10 +639,10 @@ function ModelGallery({
     const modelId = item._id || item.id || (item as any).id;
     const thumbnailUri = getPreviewUri(item); // Returns the /thumbnail endpoint
     const previewUri = modelId ? ARService.getPreviewImageUrl(String(modelId)) : null;
-    
+
     const referenceSource = getReferenceImageSource(item);
     const referenceUri = referenceSource ? normalizeReferenceForDisplay(referenceSource) : null;
-    
+
     const level = getModelLevel(item);
     const stars = getLevelStars(level);
 
@@ -971,7 +971,7 @@ function ARScreenContent() {
           onScroll={handleScroll}
         />
       )}
-     
+
       <BottomSheetModal
         ref={bottomSheetModalRef}
         index={0}
