@@ -36,6 +36,7 @@ import {GamesService} from '@/services';
 import {useTheme} from '@/theme';
 import type {BottomTabParamList, MainStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {
   GAME_CATEGORIES,
   GAME_CATEGORY_META,
@@ -214,7 +215,7 @@ function GamesScreenContent() {
   const [searchValue, setSearchValue] = useState('');
   const deferredSearchValue = useDeferredValue(searchValue);
   const isTablet = width >= 768;
-  const bottomContentInset = insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const queueVisualStyle = useMemo(
     () => ({width: isTablet ? scale(148) : scale(112)}),
     [isTablet],

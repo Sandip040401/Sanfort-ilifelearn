@@ -17,6 +17,7 @@ import {ScanLine, FileText, Clock, Info} from 'lucide-react-native';
 import {useTheme, Typography} from '@/theme';
 import {ScreenErrorBoundary} from '@/components/ui';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 
 const {width: SCREEN_W} = Dimensions.get('window');
 const H_PAD = scale(20);
@@ -34,7 +35,7 @@ function ARSheetsContent() {
   const {width} = useWindowDimensions();
   const isTablet = width >= 768;
   const contentWidth = isTablet ? Math.min(width * 0.75, 620) : undefined;
-  const bottomContentInset = insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
 
   const renderScanItem = ({item}: {item: typeof RECENT_SCANS[0]}) => (
     <TouchableOpacity

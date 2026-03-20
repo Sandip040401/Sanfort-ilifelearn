@@ -23,6 +23,7 @@ import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {GRADE_OPTIONS} from './books.data';
 
 const H_PAD = scale(20);
@@ -56,7 +57,7 @@ function BooksScreenContent() {
   const showTwoColumn = isTabletLandscape;
   const contentWidth = isTablet ? Math.min(width - scale(32), scale(920)) : width;
   const singleCardWidth = contentWidth - H_PAD * 2;
-  const bottomContentInset = insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const cardWidth = showTwoColumn
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : singleCardWidth;

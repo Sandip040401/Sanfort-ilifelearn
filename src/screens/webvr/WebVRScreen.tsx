@@ -319,8 +319,8 @@ function WebVRContent() {
   );
 
   const bottomContentInset = useMemo(
-    () => Math.max(insets.bottom + verticalScale(24), tabBarHeight - verticalScale(24)),
-    [insets.bottom, tabBarHeight],
+    () => tabBarHeight + verticalScale(24),
+    [tabBarHeight],
   );
 
   const contentStyle = useMemo(

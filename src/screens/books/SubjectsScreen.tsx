@@ -19,6 +19,7 @@ import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {getGradeMeta, SUBJECT_OPTIONS, withAlpha} from './books.data';
 
 const H_PAD = scale(20);
@@ -49,7 +50,7 @@ function SubjectsScreenContent() {
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : contentWidth - H_PAD * 2;
   const isNarrowCard = cardWidth < scale(320);
-  const bottomContentInset = insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const cardHeight = isTablet
     ? Math.max(verticalScale(270), Math.min(verticalScale(340), cardWidth * 1.2))
     : undefined;

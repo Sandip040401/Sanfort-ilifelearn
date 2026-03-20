@@ -23,6 +23,7 @@ import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import {useQuery, useQueryClient} from '@tanstack/react-query';
 import Voice from '@react-native-voice/voice';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {
   BarChart3,
   BookOpen,
@@ -715,7 +716,7 @@ function ReadAloudContent() {
           />
         }
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{paddingBottom: insets.bottom + verticalScale(24)}}>
+        contentContainerStyle={{paddingBottom: TAB_BAR_HEIGHT + insets.bottom + verticalScale(24)}}>
         <LinearGradient
           colors={isDark ? ['#0F172A', '#0F474C', '#0F766E', '#1A6DAD', '#2563EB'] : ['#115E59', '#0D7886', '#0891B2', '#177ACF', '#2563EB']}
           locations={[0, 0.25, 0.5, 0.75, 1]}

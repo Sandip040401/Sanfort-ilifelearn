@@ -21,6 +21,7 @@ import {useNavigation, useRoute, type RouteProp} from '@react-navigation/native'
 import {useTheme} from '@/theme';
 import {Skeleton} from '@/components/ui';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {WebVRService} from '@/services/webvr.service';
 import type {WebVRAsset} from '@/components/WebVRViewerModal';
 import type {WebVRStackParamList} from '@/types';
@@ -354,7 +355,7 @@ export default function WebVRFolderScreen() {
   const contentStyle = useMemo(
     () => ({
       padding: scale(16),
-      paddingBottom: insets.bottom + verticalScale(24),
+      paddingBottom: TAB_BAR_HEIGHT + insets.bottom + verticalScale(24),
     }),
     [insets.bottom],
   );

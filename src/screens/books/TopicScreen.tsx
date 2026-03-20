@@ -28,6 +28,7 @@ import {useScreenReady} from '@/hooks/useScreenReady';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {withAlpha} from './books.data';
 import {getYouTubeThumbnailUrl, isYouTubeUrl} from '@/utils/video';
 
@@ -97,7 +98,7 @@ function TopicScreenContent() {
   const quickStatBg = withAlpha(headerTextColor, 0.14);
   const quickStatBorder = withAlpha(headerTextColor, 0.18);
   const quickStatLabelColor = withAlpha(headerTextColor, 0.75);
-  const bottomContentInset = insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const safeTopic = {
     ...topic,
     title: topic?.title ?? 'Topic',
