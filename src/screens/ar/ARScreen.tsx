@@ -87,7 +87,7 @@ function useResponsiveLayout() {
       ? Math.max(Math.min(cardWidth * 0.62, 320), 200)
       : Math.max(Math.min(cardWidth * 0.75, 340), 220))
     : Math.max(cardWidth * 0.97, 165);
-  const modelPreviewHeight = isTablet ? Math.min(cardWidth * 0.55, 170) : verticalScale(93);
+  const modelPreviewHeight = isTablet ? Math.min(cardWidth * 0.55, 170) : verticalScale(85);
   return {
     isTablet,
     isLargeTablet,
@@ -187,23 +187,30 @@ const HEADER_RAINBOW_COLORS = ['#FF6B6B', '#FF8557', '#FF9F43', '#87A274', '#3DA
 const HEADER_MODELS_COLORS = ['#DA70D6', '#A35EEA', '#6C4CFF', '#5B6EEC', '#4A90D9'] as const;
 
 function getPreviewUri(model: ARModel) {
-  const thumbnail = (model as any).thumbnail || (model as any).thumbnail_url;
+  const modelId = model._id || model.id || (model as any).id;
+
+  // 1. Prioritize Thumbnail route from API (as configured in ARService.getThumbnailImageUrl)
+  if (modelId) {
+    return ARService.getThumbnailImageUrl(String(modelId));
+  }
+
+  // 2. Fallbacks to model data properties
+  const thumbnail = (model as any).thumbnail || (model as any).thumbnail_url || (model as any).preview_image;
   if (thumbnail) {
     const raw = String(thumbnail);
     if (raw.startsWith('http')) return raw;
     return normalizeReferenceSource(raw);
   }
-  if (model.previewUrl) {
-    return model.previewUrl;
-  }
+
+  if (model.previewUrl) return model.previewUrl;
+
   if (model.previewImage) {
     const raw = String(model.previewImage);
-    if (raw.startsWith('http://') || raw.startsWith('https://')) {
-      return raw;
-    }
+    if (raw.startsWith('http')) return raw;
+    return normalizeReferenceSource(raw);
   }
-  const modelId = model._id || model.id;
-  return modelId ? ARService.getPreviewImageUrl(modelId) : null;
+
+  return null;
 }
 
 function normalizeReferenceSource(value: string) {
@@ -483,6 +490,43 @@ function EnvironmentGallery({
   );
 }
 
+function ModelPreviewImage({ 
+  thumbnailUri, 
+  previewUri, 
+  fallbackIcon,
+  style 
+}: { 
+  thumbnailUri?: string | null; 
+  previewUri?: string | null; 
+  fallbackIcon: string;
+  style: any;
+}) {
+  const [currentUri, setCurrentUri] = useState<string | null>(thumbnailUri || null);
+  const [failedThumbnail, setFailedThumbnail] = useState(false);
+
+  const handleError = () => {
+    if (!failedThumbnail && previewUri && previewUri !== thumbnailUri) {
+      setCurrentUri(previewUri);
+      setFailedThumbnail(true);
+    } else {
+      setCurrentUri(null);
+    }
+  };
+
+  if (!currentUri) {
+    return <Text style={styles.modelFallbackEmoji}>{fallbackIcon}</Text>;
+  }
+
+  return (
+    <Image
+      source={{ uri: currentUri }}
+      style={style}
+      resizeMode="contain"
+      onError={handleError}
+    />
+  );
+}
+
 function ModelGallery({
   environment,
   models,
@@ -592,12 +636,12 @@ function ModelGallery({
   ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
 
   const renderItem = useCallback(({ item, index }: { item: ARModel, index: number }) => {
-    const previewUri = getPreviewUri(item);
+    const modelId = item._id || item.id || (item as any).id;
+    const thumbnailUri = getPreviewUri(item); // Returns the /thumbnail endpoint
+    const previewUri = modelId ? ARService.getPreviewImageUrl(String(modelId)) : null;
+    
     const referenceSource = getReferenceImageSource(item);
     const referenceUri = referenceSource ? normalizeReferenceForDisplay(referenceSource) : null;
-    
-    // Explicit priority: thumbnail/previewUri (which now includes .thumbnail) -> reference image
-    const displayUri = previewUri || referenceUri;
     
     const level = getModelLevel(item);
     const stars = getLevelStars(level);
@@ -619,15 +663,12 @@ function ModelGallery({
               style={StyleSheet.absoluteFill}
             />
             <View style={[styles.modelPreviewShell, { height: modelPreviewHeight }]}>
-              {displayUri ? (
-                <Image
-                  source={{ uri: displayUri }}
-                  style={styles.modelPreviewImage}
-                  resizeMode="contain"
-                />
-              ) : (
-                <Text style={styles.modelFallbackEmoji}>{item.icon || environment.emoji || '🎨'}</Text>
-              )}
+              <ModelPreviewImage
+                thumbnailUri={thumbnailUri}
+                previewUri={previewUri || referenceUri}
+                fallbackIcon={item.icon || environment.emoji || '🎨'}
+                style={styles.modelPreviewImage}
+              />
             </View>
 
             <View style={styles.modelInfoRow}>

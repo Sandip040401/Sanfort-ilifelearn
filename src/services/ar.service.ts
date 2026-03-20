@@ -32,6 +32,8 @@ export const ARService = {
 
   getPreviewImageUrl: (id: string) => `${AR_MODELS_BASE}/${id}/preview`,
 
+  getThumbnailImageUrl: (id: string) => `${AR_MODELS_BASE}/${id}/thumbnail`,
+
   getAudioStreamUrlById: (audioId: string) => `${AR_MODELS_BASE}/audio/${audioId}`,
 
   getFolders: () =>
