@@ -33,8 +33,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access for the AR experience to scan coloring pages and display 3D models.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access for the Read Aloud feature to listen to your reading.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to save and share your AR creations and artwork.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app uses speech recognition to evaluate your reading in the Read Aloud feature.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
