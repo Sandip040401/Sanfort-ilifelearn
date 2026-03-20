@@ -27,7 +27,7 @@ import {
 import Animated, { FadeIn, FadeInDown, FadeInUp, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQuery } from '@tanstack/react-query';
@@ -682,7 +682,25 @@ function ARScreenContent() {
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   const [selectedModelForOptions, setSelectedModelForOptions] = useState<ARModel | null>(null);
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
-  const snapPoints = useMemo(() => ['55%'], []);
+  const snapPoints = useMemo(() => ['62%'], []);
+
+  // Force-close sheet helper — dismiss + forceClose + clear state
+  const closeSheet = useCallback(() => {
+    bottomSheetModalRef.current?.dismiss();
+    bottomSheetModalRef.current?.forceClose();
+    setSelectedModelForOptions(null);
+  }, []);
+
+  // Auto-dismiss sheet when navigating away from this screen
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        bottomSheetModalRef.current?.dismiss();
+        bottomSheetModalRef.current?.forceClose();
+        setSelectedModelForOptions(null);
+      };
+    }, []),
+  );
 
   const modelsQuery = useQuery({
     queryKey: ['ar-models'],
@@ -769,7 +787,7 @@ function ARScreenContent() {
     model: ARModel,
     opts?: { openPainter?: boolean; initialPaintMode?: string },
   ) => {
-    bottomSheetModalRef.current?.dismiss();
+    closeSheet();
     navigation.navigate('ARViewer', {
       modelId: getModelStableId(model),
       environmentId: selectedEnvironment?._id,
@@ -793,6 +811,8 @@ function ARScreenContent() {
         {...props}
         opacity={0.5}
         enableTouchThrough={false}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
       />
     ),
     []
@@ -853,11 +873,12 @@ function ARScreenContent() {
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
     } finally {
-      bottomSheetModalRef.current?.dismiss();
+      closeSheet();
     }
   };
 
   const handleScanModel = (model: ARModel) => {
+    closeSheet();
     setScanningModel(model);
     setInstructionVisible(true);
   };
@@ -916,8 +937,12 @@ function ARScreenContent() {
         snapPoints={snapPoints}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        handleIndicatorStyle={{ backgroundColor: '#D1D5DB', width: scale(60) }}
-        backgroundStyle={{ backgroundColor: colors.card, borderTopLeftRadius: moderateScale(32), borderTopRightRadius: moderateScale(32) }}>
+        handleIndicatorStyle={{ backgroundColor: '#C4C4C4', width: scale(48), height: verticalScale(5), borderRadius: moderateScale(3) }}
+        backgroundStyle={{
+          backgroundColor: colors.card,
+          borderTopLeftRadius: moderateScale(28),
+          borderTopRightRadius: moderateScale(28),
+        }}>
         <BottomSheetView style={styles.sheetContent}>
           {selectedModelForOptions && (
             <ARModelOptionsSheet
@@ -965,51 +990,51 @@ function ARModelOptionsSheet({
       </Text>
 
       <View style={styles.sheetActions}>
-        <TouchableOpacity activeOpacity={0.8} onPress={onView3D} style={styles.sheetButtonWrap}>
+        <TouchableOpacity activeOpacity={0.85} onPress={onView3D} style={styles.sheetButtonWrap}>
           <LinearGradient
-            colors={['#8B5CF6', '#3B82F6']}
+            colors={['#667eea', '#764ba2']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.sheetButtonGradient}
           />
-          <View style={styles.sheetButtonIconWrap}>
-            <Cuboid size={moderateScale(32)} color="#fff" strokeWidth={2} />
-          </View>
           <View style={styles.sheetButtonTexts}>
             <Text style={styles.sheetButtonTitle}>3D View</Text>
-            <Text style={styles.sheetButtonSub}>Interactive 3D model viewer</Text>
+            <Text style={styles.sheetButtonSub}>Spin & explore the 3D model</Text>
+          </View>
+          <View style={styles.sheetButtonArrow}>
+            <Text style={styles.sheetButtonArrowText}>›</Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity activeOpacity={0.8} onPress={onViewSheet} style={styles.sheetButtonWrap}>
+        <TouchableOpacity activeOpacity={0.85} onPress={onViewSheet} style={styles.sheetButtonWrap}>
           <LinearGradient
-            colors={['#FF6B00', '#FF0055']}
+            colors={['#f093fb', '#f5576c']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.sheetButtonGradient}
           />
-          <View style={styles.sheetButtonIconWrap}>
-            <ImageIcon size={moderateScale(32)} color="#fff" strokeWidth={2} />
-          </View>
           <View style={styles.sheetButtonTexts}>
             <Text style={styles.sheetButtonTitle}>Coloring Sheet</Text>
-            <Text style={styles.sheetButtonSub}>View information and details</Text>
+            <Text style={styles.sheetButtonSub}>Color the page with crayons</Text>
+          </View>
+          <View style={styles.sheetButtonArrow}>
+            <Text style={styles.sheetButtonArrowText}>›</Text>
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity activeOpacity={0.8} onPress={onScan} style={styles.sheetButtonWrap}>
+        <TouchableOpacity activeOpacity={0.85} onPress={onScan} style={styles.sheetButtonWrap}>
           <LinearGradient
-            colors={['#00C853', '#009688']}
+            colors={['#11998e', '#38ef7d']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.sheetButtonGradient}
           />
-          <View style={styles.sheetButtonIconWrap}>
-            <Scan size={moderateScale(32)} color="#fff" strokeWidth={2} />
-          </View>
           <View style={styles.sheetButtonTexts}>
             <Text style={styles.sheetButtonTitle}>AR Scan</Text>
-            <Text style={styles.sheetButtonSub}>View in augmented reality</Text>
+            <Text style={styles.sheetButtonSub}>Bring your coloring to life!</Text>
+          </View>
+          <View style={styles.sheetButtonArrow}>
+            <Text style={styles.sheetButtonArrowText}>›</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -1507,25 +1532,27 @@ const styles = StyleSheet.create({
   },
   sheetInner: {
     alignItems: 'center',
-    paddingTop: verticalScale(12),
+    paddingTop: verticalScale(8),
   },
   sheetTitle: {
-    fontSize: moderateScale(26),
+    fontSize: moderateScale(24),
     fontWeight: '900',
     marginBottom: verticalScale(4),
+    letterSpacing: 0.3,
   },
   sheetSub: {
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(13),
     fontWeight: '500',
-    marginBottom: verticalScale(24),
+    marginBottom: verticalScale(22),
+    opacity: 0.65,
   },
   sheetActions: {
     width: '100%',
-    gap: verticalScale(14),
+    gap: verticalScale(12),
   },
   sheetButtonWrap: {
-    height: verticalScale(85),
-    borderRadius: moderateScale(22),
+    height: verticalScale(76),
+    borderRadius: moderateScale(18),
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
@@ -1534,27 +1561,35 @@ const styles = StyleSheet.create({
   sheetButtonGradient: {
     ...StyleSheet.absoluteFillObject,
   },
-  sheetButtonIconWrap: {
-    width: scale(54),
-    height: scale(54),
-    borderRadius: moderateScale(16),
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: scale(16),
-  },
   sheetButtonTexts: {
     flex: 1,
   },
   sheetButtonTitle: {
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(17),
     fontWeight: '800',
     color: '#fff',
     marginBottom: verticalScale(2),
+    letterSpacing: 0.2,
   },
   sheetButtonSub: {
-    fontSize: moderateScale(12),
-    color: 'rgba(255,255,255,0.92)',
+    fontSize: moderateScale(11.5),
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '500',
+  },
+  sheetButtonArrow: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: moderateScale(14),
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: scale(8),
+  },
+  sheetButtonArrowText: {
+    fontSize: moderateScale(20),
+    color: '#fff',
+    fontWeight: '700',
+    marginTop: -verticalScale(1),
   },
   searchContainer: {
     flexDirection: 'row',
