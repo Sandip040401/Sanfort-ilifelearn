@@ -140,6 +140,42 @@ const headerIconEntering = isAndroid ? FadeIn.duration(180) : ZoomIn.duration(60
 const headerCopyEntering = isAndroid ? FadeIn.duration(180) : FadeInUp.duration(600).springify();
 
 // -- Premium Design Constants (WebVR Style) --
+const ENVIRONMENTS: ReadonlyArray<{
+  name: string;
+  gradient: readonly [string, string];
+  description: string;
+  image: any;
+}> = [
+  { name: 'Phonics Fun', gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words', image: require('@/assets/images/environments/phonics.jpg') },
+  { name: 'Numbers', gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers', image: require('@/assets/images/environments/numbers.jpg') },
+  { name: 'My Body', gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts', image: require('@/assets/images/environments/my-body.jpg') },
+  { name: 'Underwater World', gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths', image: require('@/assets/images/environments/underwater.jpg') },
+  { name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats', image: require('@/assets/images/environments/fruits-vegetables.jpg') },
+  { name: 'Wild Animals', gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild', image: require('@/assets/images/environments/wild-animals.jpg') },
+  { name: 'Amphibians', gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more', image: require('@/assets/images/environments/amphibians.jpg') },
+  { name: 'Farm Animals', gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm', image: require('@/assets/images/environments/farm-animals.jpg') },
+  { name: 'Transportation', gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!', image: require('@/assets/images/environments/transportation.jpg') },
+  { name: 'Space Adventure', gradient: ['#4F46E5', '#818CF8'], description: 'Planets, stars, and astronauts', image: require('@/assets/images/environments/space.jpg') },
+  { name: 'Extinct Animals', gradient: ['#94A3B8', '#CBD5E1'], description: 'Discover animals from the past', image: require('@/assets/images/environments/extinct-animals.jpg') },
+];
+
+const ENV_MAP = new Map(ENVIRONMENTS.map(e => [e.name, e]));
+
+function normalizeWorldName(raw: string): string {
+  const s = (raw || '').trim().toLowerCase();
+  if (s.includes('phonics')) return 'Phonics Fun';
+  if (s.includes('number')) return 'Numbers';
+  if (s.includes('body')) return 'My Body';
+  if (s.includes('underwater')) return 'Underwater World';
+  if (s.includes('fruit') || s.includes('vegetable')) return 'Fruits & Vegetables';
+  if (s.includes('wild')) return 'Wild Animals';
+  if (s.includes('amphibian')) return 'Amphibians';
+  if (s.includes('farm')) return 'Farm Animals';
+  if (s.includes('transport')) return 'Transportation';
+  if (s.includes('space')) return 'Space Adventure';
+  if (s.includes('extinct')) return 'Extinct Animals';
+  return raw;
+}
 const H_PAD = scale(16);
 const GAP = scale(12);
 const CARD_MARGIN_BOTTOM = verticalScale(12);
@@ -369,6 +405,11 @@ function EnvironmentGallery({
 
   const renderItem = useCallback(({ item, index }: { item: AREnvironmentView, index: number }) => {
     const modelCount = getModelsForEnvironment(item, models).length;
+    const worldName = item.name || item.folderName;
+    const normalizedName = normalizeWorldName(worldName);
+    const envMatch = ENV_MAP.get(normalizedName);
+    const cardColors = getEnvironmentColors(item);
+
     return (
       <Animated.View
         entering={getGalleryCardEntering(index)}
@@ -377,38 +418,45 @@ function EnvironmentGallery({
           activeOpacity={0.85}
           onPress={() => onEnvironmentSelect(item)}
           style={[styles.worldCardWrap, { width: (SCREEN_W - H_PAD * 2 - GAP) / 2 }]}>
-          <View style={[styles.worldCard, isCompactCard && { padding: moderateScale(14) }]}>
-            <LinearGradient
-              colors={getEnvironmentColors(item)}
-              locations={getEnvironmentColors(item).length === 2 ? [0, 1] : [0, 0.5, 1]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.worldCountBadge}>
-              <Text style={styles.worldCountText}>📦 {modelCount}</Text>
+          <View style={styles.worldCard}>
+            {envMatch?.image && (
+              <Image
+                source={envMatch.image}
+                style={styles.worldCardImage}
+                resizeMode="cover"
+              />
+            )}
+
+            <View style={styles.worldCardContent}>
+              <LinearGradient
+                colors={cardColors}
+                locations={cardColors.length === 2 ? [0, 1] : [0, 0.5, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Text
+                style={styles.worldName}
+                numberOfLines={1}>
+                {worldName}
+              </Text>
+
+              <Text
+                style={styles.worldDescription}
+                numberOfLines={1}>
+                {item.description || `Explore ${modelCount} models`}
+              </Text>
             </View>
 
-            <View style={[styles.worldEmojiBubble, { width: emojiSize, height: emojiSize, borderRadius: emojiRadius }]}>
-              <Text style={styles.worldEmoji}>{item.emoji || '📦'}</Text>
+            <View style={[styles.worldCountBadge, { backgroundColor: item.accentSoft, borderColor: item.accent + '33' }]}>
+              <Text style={[styles.worldCountText, { color: item.accent }]}>📦 {modelCount}</Text>
             </View>
-
-            <Text
-              style={[styles.worldName, isCompactCard && { fontSize: moderateScale(14) }]}
-              numberOfLines={1}>
-              {item.name || item.folderName}
-            </Text>
-
-            <Text
-              style={[styles.worldDescription, isCompactCard && { fontSize: moderateScale(10), lineHeight: moderateScale(14) }]}
-              numberOfLines={2}>
-              {item.description || `Explore ${modelCount} amazing 3D models`}
-            </Text>
+            <View style={styles.cardDecor1} />
           </View>
         </TouchableOpacity>
       </Animated.View>
     );
-  }, [models, isCompactCard, emojiSize, emojiRadius, onEnvironmentSelect]);
+  }, [models, onEnvironmentSelect]);
 
   return (
     <FlatList
@@ -462,7 +510,7 @@ function ModelGallery({
   bottomInset: number;
   onScroll: (e: any) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
   const { modelPreviewHeight } = useResponsiveLayout();
 
@@ -514,19 +562,22 @@ function ModelGallery({
         </View>
       ) : (
         <>
-          <View style={styles.searchContainer}>
-            <Search size={moderateScale(18)} color="rgba(255,255,255,0.4)" />
+          <View style={[styles.searchContainer, { 
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+          }]}>
+            <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: colors.text }]}
               placeholder="Search models..."
-              placeholderTextColor="rgba(255,255,255,0.4)"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
               value={searchQuery}
               onChangeText={onSearchChange}
               autoCorrect={false}
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => onSearchChange('')}>
-                <X size={moderateScale(18)} color="rgba(255,255,255,0.4)" />
+                <X size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
               </TouchableOpacity>
             )}
           </View>
@@ -1150,53 +1201,64 @@ const styles = StyleSheet.create({
         }),
   },
   worldCard: {
-    height: verticalScale(160),
-    padding: moderateScale(18),
-    justifyContent: 'center',
+    height: verticalScale(150),
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  worldCardImage: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    transform: [{ translateY: -20 }],
+  },
+  worldCardContent: {
+    zIndex: 2,
+    padding: moderateScale(12),
+    paddingVertical: moderateScale(8),
+    paddingBottom: moderateScale(14),
   },
   worldCountBadge: {
     position: 'absolute',
-    top: moderateScale(12),
-    right: moderateScale(12),
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    top: moderateScale(10),
+    right: moderateScale(10),
     borderRadius: moderateScale(20),
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    zIndex: 10,
   },
   worldCountText: {
     fontSize: moderateScale(10),
     fontWeight: '700',
-    color: '#fff',
-  },
-  worldEmojiBubble: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: moderateScale(16),
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    marginTop: 0,
-    marginBottom: verticalScale(8),
-  },
-  worldEmoji: {
-    fontSize: moderateScale(24),
   },
   worldName: {
     fontSize: moderateScale(14),
-    fontWeight: '700',
+    fontWeight: '900',
     color: '#fff',
-    textAlign: 'center',
-    marginBottom: verticalScale(2),
+    marginBottom: verticalScale(1),
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   worldDescription: {
-    fontSize: moderateScale(10),
-    lineHeight: moderateScale(14),
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-    marginBottom: verticalScale(2),
+    fontSize: moderateScale(9),
+    color: 'rgba(255,255,255,0.95)',
+    lineHeight: moderateScale(13),
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  cardDecor1: {
+    position: 'absolute',
+    top: verticalScale(-30),
+    right: scale(-30),
+    width: scale(110),
+    height: scale(110),
+    borderRadius: scale(55),
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   modelScreenContent: {
     paddingBottom: 0,
@@ -1497,7 +1559,6 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
     marginHorizontal: H_PAD,
     marginTop: verticalScale(16),
     marginBottom: verticalScale(6),
@@ -1505,13 +1566,11 @@ const styles = StyleSheet.create({
     height: verticalScale(48),
     borderRadius: moderateScale(24),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     gap: scale(10),
   },
   searchInput: {
     flex: 1,
     fontSize: moderateScale(14),
-    color: '#fff',
     padding: 0,
     height: '100%',
   },

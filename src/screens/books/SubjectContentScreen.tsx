@@ -246,7 +246,7 @@ function SubjectContentScreenContent() {
               Browse concepts, guided video lessons and ebooks from one focused learning space.
             </Text>
 
-            <View style={[styles.summaryRow, isTablet && styles.summaryRowTablet]}>
+            {/* <View style={[styles.summaryRow, isTablet && styles.summaryRowTablet]}>
               {tabs.map(tab => (
                 <View key={tab.key} style={styles.summaryCard}>
                   <Text allowFontScaling={false} style={styles.summaryValue}>
@@ -257,8 +257,9 @@ function SubjectContentScreenContent() {
                   </Text>
                 </View>
               ))}
-            </View>
+            </View> */}
           </View>
+          <View style={[styles.curve, {backgroundColor: colors.background}]} />
         </View>
 
         <View style={[styles.toolbarWrap, heroInnerWidthStyle]}>
@@ -441,7 +442,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     rowGap: verticalScale(8),
-    marginBottom: verticalScale(18),
+    marginBottom: verticalScale(12),
   },
   heroIconButton: {
     width: scale(42),
@@ -475,16 +476,16 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(6),
   },
   heroTitle: {
-    fontSize: moderateScale(30),
+    fontSize: moderateScale(26),
     fontWeight: '800',
     color: '#fff',
-    lineHeight: moderateScale(36),
-    marginBottom: verticalScale(8),
+    lineHeight: moderateScale(32),
+    marginBottom: verticalScale(4),
   },
   heroSubtitle: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(12),
     color: 'rgba(255,255,255,0.82)',
-    lineHeight: moderateScale(20),
+    lineHeight: moderateScale(18),
     maxWidth: '94%',
   },
   summaryRow: {
@@ -609,5 +610,14 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     fontWeight: '800',
     color: '#fff',
+  },
+  curve: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: verticalScale(10),
+    borderTopLeftRadius: moderateScale(16),
+    borderTopRightRadius: moderateScale(16),
   },
 });

@@ -6,6 +6,7 @@ import {
   Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -15,7 +16,7 @@ import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import Video from 'react-native-video';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {ArrowLeft, Play, Glasses} from 'lucide-react-native';
+import {ArrowLeft, Play, Glasses, Search, X} from 'lucide-react-native';
 import {useNavigation, useRoute, type RouteProp} from '@react-navigation/native';
 import {useTheme} from '@/theme';
 import {Skeleton} from '@/components/ui';
@@ -249,7 +250,7 @@ const TopicCard = React.memo(function TopicCard({
 
 // ── Main screen ────────────────────────────────────────────────────────
 export default function WebVRFolderScreen() {
-  const {colors} = useTheme();
+  const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
   const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation();
@@ -262,6 +263,7 @@ export default function WebVRFolderScreen() {
   const [topics, setTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<WebVRAsset | null>(null);
   const [warmupAsset, setWarmupAsset] = useState<WebVRAsset | null>(null);
   const [modalEverOpened, setModalEverOpened] = useState(false);
@@ -324,6 +326,15 @@ export default function WebVRFolderScreen() {
     setSelectedAsset(null);
   }, []);
 
+  const filteredTopics = useMemo(() => {
+    if (!searchQuery.trim()) return topics;
+    const q = searchQuery.toLowerCase().trim();
+    return topics.filter(t =>
+      t.title?.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q)
+    );
+  }, [topics, searchQuery]);
+
   const renderItem = useCallback(
     ({item}: ListRenderItemInfo<any>) => (
         <TopicCard
@@ -355,23 +366,31 @@ export default function WebVRFolderScreen() {
 
   const countText = useMemo(() => {
     if (loading) return 'Loading...';
-    return `${topics.length} experience${topics.length !== 1 ? 's' : ''}`;
-  }, [loading, topics.length]);
+    const list = searchQuery.trim() ? filteredTopics : topics;
+    return `${list.length} experience${list.length !== 1 ? 's' : ''}`;
+  }, [loading, topics.length, filteredTopics.length, searchQuery]);
 
   // Memoized empty component
   const EmptyComponent = useMemo(
     () => (
       <View style={styles.center}>
-        <Text style={styles.emptyIcon}>🔍</Text>
+        <Text style={styles.emptyIcon}>{searchQuery.trim() ? '🚫' : '🔍'}</Text>
         <Text style={[styles.emptyTitle, {color: colors.text}]}>
-          No experiences available
+          {searchQuery.trim() ? 'No results found' : 'No experiences available'}
         </Text>
         <Text style={[styles.emptyDesc, {color: colors.textSecondary}]}>
-          Content coming soon
+          {searchQuery.trim() ? `We couldn't find anything matching "${searchQuery}"` : 'Content coming soon'}
         </Text>
+        {searchQuery.trim() && (
+          <TouchableOpacity
+            onPress={() => setSearchQuery('')}
+            style={[styles.retryBtn, {backgroundColor: bg1, marginTop: verticalScale(20)}]}>
+            <Text style={styles.retryText}>Clear Search</Text>
+          </TouchableOpacity>
+        )}
       </View>
     ),
-    [colors.text, colors.textSecondary],
+    [colors.text, colors.textSecondary, searchQuery, bg1],
   );
 
   return (
@@ -420,9 +439,30 @@ export default function WebVRFolderScreen() {
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : (
+      ) : (<>
+      {/* Search Bar  */}
+      <View style={[styles.searchContainer, { 
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+      }]}>
+        <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Search experiences..."
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCorrect={false}
+          clearButtonMode="never"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <X size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
+          </TouchableOpacity>
+        )}
+      </View>
         <FlatList
-          data={topics}
+          data={filteredTopics}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           getItemLayout={getItemLayout}
@@ -438,7 +478,7 @@ export default function WebVRFolderScreen() {
           removeClippedSubviews={Platform.OS === 'android'}
           updateCellsBatchingPeriod={50}
         />
-      )}
+      </>)}
 
       {warmupAsset && !selectedAsset && (
         <WebVRAssetWarmup
@@ -637,5 +677,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: moderateScale(13),
+  },
+
+  // ── Search Bar ──
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: scale(16),
+    marginVertical: verticalScale(8),
+    paddingHorizontal: scale(14),
+    height: verticalScale(48),
+    borderRadius: moderateScale(24),
+    borderWidth: 1,
+    gap: scale(10),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: moderateScale(14),
+    padding: 0,
+    height: '100%',
   },
 });

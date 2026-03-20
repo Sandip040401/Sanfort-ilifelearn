@@ -117,7 +117,7 @@ function SubjectsScreenContent() {
               Open a subject library with live concepts, lesson videos and ebook resources for this stage.
             </Text>
 
-            <View style={styles.headerStats}>
+            {/* <View style={styles.headerStats}>
               <View style={styles.headerStatItem}>
                 <Text style={styles.headerStatValue}>4</Text>
                 <Text style={styles.headerStatLabel}>Subjects</Text>
@@ -132,7 +132,7 @@ function SubjectsScreenContent() {
                 <Text style={styles.headerStatValue}>Live</Text>
                 <Text style={styles.headerStatLabel}>API Feed</Text>
               </View>
-            </View>
+            </View> */}
           </View>
 
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: H_PAD,
-    paddingBottom: verticalScale(20),
+    paddingBottom: verticalScale(28),
     alignItems: 'center',
   },
   headerInner: {
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(18),
+    marginBottom: verticalScale(12),
   },
   backButton: {
     width: scale(42),
@@ -326,14 +326,14 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(6),
   },
   headerTitle: {
-    fontSize: moderateScale(28),
+    fontSize: moderateScale(24),
     fontWeight: '800',
     color: '#fff',
-    marginBottom: verticalScale(6),
+    marginBottom: verticalScale(4),
   },
   headerSubtitle: {
-    fontSize: moderateScale(13),
-    lineHeight: moderateScale(19),
+    fontSize: moderateScale(12),
+    lineHeight: moderateScale(18),
     color: 'rgba(255,255,255,0.82)',
     maxWidth: '92%',
   },
