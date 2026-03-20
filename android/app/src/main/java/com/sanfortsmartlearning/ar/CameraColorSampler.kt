@@ -52,6 +52,8 @@ object CameraColorSampler {
       frame: Frame,
       cornersPx: List<Pair<Float, Float>>,
       outputSize: Int,
+      reusablePixels: IntArray? = null,
+      reusableBitmap: Bitmap? = null,
   ): Bitmap? {
     val image = try {
       frame.acquireCameraImage()
@@ -60,7 +62,13 @@ object CameraColorSampler {
     }
 
     return try {
-      sampleQuadBitmap(image, cornersPx, outputSize)
+      sampleQuadBitmap(
+          image = image,
+          cornersPx = cornersPx,
+          outputSize = outputSize,
+          reusablePixels = reusablePixels,
+          reusableBitmap = reusableBitmap,
+      )
     } finally {
       image.close()
     }
@@ -293,8 +301,8 @@ object CameraColorSampler {
       val sourceY = safeMinY + ((row.toFloat() / (output - 1).toFloat()) * regionHeight.toFloat())
       for (col in 0 until output) {
         val sourceX = safeMinX + ((col.toFloat() / (output - 1).toFloat()) * regionWidth.toFloat())
-        val rgb = readRgbBilinear(image, sourceX, sourceY, safeMinX, safeMinY, safeMaxX, safeMaxY)
-        pixels[row * output + col] = Color.rgb(rgb.first, rgb.second, rgb.third)
+        pixels[row * output + col] =
+            readRgbBilinearColor(image, sourceX, sourceY, safeMinX, safeMinY, safeMaxX, safeMaxY)
       }
     }
 
@@ -305,6 +313,8 @@ object CameraColorSampler {
       image: Image,
       cornersPx: List<Pair<Float, Float>>,
       outputSize: Int,
+      reusablePixels: IntArray? = null,
+      reusableBitmap: Bitmap? = null,
   ): Bitmap? {
     if (cornersPx.size < 4) {
       return null
@@ -316,38 +326,53 @@ object CameraColorSampler {
     val bl = cornersPx[3]
     val homography = computeUnitSquareToQuadHomography(tl, tr, br, bl)
     val output = outputSize.coerceIn(48, 320)
-    val pixels = IntArray(output * output)
+    val pixelCount = output * output
+    val projectedSource = FloatArray(2)
+    val pixels =
+        if (reusablePixels != null && reusablePixels.size >= pixelCount) {
+          reusablePixels
+        } else {
+          IntArray(pixelCount)
+        }
 
     for (row in 0 until output) {
       val v = if (output <= 1) 0f else row.toFloat() / (output - 1).toFloat()
       for (col in 0 until output) {
         val u = if (output <= 1) 0f else col.toFloat() / (output - 1).toFloat()
-        val sourcePoint =
-            homography?.project(u, v) ?: run {
-              // Fallback to bilinear interpolation if homography solve fails.
-              val x = bilinearScalar(tl.first, tr.first, br.first, bl.first, u, v)
-              val y = bilinearScalar(tl.second, tr.second, br.second, bl.second, u, v)
-              x to y
-            }
-        val sourceX = sourcePoint.first
-        val sourceY = sourcePoint.second
-        val rgb =
-            readRgbBilinear(
+        if (homography != null) {
+          homography.projectInto(u, v, projectedSource)
+        } else {
+          // Fallback to bilinear interpolation if homography solve fails.
+          projectedSource[0] = bilinearScalar(tl.first, tr.first, br.first, bl.first, u, v)
+          projectedSource[1] = bilinearScalar(tl.second, tr.second, br.second, bl.second, u, v)
+        }
+        pixels[(row * output) + col] =
+            readRgbBilinearColor(
                 image = image,
-                sourceX = sourceX,
-                sourceY = sourceY,
+                sourceX = projectedSource[0],
+                sourceY = projectedSource[1],
                 minX = 0,
                 minY = 0,
                 maxX = image.width - 1,
                 maxY = image.height - 1,
             )
-        pixels[(row * output) + col] = Color.rgb(rgb.first, rgb.second, rgb.third)
       }
+    }
+    val targetBitmap =
+        reusableBitmap?.takeIf {
+          !it.isRecycled &&
+              it.width == output &&
+              it.height == output &&
+              it.config == Bitmap.Config.ARGB_8888
+        }
+    if (targetBitmap != null) {
+      targetBitmap.setPixels(pixels, 0, output, 0, 0, output, output)
+      return targetBitmap
     }
     return Bitmap.createBitmap(pixels, output, output, Bitmap.Config.ARGB_8888)
   }
 
-  private fun readRgbBilinear(
+  private fun readRgbBilinearColor(
       image: Image,
       sourceX: Float,
       sourceY: Float,
@@ -355,7 +380,7 @@ object CameraColorSampler {
       minY: Int,
       maxX: Int,
       maxY: Int,
-  ): Triple<Int, Int, Int> {
+  ): Int {
     val x0 = sourceX.toInt().coerceIn(minX, maxX)
     val y0 = sourceY.toInt().coerceIn(minY, maxY)
     val x1 = (x0 + 1).coerceIn(minX, maxX)
@@ -364,15 +389,39 @@ object CameraColorSampler {
     val fx = (sourceX - x0.toFloat()).coerceIn(0f, 1f)
     val fy = (sourceY - y0.toFloat()).coerceIn(0f, 1f)
 
-    val c00 = readRgbAt(image, x0, y0)
-    val c10 = readRgbAt(image, x1, y0)
-    val c01 = readRgbAt(image, x0, y1)
-    val c11 = readRgbAt(image, x1, y1)
+    val c00 = readRgbAtColor(image, x0, y0)
+    val c10 = readRgbAtColor(image, x1, y0)
+    val c01 = readRgbAtColor(image, x0, y1)
+    val c11 = readRgbAtColor(image, x1, y1)
 
-    val red = bilinearChannel(c00.first, c10.first, c01.first, c11.first, fx, fy)
-    val green = bilinearChannel(c00.second, c10.second, c01.second, c11.second, fx, fy)
-    val blue = bilinearChannel(c00.third, c10.third, c01.third, c11.third, fx, fy)
-    return Triple(red, green, blue)
+    val red =
+        bilinearChannel(
+            c00 = (c00 ushr 16) and 0xFF,
+            c10 = (c10 ushr 16) and 0xFF,
+            c01 = (c01 ushr 16) and 0xFF,
+            c11 = (c11 ushr 16) and 0xFF,
+            fx = fx,
+            fy = fy,
+        )
+    val green =
+        bilinearChannel(
+            c00 = (c00 ushr 8) and 0xFF,
+            c10 = (c10 ushr 8) and 0xFF,
+            c01 = (c01 ushr 8) and 0xFF,
+            c11 = (c11 ushr 8) and 0xFF,
+            fx = fx,
+            fy = fy,
+        )
+    val blue =
+        bilinearChannel(
+            c00 = c00 and 0xFF,
+            c10 = c10 and 0xFF,
+            c01 = c01 and 0xFF,
+            c11 = c11 and 0xFF,
+            fx = fx,
+            fy = fy,
+        )
+    return (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
   }
 
   private fun bilinearChannel(
@@ -514,18 +563,28 @@ object CameraColorSampler {
       val h21: Float,
       val h22: Float,
   ) {
-    fun project(u: Float, v: Float): Pair<Float, Float> {
+    fun projectInto(u: Float, v: Float, output: FloatArray) {
       val denominator = (h20 * u) + (h21 * v) + h22
       if (kotlin.math.abs(denominator) < 1e-6f) {
-        return 0f to 0f
+        output[0] = 0f
+        output[1] = 0f
+        return
       }
-      val x = ((h00 * u) + (h01 * v) + h02) / denominator
-      val y = ((h10 * u) + (h11 * v) + h12) / denominator
-      return x to y
+      output[0] = ((h00 * u) + (h01 * v) + h02) / denominator
+      output[1] = ((h10 * u) + (h11 * v) + h12) / denominator
     }
   }
 
   private fun readRgbAt(image: Image, x: Int, y: Int): Triple<Int, Int, Int> {
+    val color = readRgbAtColor(image, x, y)
+    return Triple(
+        (color ushr 16) and 0xFF,
+        (color ushr 8) and 0xFF,
+        color and 0xFF,
+    )
+  }
+
+  private fun readRgbAtColor(image: Image, x: Int, y: Int): Int {
     val yPlane = image.planes[0]
     val uPlane = image.planes[1]
     val vPlane = image.planes[2]
@@ -545,7 +604,7 @@ object CameraColorSampler {
     val red = (yValue + 1.370705f * vValue).roundToInt().coerceIn(0, 255)
     val green = (yValue - 0.337633f * uValue - 0.698001f * vValue).roundToInt().coerceIn(0, 255)
     val blue = (yValue + 1.732446f * uValue).roundToInt().coerceIn(0, 255)
-    return Triple(red, green, blue)
+    return (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
   }
 
   private data class WeightedColorSample(

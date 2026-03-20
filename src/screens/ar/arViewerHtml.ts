@@ -61,8 +61,10 @@ export function buildARViewerHtml(modelFileUrl: string) {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;        // softer, higher quality shadows
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.6;
+  renderer.toneMappingExposure = 1.8;                      // was 1.6 → slightly brighter, more vivid
+  renderer.outputColorSpace = THREE.SRGBColorSpace;        // correct color space
   document.body.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -73,15 +75,24 @@ export function buildARViewerHtml(modelFileUrl: string) {
   controls.minDistance = 1;
   controls.maxDistance = 20;
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);   // was 1.5 → brighter ambient
   scene.add(ambientLight);
-  const dirLight = new THREE.DirectionalLight(0xffffff, 3.0);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 3.5);  // was 3.0 → stronger directional
   dirLight.position.set(10, 10, 5);
   dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048;    // higher quality shadows
+  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.near = 0.1;
+  dirLight.shadow.camera.far = 50;
+  dirLight.shadow.bias = -0.001;
   scene.add(dirLight);
-  const pointLight = new THREE.PointLight(0xffffff, 1.5);
+  const pointLight = new THREE.PointLight(0xffffff, 1.8);     // was 1.5
   pointLight.position.set(-10, -10, -10);
   scene.add(pointLight);
+  // Add hemisphere light for natural sky-ground color
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+  hemiLight.position.set(0, 20, 0);
+  scene.add(hemiLight);
 
   const groundGeo = new THREE.PlaneGeometry(20, 20);
   const groundMat = new THREE.ShadowMaterial({ opacity: 0.3 });
