@@ -5,6 +5,7 @@ import {
   AppState,
   BackHandler,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -31,8 +32,6 @@ import {moderateScale} from 'react-native-size-matters';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
   Glasses,
   Globe,
   MoreHorizontal,
@@ -172,6 +171,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
     transform: [{translateY: (1 - drawerProgress.value) * 220}],
   }));
   const headerStyle = useAnimatedStyle(() => ({
+    opacity: headerProgress.value,
     transform: [{translateY: (headerProgress.value - 1) * 60}],
   }));
 
@@ -572,40 +572,33 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
           </View>
         )}
 
-        {/* ── PULL TAB ── */}
-        <TouchableOpacity
+        {/* ── TAP ZONE — toggles header on tap, sits above Video SurfaceView ── */}
+        <Pressable
           onPress={toggleHeader}
-          style={styles.pullTab}
-          activeOpacity={0.8}
-          hitSlop={{top: 10, bottom: 10, left: 20, right: 20}}>
-          {headerVisible
-            ? <ChevronUp size={14} color="#fff" strokeWidth={2} />
-            : <ChevronDown size={14} color="#fff" strokeWidth={2} />}
-        </TouchableOpacity>
+          style={styles.tapZone}
+        />
 
         {/* ── HEADER ── */}
-        {headerVisible && (
-          <Animated.View style={[styles.header, {paddingHorizontal: sideInset}, headerStyle]}>
-            <TouchableOpacity onPress={handleClose} style={styles.iconBtn} activeOpacity={0.7}>
-              <X size={20} color="#fff" strokeWidth={2} />
-            </TouchableOpacity>
-            <View style={styles.titleBlock}>
-              <Text style={styles.titleText} numberOfLines={1}>{assetTitle}</Text>
-              <Text style={styles.subtitleText} numberOfLines={1}>{folderName}</Text>
-            </View>
-            <TouchableOpacity onPress={toggleMute} style={styles.iconBtn} activeOpacity={0.7}>
-              {isMuted
-                ? <VolumeX size={18} color="#fff" strokeWidth={2} />
-                : <Volume2 size={18} color="#fff" strokeWidth={2} />}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={menuOpen ? closeMenu : openMenu}
-              style={[styles.iconBtn, menuOpen && styles.iconBtnActive]}
-              activeOpacity={0.7}>
-              <MoreHorizontal size={18} color="#fff" strokeWidth={2} />
-            </TouchableOpacity>
-          </Animated.View>
-        )}
+        <Animated.View style={[styles.header, {paddingHorizontal: sideInset}, headerStyle]} pointerEvents={headerVisible ? 'auto' : 'none'}>
+          <TouchableOpacity onPress={handleClose} style={styles.iconBtn} activeOpacity={0.7}>
+            <X size={20} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
+          <View style={styles.titleBlock}>
+            <Text style={styles.titleText} numberOfLines={1}>{assetTitle}</Text>
+            <Text style={styles.subtitleText} numberOfLines={1}>{folderName}</Text>
+          </View>
+          <TouchableOpacity onPress={toggleMute} style={styles.iconBtn} activeOpacity={0.7}>
+            {isMuted
+              ? <VolumeX size={18} color="#fff" strokeWidth={2} />
+              : <Volume2 size={18} color="#fff" strokeWidth={2} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={menuOpen ? closeMenu : openMenu}
+            style={[styles.iconBtn, menuOpen && styles.iconBtnActive]}
+            activeOpacity={0.7}>
+            <MoreHorizontal size={18} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
+        </Animated.View>
 
         {/* ── BOTTOM DRAWER ── */}
         {menuOpen && (
@@ -698,7 +691,6 @@ export default React.memo(WebVRViewerModal);
 // ── Styles ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: '#000'},
-
   // Audio player: positioned off-screen but with proper size so Android plays it
   offScreenAudio: {
     position: 'absolute',
@@ -767,17 +759,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  pullTab: {
-    position: 'absolute',
-    top: 0,
-    alignSelf: 'center',
-    zIndex: 40,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 6,
+  tapZone: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    ...(Platform.OS === 'android' ? {elevation: 5} : {}),
   },
 
   header: {
@@ -786,6 +771,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 30,
+    ...(Platform.OS === 'android' ? {elevation: 12} : {}),
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingVertical: 8,
     flexDirection: 'row',
@@ -805,13 +791,18 @@ const styles = StyleSheet.create({
   },
   iconBtnActive: {backgroundColor: 'rgba(255,255,255,0.25)'},
 
-  drawerBackdrop: {...StyleSheet.absoluteFillObject, zIndex: 19},
+  drawerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 19,
+    ...(Platform.OS === 'android' ? {elevation: 14} : {}),
+  },
   drawer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     zIndex: 20,
+    ...(Platform.OS === 'android' ? {elevation: 15} : {}),
     backgroundColor: 'rgba(15,20,30,0.96)',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
