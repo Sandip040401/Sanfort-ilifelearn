@@ -140,6 +140,50 @@ const REFERENCE_IMAGE_ASSETS_BY_MODEL: Record<string, string> = {
   bear: 'reference_bear_page.jpg',
 };
 
+function ModelPreviewImage({ 
+  thumbnailUri, 
+  previewUri, 
+  fallbackIcon,
+  style,
+  resizeMode = 'cover'
+}: { 
+  thumbnailUri?: string | null; 
+  previewUri?: string | null; 
+  fallbackIcon: string;
+  style: any;
+  resizeMode?: 'contain' | 'cover' | 'stretch' | 'center';
+}) {
+  const [currentUri, setCurrentUri] = useState<string | null>(thumbnailUri || null);
+  const [failedThumbnail, setFailedThumbnail] = useState(false);
+
+  useEffect(() => {
+    setCurrentUri(thumbnailUri || null);
+    setFailedThumbnail(false);
+  }, [thumbnailUri]);
+
+  const handleError = () => {
+    if (!failedThumbnail && previewUri && previewUri !== thumbnailUri) {
+      setCurrentUri(previewUri);
+      setFailedThumbnail(true);
+    } else {
+      setCurrentUri(null);
+    }
+  };
+
+  if (!currentUri) {
+    return <Text style={styles.assetThumbEmoji}>{fallbackIcon}</Text>;
+  }
+
+  return (
+    <Image
+      source={{ uri: currentUri }}
+      style={style}
+      resizeMode={resizeMode}
+      onError={handleError}
+    />
+  );
+}
+
 function normalizeReferenceSource(value: string) {
   if (
     value.startsWith('http://') ||
@@ -806,7 +850,7 @@ export default function ARViewerScreen() {
       )}
 
       {showLeftMenu && (
-        <View style={[styles.sidePanel, { left: scale(8), top: webViewTop, bottom: bottomBarHeight - verticalScale(8) }]}>
+        <View style={[styles.sidePanel, { left: scale(8), top: webViewTop + verticalScale(3), bottom: bottomBarHeight + verticalScale(3) }]}>
           <View style={styles.sidePanelHeader}>
             <View style={styles.sidePanelTitleRow}>
               <View style={styles.sidePanelIconBubble}>
@@ -890,19 +934,9 @@ export default function ARViewerScreen() {
 
                   {filteredEnvModels.map(model => {
                     const isSelected = getModelStableId(model) === modelId;
-                    const previewUri = (() => {
-                      if (model.previewUrl) {
-                        return model.previewUrl;
-                      }
-                      if (model.previewImage) {
-                        const raw = String(model.previewImage);
-                        if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                          return raw;
-                        }
-                      }
-                      const previewModelId = model._id || model.id;
-                      return previewModelId ? ARService.getPreviewImageUrl(previewModelId) : null;
-                    })();
+                    const assetModelId = model._id || model.id || (model as any).id;
+                    const thumbnailUri = assetModelId ? ARService.getThumbnailImageUrl(String(assetModelId)) : null;
+                    const previewUri = assetModelId ? ARService.getPreviewImageUrl(String(assetModelId)) : null;
 
                     return (
                       <TouchableOpacity
@@ -918,11 +952,13 @@ export default function ARViewerScreen() {
                           isSelected && styles.assetRowActive,
                         ]}>
                         <View style={styles.assetThumb}>
-                          {previewUri ? (
-                            <Image source={{ uri: previewUri }} resizeMode="contain" style={styles.assetThumbImage} />
-                          ) : (
-                            <Text style={styles.assetThumbEmoji}>{currentEnvironment.emoji || '🎨'}</Text>
-                          )}
+                          <ModelPreviewImage
+                            thumbnailUri={thumbnailUri}
+                            previewUri={previewUri}
+                            fallbackIcon={currentEnvironment.emoji || '🎨'}
+                            style={styles.assetThumbImage}
+                            resizeMode="cover"
+                          />
                         </View>
                         <Text numberOfLines={1} style={styles.assetName}>
                           {model.name}
@@ -1446,7 +1482,7 @@ const styles = StyleSheet.create({
   },
   sidePanel: {
     position: 'absolute',
-    zIndex: 40,
+    zIndex: 45,
     width: '72%',
     maxWidth: scale(280),
     backgroundColor: 'rgba(20,20,40,0.95)',
@@ -1565,6 +1601,7 @@ const styles = StyleSheet.create({
   assetThumbImage: {
     width: scale(28),
     height: scale(28),
+    borderRadius: moderateScale(6),
   },
   assetThumbEmoji: {
     fontSize: moderateScale(16),

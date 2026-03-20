@@ -494,12 +494,14 @@ function ModelPreviewImage({
   thumbnailUri,
   previewUri,
   fallbackIcon,
-  style
-}: {
-  thumbnailUri?: string | null;
-  previewUri?: string | null;
+  style,
+  resizeMode = 'contain'
+}: { 
+  thumbnailUri?: string | null; 
+  previewUri?: string | null; 
   fallbackIcon: string;
   style: any;
+  resizeMode?: 'contain' | 'cover' | 'stretch' | 'center';
 }) {
   const [currentUri, setCurrentUri] = useState<string | null>(thumbnailUri || null);
   const [failedThumbnail, setFailedThumbnail] = useState(false);
@@ -521,7 +523,7 @@ function ModelPreviewImage({
     <Image
       source={{ uri: currentUri }}
       style={style}
-      resizeMode="contain"
+      resizeMode={resizeMode}
       onError={handleError}
     />
   );
@@ -668,6 +670,7 @@ function ModelGallery({
                 previewUri={previewUri || referenceUri}
                 fallbackIcon={item.icon || environment.emoji || '🎨'}
                 style={styles.modelPreviewImage}
+                resizeMode="contain"
               />
             </View>
 
