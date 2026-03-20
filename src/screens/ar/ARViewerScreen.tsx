@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Image,
   NativeModules,
   Platform,
@@ -255,6 +256,20 @@ export default function ARViewerScreen() {
   useEffect(() => {
     StatusBar.setBarStyle('light-content');
   }, []);
+
+  // Pause audio when app goes to background
+  const audioPlayingBeforeBg = useRef(false);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        audioPlayingBeforeBg.current = audioPlaying;
+        if (audioPlaying) setAudioPlaying(false);
+      } else if (nextState === 'active' && audioPlayingBeforeBg.current) {
+        setAudioPlaying(true);
+      }
+    });
+    return () => sub.remove();
+  }, [audioPlaying]);
 
   const modelsQuery = useQuery({
     queryKey: ['ar-models'],
@@ -756,8 +771,8 @@ export default function ARViewerScreen() {
           paused={!audioPlaying}
           repeat
           volume={volume / 100}
-          playInBackground
-          playWhenInactive
+          playInBackground={false}
+          playWhenInactive={false}
           audioOutput="speaker"
           ignoreSilentSwitch="ignore"
         />
