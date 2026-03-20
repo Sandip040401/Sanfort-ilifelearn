@@ -62,12 +62,12 @@ const ENVIRONMENTS: ReadonlyArray<{
   description: string;
   image: any;
 }> = [
-  {name: 'Phonics Fun',         gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words', image: require('@/assets/images/environments/webvr/phonics.jpg')},
-  {name: 'Numbers',             gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers',                 image: require('@/assets/images/environments/webvr/numbers.jpg')},
-  {name: 'My Body',             gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts',          image: require('@/assets/images/environments/webvr/my-body.jpg')},
-  {name: 'Underwater World',    gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths',                image: require('@/assets/images/environments/webvr/underwater.jpg')},
-  {name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats',               image: require('@/assets/images/environments/webvr/fruits-vegetables.jpg')},
-  {name: 'Wild Animals',        gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild',        image: require('@/assets/images/environments/webvr/wild-animals.jpg')},
+  {name: 'Phonics Fun',         gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words', image: require('@/assets/images/environments/webvr/phonics.webp')},
+  {name: 'Numbers',             gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers',                 image: require('@/assets/images/environments/webvr/numbers.webp')},
+  {name: 'My Body',             gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts',          image: require('@/assets/images/environments/webvr/my-body.webp')},
+  {name: 'Underwater World',    gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths',                image: require('@/assets/images/environments/webvr/underwater.webp')},
+  {name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats',               image: require('@/assets/images/environments/webvr/fruits-vegetables.webp')},
+  {name: 'Wild Animals',        gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild',        image: require('@/assets/images/environments/webvr/wild-animals.webp')},
   {name: 'Amphibians',          gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more',        image: require('@/assets/images/environments/webvr/amphibians.jpg')},
   {name: 'Farm Animals',        gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm',                 image: require('@/assets/images/environments/webvr/farm-animals.jpg')},
   {name: 'Transportation',      gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!',  image: require('@/assets/images/environments/webvr/transportation.jpg')},
@@ -133,7 +133,7 @@ const FolderCard = React.memo(function FolderCard({
 
             <Image
               source={item.image}
-              style={{position: 'absolute', inset: 0, width: '100%', height: '100%',  transform: [{ translateY: -20 }] }}
+              style={{position: 'absolute', inset: 0, width: '100%', height: '100%',  transform: [{ translateY: -12 }] }}
               resizeMode="cover"
               
             />
