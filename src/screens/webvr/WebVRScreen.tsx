@@ -68,11 +68,11 @@ const ENVIRONMENTS: ReadonlyArray<{
   {name: 'Underwater World',    gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths',                image: require('@/assets/images/environments/webvr/underwater.webp')},
   {name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats',               image: require('@/assets/images/environments/webvr/fruits-vegetables.webp')},
   {name: 'Wild Animals',        gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild',        image: require('@/assets/images/environments/webvr/wild-animals.webp')},
-  {name: 'Amphibians',          gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more',        image: require('@/assets/images/environments/webvr/amphibians.jpg')},
-  {name: 'Farm Animals',        gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm',                 image: require('@/assets/images/environments/webvr/farm-animals.jpg')},
-  {name: 'Transportation',      gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!',  image: require('@/assets/images/environments/webvr/transportation.jpg')},
-  {name: 'Space Adventure',     gradient: ['#4F46E5', '#818CF8'], description: 'Planets, stars, and astronauts',            image: require('@/assets/images/environments/webvr/space.jpg')},
-  {name: 'Extinct Animals',     gradient: ['#94A3B8', '#CBD5E1'], description: 'Discover animals from the past',            image: require('@/assets/images/environments/webvr/extinct-animals.jpg')},
+  {name: 'Amphibians',          gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more',        image: require('@/assets/images/environments/webvr/amphibians.webp')},
+  {name: 'Farm Animals',        gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm',                 image: require('@/assets/images/environments/webvr/farm-animals.webp')},
+  {name: 'Transportation',      gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!',  image: require('@/assets/images/environments/webvr/transportation.webp')},
+  {name: 'Space Adventure',     gradient: ['#4F46E5', '#818CF8'], description: 'Planets, stars, and astronauts',            image: require('@/assets/images/environments/webvr/space.webp')},
+  {name: 'Extinct Animals',     gradient: ['#94A3B8', '#CBD5E1'], description: 'Discover animals from the past',            image: require('@/assets/images/environments/webvr/extinct-animals.webp')},
 ];
 
 // Pre-built lookup maps (O(1) instead of O(n) per item)
