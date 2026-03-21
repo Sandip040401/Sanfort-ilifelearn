@@ -156,6 +156,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
   const [menuOpen, setMenuOpen] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(false);
   const [playbackSession, setPlaybackSession] = useState(0);
+  const [appInBackground, setAppInBackground] = useState(false);
 
   // ── Refs ──
   const videoRef = useRef<VideoRef>(null);
@@ -172,7 +173,6 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
   }));
   const headerStyle = useAnimatedStyle(() => ({
     opacity: headerProgress.value,
-    transform: [{translateY: (headerProgress.value - 1) * 60}],
   }));
 
   // ── Audio data maps ──
@@ -302,11 +302,16 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
     pausePlayers,
   ]);
 
-  // AppState: resume playback when app comes to foreground
+  // AppState: pause in background, resume in foreground
   useEffect(() => {
     if (!visible) return;
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') scheduleResume(100, 500);
+      if (state === 'active') {
+        setAppInBackground(false);
+        scheduleResume(100, 500);
+      } else {
+        setAppInBackground(true);
+      }
     });
     return () => sub.remove();
   }, [visible, scheduleResume]);
@@ -378,17 +383,12 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
 
   const toggleHeader = useCallback(() => {
     if (headerVisible) {
-      headerProgress.value = withTiming(0, TIMING_CONFIG, fin => {
-        if (fin) {
-          runOnJS(setHeaderVisible)(false);
-          closeMenuAnim();
-        }
-      });
+      setHeaderVisible(false);
+      closeMenuAnim();
     } else {
       setHeaderVisible(true);
-      headerProgress.value = withSpring(1, SPRING_CONFIG);
     }
-  }, [headerVisible, headerProgress, closeMenuAnim]);
+  }, [headerVisible, closeMenuAnim]);
 
   const openMenu = useCallback(() => {
     setMenuOpen(true);
@@ -497,7 +497,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
       animationType="fade"
       statusBarTranslucent
       supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}>
-      <StatusBar hidden />
+      <StatusBar translucent backgroundColor="transparent" hidden />
       <View style={styles.root}>
 
         {/* ── VIDEO (always visible, no blocking overlay) ── */}
@@ -509,9 +509,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
             repeat
-            paused={false}
-            playInBackground
-            playWhenInactive
+            paused={appInBackground}
             muted={videoShouldBeMuted}
             disableFocus={audioModeActive}
             audioOutput="speaker"
@@ -538,9 +536,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
             source={audioSource!}
             style={styles.offScreenAudio}
             repeat
-            paused={audioShouldPause}
-            playInBackground
-            playWhenInactive
+            paused={audioShouldPause || appInBackground}
             muted={isMuted}
             volume={isMuted ? 0 : 1.0}
             audioOutput="speaker"
@@ -579,7 +575,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
         />
 
         {/* ── HEADER ── */}
-        <Animated.View style={[styles.header, {paddingHorizontal: sideInset}, headerStyle]} pointerEvents={headerVisible ? 'auto' : 'none'}>
+        {headerVisible && <View style={[styles.header, {paddingHorizontal: sideInset, paddingTop: insets.top + 8}]}>
           <TouchableOpacity onPress={handleClose} style={styles.iconBtn} activeOpacity={0.7}>
             <X size={20} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
@@ -598,7 +594,7 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
             activeOpacity={0.7}>
             <MoreHorizontal size={18} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
-        </Animated.View>
+        </View>}
 
         {/* ── BOTTOM DRAWER ── */}
         {menuOpen && (
@@ -771,9 +767,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 30,
-    ...(Platform.OS === 'android' ? {elevation: 12} : {}),
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
