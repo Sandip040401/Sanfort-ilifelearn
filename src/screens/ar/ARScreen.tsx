@@ -91,7 +91,7 @@ function useResponsiveLayout() {
       ? Math.max(Math.min(cardWidth * 0.62, 320), 200)
       : Math.max(Math.min(cardWidth * 0.75, 340), 220))
     : Math.max(cardWidth * 0.97, 165);
-  const modelPreviewHeight = isTablet ? Math.min(cardWidth * 0.55, 170) : verticalScale(85);
+  const modelPreviewHeight = isTablet ? Math.min(cardWidth * 0.55, 170) : verticalScale(67);
   return {
     isTablet,
     isLargeTablet,
