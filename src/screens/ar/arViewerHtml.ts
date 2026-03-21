@@ -365,6 +365,12 @@ export function buildARViewerHtml(modelFileUrl: string) {
           if (loadedModel) {
             loadedModel.traverse(c => {
               if (c.isMesh && c.userData.paint) {
+                // Check if uv1 exists, if so use channel 1 for coloring sheet
+                if (c.geometry && c.geometry.attributes.uv1) {
+                  tex.channel = 1;
+                } else {
+                  tex.channel = 0;
+                }
                 c.userData.paint.targetTex = tex;
                 applyTextureToMesh(c, tex, true);
               }
@@ -376,12 +382,26 @@ export function buildARViewerHtml(modelFileUrl: string) {
       if (data.type === 'exportGLB') {
         if (!loadedModel) return;
         postMsg({ type: 'exportStatus', status: 'Exporting 3D scene...' });
+        
+        const restoreStates = [];
         loadedModel.traverse(c => {
-          getMeshMaterials(c).forEach(material => {
-            if (material && material.map) {
-              material.map.needsUpdate = true;
-            }
-          });
+          if (c.isMesh && c.material) {
+            getMeshMaterials(c).forEach(material => {
+              if (material && material.map) {
+                material.map.needsUpdate = true;
+                // Swap UV channels for export if we used channel 1 (coloring sheet)
+                if (material.map.channel === 1 && c.geometry && c.geometry.attributes.uv1) {
+                  restoreStates.push({
+                    geom: c.geometry,
+                    map: material.map,
+                    origUv: c.geometry.attributes.uv.clone()
+                  });
+                  c.geometry.setAttribute('uv', c.geometry.attributes.uv1);
+                  material.map.channel = 0;
+                }
+              }
+            });
+          }
         });
 
         renderer.render(scene, camera);
@@ -390,12 +410,17 @@ export function buildARViewerHtml(modelFileUrl: string) {
         exporter.parse(
           loadedModel,
           async function(gltf) {
+            // Restore UVs
+            restoreStates.forEach(s => {
+              s.geom.setAttribute('uv', s.origUv);
+              s.map.channel = 1;
+            });
             postMsg({ type: 'exportStatus', status: 'Converting file format...' });
             try {
               const base64 = await arrayBufferToBase64(gltf);
               postMsg({ type: 'glbData', base64: base64 });
             } catch (e) {
-              postMsg({ type: 'error', message: 'Base64 conversion failed: ' + e.message });
+                postMsg({ type: 'error', message: 'Base64 conversion failed: ' + e.message });
             }
           },
           function(error) {
@@ -490,7 +515,9 @@ export function buildColorSheetHtml(targetUrl: string) {
         mCtx.drawImage(img, 0, 0, w, h);
         var id = mCtx.getImageData(0, 0, w, h);
         for (var i = 0; i < id.data.length; i += 4) {
-          if (id.data[i] > 230 && id.data[i+1] > 230 && id.data[i+2] > 230) {
+          // Calculate perceived brightness (luminance)
+          var avg = (id.data[i] + id.data[i+1] + id.data[i+2]) / 3;
+          if (avg > 180) { // More generous threshold for off-white
             id.data[i] = 255; id.data[i+1] = 255; id.data[i+2] = 255; id.data[i+3] = 255;
           } else {
             id.data[i] = 0; id.data[i+1] = 0; id.data[i+2] = 0; id.data[i+3] = 0;
