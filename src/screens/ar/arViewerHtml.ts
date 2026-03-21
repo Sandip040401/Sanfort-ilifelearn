@@ -487,10 +487,10 @@ export function buildColorSheetHtml(targetUrl: string) {
   var maskCanvas = document.getElementById('maskCanvas');
   var wrapper = document.getElementById('wrapper');
   var loadingEl = document.getElementById('loading');
-  var isDrawing = false, lastPos = null;
+  var isEraser = false, isDrawing = false, lastPos = null;
   var bColor = '#ff0000', bSize = 12;
   function postMsg(o) { try { window.ReactNativeWebView.postMessage(JSON.stringify(o)); } catch(e) {} }
-
+  
   var img = new Image();
   var canUseMask = true;
 
@@ -515,9 +515,8 @@ export function buildColorSheetHtml(targetUrl: string) {
         mCtx.drawImage(img, 0, 0, w, h);
         var id = mCtx.getImageData(0, 0, w, h);
         for (var i = 0; i < id.data.length; i += 4) {
-          // Calculate perceived brightness (luminance)
           var avg = (id.data[i] + id.data[i+1] + id.data[i+2]) / 3;
-          if (avg > 180) { // More generous threshold for off-white
+          if (avg > 180) {
             id.data[i] = 255; id.data[i+1] = 255; id.data[i+2] = 255; id.data[i+3] = 255;
           } else {
             id.data[i] = 0; id.data[i+1] = 0; id.data[i+2] = 0; id.data[i+3] = 0;
@@ -570,14 +569,20 @@ export function buildColorSheetHtml(targetUrl: string) {
   function paintAt(x, y) {
     if (!inMask(x, y)) return;
     var ctx = drawCanvas.getContext('2d');
-    ctx.fillStyle = bColor;
+    ctx.save();
+    if (isEraser) {
+      ctx.globalCompositeOperation = 'destination-out';
+    } else {
+      ctx.fillStyle = bColor;
+    }
     ctx.beginPath();
     ctx.arc(x, y, bSize, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   }
   function drawLine(x1, y1, x2, y2) {
     var d = Math.sqrt(Math.pow(x2-x1, 2) + Math.pow(y2-y1, 2));
-    var steps = Math.max(1, Math.floor(d / (bSize / 2)));
+    var steps = Math.max(1, Math.floor(d / Math.max(1, bSize / 2)));
     for (var i = 0; i <= steps; i++) {
       var t = i / steps;
       paintAt(x1 + (x2-x1)*t, y1 + (y2-y1)*t);
@@ -599,6 +604,7 @@ export function buildColorSheetHtml(targetUrl: string) {
       var data = JSON.parse(event.data);
       if (data.type === 'setBrushColor') bColor = data.value;
       if (data.type === 'setBrushSize') bSize = data.value;
+      if (data.type === 'setEraser') isEraser = !!data.value;
       if (data.type === 'clear') {
         drawCanvas.getContext('2d').clearRect(0, 0, drawCanvas.width, drawCanvas.height);
       }

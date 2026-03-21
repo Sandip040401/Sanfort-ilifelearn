@@ -46,6 +46,7 @@ import {
   VolumeX,
   X,
   Minus,
+  Eraser,
 } from 'lucide-react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import {
@@ -249,6 +250,7 @@ export default function ARViewerScreen() {
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [exportStatusText, setExportStatusText] = useState('');
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
+  const [isEraser, setIsEraser] = useState(false);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['45%'], []);
@@ -517,6 +519,10 @@ export default function ARViewerScreen() {
     sendToWebView({ type: 'setBrushSize', value: brushSize });
     sendToSheetWebView({ type: 'setBrushSize', value: brushSize });
   }, [brushSize]);
+
+  useEffect(() => {
+    sendToSheetWebView({ type: 'setEraser', value: isEraser });
+  }, [isEraser]);
 
   const handleWebMessage = (event: any) => {
     try {
@@ -1235,21 +1241,68 @@ export default function ARViewerScreen() {
             />
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.targetPainterColors}>
-            <View style={styles.targetPainterColorsRow}>
-              {COLOR_SWATCHES.map(color => (
-                <TouchableOpacity
-                  key={color}
-                  onPress={() => setBrushColor(color)}
-                  style={[
-                    styles.targetPainterColorSwatch,
-                    { backgroundColor: color },
-                    brushColor === color && styles.targetPainterColorSwatchActive,
-                  ]}
-                />
-              ))}
+          <View style={styles.targetPainterControls}>
+            <View style={styles.targetPainterControlsHeader}>
+              <Text style={styles.targetPainterLabel}>Palette</Text>
             </View>
-          </ScrollView>
+            <View style={styles.targetPainterColorsRow}>
+              <TouchableOpacity
+                onPress={() => setIsEraser(!isEraser)}
+                style={[
+                  styles.targetPainterEraserBtn,
+                  isEraser && styles.targetPainterEraserBtnActive,
+                ]}>
+                <Eraser size={moderateScale(18)} color={isEraser ? '#fff' : 'rgba(255,255,255,0.6)'} />
+              </TouchableOpacity>
+              <View style={styles.vDivider} />
+              
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.targetPainterColors}>
+                <View style={styles.targetPainterColorsInner}>
+                  {COLOR_SWATCHES.map(color => (
+                    <TouchableOpacity
+                      key={color}
+                      onPress={() => {
+                        setBrushColor(color);
+                        setIsEraser(false);
+                      }}
+                      style={[
+                        styles.targetPainterColorSwatch,
+                        { backgroundColor: color },
+                        (!isEraser && brushColor === color) && styles.targetPainterColorSwatchActive,
+                      ]}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={styles.targetPainterSizeHeader}>
+              <Text style={styles.targetPainterLabel}>Brush Size: {brushSize}px</Text>
+            </View>
+            <View style={styles.targetPainterSizeRow}>
+              <TouchableOpacity
+                onPress={() => setBrushSize(current => Math.max(1, current - 4))}
+                style={styles.targetPainterSizeBtn}>
+                <Minus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
+              </TouchableOpacity>
+              
+              <View style={styles.targetPainterSliderWrap}>
+                <CustomSlider
+                  value={brushSize}
+                  min={1}
+                  max={128}
+                  onChange={setBrushSize}
+                  color={isEraser ? '#6C4CFF' : brushColor}
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setBrushSize(current => Math.min(128, current + 4))}
+                style={styles.targetPainterSizeBtn}>
+                <Plus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+          </View>
 
           <View style={[styles.targetPainterFooter, { paddingBottom: insets.bottom + verticalScale(12) }]}>
             <TouchableOpacity
@@ -2003,13 +2056,78 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f0f0f0',
   },
+  targetPainterControls: {
+    paddingHorizontal: scale(12),
+    marginBottom: verticalScale(10),
+  },
   targetPainterColors: {
-    marginBottom: verticalScale(8),
+    flex: 1,
+    marginLeft: scale(4),
+  },
+  targetPainterColorsInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+    paddingRight: scale(16),
   },
   targetPainterColorsRow: {
     flexDirection: 'row',
-    gap: scale(8),
-    paddingHorizontal: scale(16),
+    alignItems: 'center',
+  },
+  targetPainterEraserBtn: {
+    width: scale(38),
+    height: scale(38),
+    borderRadius: moderateScale(10),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  targetPainterEraserBtnActive: {
+    backgroundColor: '#6C4CFF',
+    borderColor: '#6C4CFF',
+  },
+  vDivider: {
+    width: 1,
+    height: verticalScale(24),
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginHorizontal: scale(10),
+  },
+  targetPainterControlsHeader: {
+    marginBottom: verticalScale(8),
+  },
+  targetPainterSizeHeader: {
+    marginTop: verticalScale(14),
+    marginBottom: verticalScale(8),
+    marginLeft: scale(12),
+  },
+  targetPainterLabel: {
+    fontSize: moderateScale(10),
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  targetPainterSizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+  },
+  targetPainterSizeBtn: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: moderateScale(8),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  targetPainterSliderWrap: {
+    flex: 1,
+    height: verticalScale(30),
+    justifyContent: 'center',
   },
   targetPainterColorSwatch: {
     width: scale(36),
