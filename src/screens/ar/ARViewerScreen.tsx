@@ -251,6 +251,7 @@ export default function ARViewerScreen() {
   const [exportStatusText, setExportStatusText] = useState('');
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const [isEraser, setIsEraser] = useState(false);
+  const [sheetBrushSize, setSheetBrushSize] = useState(5);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['45%'], []);
@@ -517,8 +518,11 @@ export default function ARViewerScreen() {
 
   useEffect(() => {
     sendToWebView({ type: 'setBrushSize', value: brushSize });
-    sendToSheetWebView({ type: 'setBrushSize', value: brushSize });
   }, [brushSize]);
+
+  useEffect(() => {
+    sendToSheetWebView({ type: 'setBrushSize', value: sheetBrushSize });
+  }, [sheetBrushSize]);
 
   useEffect(() => {
     sendToSheetWebView({ type: 'setEraser', value: isEraser });
@@ -961,20 +965,25 @@ export default function ARViewerScreen() {
             { id: 'audio', label: 'Audio', icon: Volume2 },
             { id: 'lighting', label: 'Lighting', icon: Lightbulb },
             { id: 'sheet', label: 'Sheet', icon: ImageIcon },
-          ].map(cat => (
-            <TouchableOpacity
-              key={cat.id}
-              onPress={() => openCategory(cat.id)}
-              style={styles.controlBarItem}>
-              <View style={[
-                styles.controlIconWrap,
-                activeControlCategory === cat.id && styles.controlIconWrapActive
-              ]}>
-                <cat.icon size={moderateScale(20)} color="#fff" strokeWidth={1.5} />
-              </View>
-              <Text style={styles.controlLabel}>{cat.label}</Text>
-            </TouchableOpacity>
-          ))}
+          ].map(cat => {
+            const isTabActive = activeControlCategory === cat.id;
+            const isStatusActive = (cat.id === 'audio' && audioPlaying) || (cat.id === 'paint' && paintingEnabled);
+            
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                onPress={() => openCategory(cat.id)}
+                style={styles.controlBarItem}>
+                <View style={[
+                  styles.controlIconWrap,
+                  (isTabActive || isStatusActive) && styles.controlIconWrapActive
+                ]}>
+                  <cat.icon size={moderateScale(20)} color="#fff" strokeWidth={1.5} />
+                </View>
+                <Text style={styles.controlLabel}>{cat.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -1277,27 +1286,27 @@ export default function ARViewerScreen() {
             </View>
 
             <View style={styles.targetPainterSizeHeader}>
-              <Text style={styles.targetPainterLabel}>Brush Size: {brushSize}px</Text>
+              <Text style={styles.targetPainterLabel}>Brush Size: {sheetBrushSize}px</Text>
             </View>
             <View style={styles.targetPainterSizeRow}>
               <TouchableOpacity
-                onPress={() => setBrushSize(current => Math.max(1, current - 4))}
+                onPress={() => setSheetBrushSize(current => Math.max(1, current - 1))}
                 style={styles.targetPainterSizeBtn}>
                 <Minus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
               </TouchableOpacity>
               
               <View style={styles.targetPainterSliderWrap}>
                 <CustomSlider
-                  value={brushSize}
+                  value={sheetBrushSize}
                   min={1}
-                  max={128}
-                  onChange={setBrushSize}
+                  max={10}
+                  onChange={setSheetBrushSize}
                   color={isEraser ? '#6C4CFF' : brushColor}
                 />
               </View>
 
               <TouchableOpacity
-                onPress={() => setBrushSize(current => Math.min(128, current + 4))}
+                onPress={() => setSheetBrushSize(current => Math.min(10, current + 1))}
                 style={styles.targetPainterSizeBtn}>
                 <Plus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
               </TouchableOpacity>
