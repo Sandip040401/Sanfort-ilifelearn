@@ -8,4 +8,5 @@
 export const Env = {
   cryptoSecretKey:  'wNpFfE0TUQ0kJVs7L4D7czvAOcxq3tcy',
   recaptchaSiteKey: '6LfP-j0sAAAAAM94liuujZw1018b8KbXsDYx9liY',
+  mobileApiKey:     'ilifelearn_mobile_2026_xK9#mP2$qR',
 } as const;

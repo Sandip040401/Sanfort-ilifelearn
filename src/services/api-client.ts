@@ -1,11 +1,14 @@
 import axios from 'axios';
-import {API_BASE_URL} from '@/config';
+import {API_BASE_URL, Env} from '@/config';
 import {AuthStorage} from '@/store/auth-storage';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
-  headers: {'Content-Type': 'application/json'},
+  headers: {
+    'Content-Type': 'application/json',
+    'x-mobile-key': Env.mobileApiKey,
+  },
 });
 
 // Attach JWT token to every request

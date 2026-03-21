@@ -24,9 +24,22 @@ export interface User {
   role?: string;
 }
 
+export interface ClientMeta {
+  platform:    string;
+  os:          string;
+  osVersion:   string;
+  appVersion:  string;
+  deviceModel: string;
+  deviceBrand: string;
+  deviceId:    string;
+  isEmulator:  boolean;
+  timezone:    string;
+}
+
 export interface LoginRequest {
-  email:    string;
-  password: string;
+  email:      string;
+  password:   string;
+  clientMeta?: ClientMeta;
 }
 
 export interface DeleteAccountRequest {

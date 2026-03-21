@@ -1,4 +1,4 @@
-import React, {useCallback, useRef, useState} from 'react';
+import React, {useCallback, useRef, useState, useEffect} from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -14,6 +14,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import DeviceInfo from 'react-native-device-info';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
@@ -104,7 +105,25 @@ export default function LoginScreen({navigation}: Props) {
     Keyboard.dismiss();
     setLoading(true);
     try {
-      const response = await AuthService.login({email: email.trim(), password});
+      const [deviceId, isEmulator] = await Promise.all([
+        DeviceInfo.getUniqueId(),
+        DeviceInfo.isEmulator(),
+      ]);
+      const response = await AuthService.login({
+        email: email.trim(),
+        password,
+        clientMeta: {
+          platform:    'mobile',
+          os:          Platform.OS,
+          osVersion:   String(Platform.Version),
+          appVersion:  DeviceInfo.getVersion(),
+          deviceModel: DeviceInfo.getModel(),
+          deviceBrand: DeviceInfo.getBrand(),
+          deviceId,
+          isEmulator,
+          timezone:    Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+      });
       const {user, token} = response.data;
       if (!user || !token) {throw new Error('Invalid response from server');}
       login(token, user);
