@@ -28,6 +28,8 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '@/store';
 import { useTheme } from '@/theme';
+import ARIcon from '@/components/icons/ARIcon';
+import WebVRIcon from '@/components/icons/WebVRIcon';
 import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import type { BottomTabParamList, MainStackParamList } from '@/types';
@@ -39,8 +41,8 @@ type TabNav = BottomTabNavigationProp<BottomTabParamList, 'Home'>;
 type MainNav = StackNavigationProp<MainStackParamList>;
 
 const GRID_ITEMS = [
-  { key: 'AR' as const, label: 'Augmented\nReality', sub: 'Scan 3D models', Icon: Glasses, colors: ['#0369A1', '#0EA5E9'], shadow: '#0EA5E9' },
-  { key: 'WebVR' as const, label: 'WebVR', sub: 'Virtual worlds', Icon: Globe, colors: ['#7C3AED', '#A855F7'], shadow: '#A855F7' },
+  { key: 'AR' as const, label: 'Augmented\nReality', sub: 'Scan 3D models', Icon: ARIcon, colors: ['#0369A1', '#0EA5E9'], shadow: '#0EA5E9' },
+  { key: 'WebVR' as const, label: 'WebVR', sub: 'Virtual worlds', Icon: WebVRIcon, colors: ['#7C3AED', '#A855F7'], shadow: '#A855F7' },
 ] as const;
 
 function getGreeting() {
@@ -192,7 +194,9 @@ export default function HomeScreen() {
                 <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
                   <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
                     <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                    <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}><Icon size={isTablet ? 30 : 26} color="#fff" strokeWidth={1.8} /></View>
+                    <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}>
+                      <Icon width={isTablet ? 42 : 34} height={isTablet ? 42 : 34} color="#fff" strokeWidth={2} />
+                    </View>
                     <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{label}</Text>
                     <Text style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{sub}</Text>
                     <View style={styles.gridDecor} />
@@ -284,8 +288,8 @@ const styles = StyleSheet.create({
   gridTouchable: { flex: 1 },
   gridCard:        { minHeight: verticalScale(125), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
   gridCardTablet:  { minHeight: 170, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 16, borderRadius: 20 },
-  gridIcon:        { width: scale(44), height: scale(44), borderRadius: moderateScale(13), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  gridIconTablet:  { width: 52, height: 52, borderRadius: 16, marginBottom: 10 },
+  gridIcon:        { width: scale(54), height: scale(54), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  gridIconTablet:  { width: 62, height: 62, borderRadius: 18, marginBottom: 10 },
   gridLabel:       { fontSize: moderateScale(13), fontWeight: '700', color: '#fff', marginBottom: verticalScale(2), lineHeight: moderateScale(18) },
   gridLabelTablet: { fontSize: 16, lineHeight: 22 },
   gridSub:         { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.75)', lineHeight: moderateScale(14) },

@@ -17,6 +17,7 @@ import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {Globe, RefreshCw} from 'lucide-react-native';
+import WebVRIcon from '@/components/icons/WebVRIcon';
 import {useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
 import {useTheme} from '@/theme';
@@ -104,6 +105,9 @@ interface FolderItem {
   description: string;
   gradient: [string, string];
   image?: any;
+  assetCount?: number;
+  accent: string;
+  accentSoft: string;
 }
 
 // ── Stable key extractor ───────────────────────────────────────────────
@@ -152,6 +156,10 @@ const FolderCard = React.memo(function FolderCard({
             <Text style={styles.cardDesc} numberOfLines={1}>
               {item.description}
             </Text>
+          </View>
+          <View style={[styles.worldCountBadge, { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: item.accent + '33' }]}>
+            <WebVRIcon width={moderateScale(16)} height={moderateScale(16)} color={item.accent} />
+            <Text style={[styles.worldCountText, { color: item.accent }]}>{item.assetCount ?? 0}</Text>
           </View>
         <View style={styles.cardDecor1} />
       </View>
@@ -220,6 +228,9 @@ function parseFolders(response: any): FolderItem[] {
         description: match?.description ?? 'Tap to explore',
         gradient: (match?.gradient ? [match.gradient[0], match.gradient[1]] : DEFAULT_GRADIENT) as [string, string],
         image: match?.image,
+        assetCount: f?.webvrFolderId?.topics?.length ?? f?.webvrFolderId?.assetCount ?? 0,
+        accent: match?.gradient ? match.gradient[0] : DEFAULT_GRADIENT[0],
+        accentSoft: (match?.gradient ? match.gradient[0] : DEFAULT_GRADIENT[0]) + '22',
       });
     }
   }
@@ -371,7 +382,7 @@ function WebVRContent() {
           <Animated.View
             entering={headerIconEntering}
             style={styles.bannerIconWrap}>
-              <Globe size={moderateScale(30)} color="#fff" strokeWidth={1.8} />
+              <WebVRIcon width={moderateScale(46)} height={moderateScale(46)} color="#fff" />
             </Animated.View>
           <Animated.View
             entering={headerCopyEntering}
@@ -552,13 +563,13 @@ const styles = StyleSheet.create({
         }),
   },
   bannerIconWrap: {
-    width: scale(57),
-    height: scale(57),
-    borderRadius: moderateScale(12),
+    width: scale(64),
+    height: scale(64),
+    borderRadius: moderateScale(16),
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
     marginRight: scale(14),
   },
@@ -669,6 +680,29 @@ const styles = StyleSheet.create({
     height: scale(110),
     borderRadius: scale(55),
     backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  worldCountBadge: {
+    position: 'absolute',
+    top: moderateScale(6),
+    right: moderateScale(6),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(3),
+    borderRadius: moderateScale(20),
+    borderWidth: 1,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  worldCountText: {
+    fontSize: moderateScale(12),
+    fontWeight: '800',
+    lineHeight: moderateScale(16),
   },
 
   skeletonGrid: {

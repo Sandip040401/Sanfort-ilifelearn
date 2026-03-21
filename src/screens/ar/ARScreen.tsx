@@ -43,6 +43,7 @@ import {
   Scan,
   X,
 } from 'lucide-react-native';
+import ARIcon from '@/components/icons/ARIcon';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
 import ARInstructionModal from '@/components/ARInstructionModal';
 import { useScreenReady } from '@/hooks/useScreenReady';
@@ -317,7 +318,7 @@ function EnvironmentGallery({
         <Animated.View
           entering={headerIconEntering}
           style={styles.bannerIconWrap}>
-          <Box size={moderateScale(24)} color="#fff" strokeWidth={1.8} />
+          <ARIcon width={moderateScale(42)} height={moderateScale(42)} color="#fff" strokeWidth={2.5} />
         </Animated.View>
         <Animated.View entering={headerCopyEntering} style={{ flex: 1 }}>
           <Text style={styles.headerTitleMain}>AR Worlds</Text>
@@ -382,8 +383,8 @@ function EnvironmentGallery({
               </Text>
             </View>
 
-            <View style={[styles.worldCountBadge, { backgroundColor: item.accentSoft, borderColor: item.accent + '33' }]}>
-              <Box size={moderateScale(12)} color={item.accent} strokeWidth={2} />
+            <View style={[styles.worldCountBadge, { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: item.accent + '44' }]}>
+              <ARIcon width={moderateScale(16)} height={moderateScale(16)} color={item.accent} strokeWidth={3} />
               <Text style={[styles.worldCountText, { color: item.accent }]}>{modelCount}</Text>
             </View>
             <View style={styles.cardDecor1} />
@@ -1131,15 +1132,15 @@ const styles = StyleSheet.create({
     borderTopRightRadius: moderateScale(16),
   },
   bannerIconWrap: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: moderateScale(12),
+    width: scale(64),
+    height: scale(64),
+    borderRadius: moderateScale(16),
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
-    marginRight: scale(4),
+    marginRight: scale(8),
   },
   sectionRow: {
     flexDirection: 'row',
@@ -1228,11 +1229,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(4),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
   },
   worldCountText: {
-    fontSize: moderateScale(10.5),
+    fontSize: moderateScale(12),
     fontWeight: '800',
-    lineHeight: moderateScale(14),
+    lineHeight: moderateScale(16),
   },
   worldName: {
     fontSize: moderateScale(14),
