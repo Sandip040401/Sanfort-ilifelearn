@@ -12,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,6 +53,7 @@ import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import {
   BottomSheetModal,
   BottomSheetView,
+  BottomSheetScrollView,
   BottomSheetBackdrop,
 } from '@gorhom/bottom-sheet';
 import { ARService } from '@/services';
@@ -254,7 +256,26 @@ export default function ARViewerScreen() {
   const [sheetBrushSize, setSheetBrushSize] = useState(5);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
-  const snapPoints = useMemo(() => ['45%'], []);
+
+  // ── Responsive: tablet + landscape detection ──
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
+  // Short-side method: phones always have shortSide <600px; tablets ≥600px
+  const shortSide = Math.min(winW, winH);
+  const isTablet = shortSide >= 600;
+  const isLargeTablet = shortSide >= 900;
+  // Snap: tablets have the height for a normal 50% sheet; only phone-landscape needs 88%
+  const snapPoints = useMemo(
+    () => [isTablet
+      ? (isLandscape ? '55%' : '45%')   // tablet: always relaxed
+      : (isLandscape ? '88%' : '45%')], // phone landscape: near-full
+    [isLandscape, isTablet],
+  );
+  // Panel width for coloring sheet side panel
+  const tpPanelWidth = isLargeTablet ? scale(300) : isTablet ? scale(250) : scale(200);
+  // Whether to use side-panel layout for coloring sheet
+  // Tablets (any orientation) + phones in landscape get the side layout
+  const useSidePanelLayout = isLandscape || isTablet;
 
   useEffect(() => {
     StatusBar.setBarStyle('light-content');
@@ -485,7 +506,11 @@ export default function ARViewerScreen() {
   const topBarTop = insets.top + verticalScale(4);
   const topBarHeight = verticalScale(44);
   const webViewTop = topBarTop + topBarHeight;
-  const bottomBarHeight = insets.bottom + verticalScale(83);
+  // Landscape (phone): slim icon-only bar to give 3D model more vertical space
+  // Tablets: always keep full bar with labels, even in landscape
+  const bottomBarHeight = (!isTablet && isLandscape)
+    ? insets.bottom + verticalScale(48)
+    : insets.bottom + verticalScale(83);
 
   const openCategory = useCallback((category: string) => {
     if (category === 'sheet') {
@@ -954,7 +979,7 @@ export default function ARViewerScreen() {
         <Text style={styles.arButtonText}>AR</Text>
       </TouchableOpacity>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + verticalScale(8) }]}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + verticalScale((isLandscape && !isTablet) ? 4 : 8) }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -968,19 +993,26 @@ export default function ARViewerScreen() {
           ].map(cat => {
             const isTabActive = activeControlCategory === cat.id;
             const isStatusActive = (cat.id === 'audio' && audioPlaying) || (cat.id === 'paint' && paintingEnabled);
-            
+            // Compact (icon-only) only on phone landscape; tablets always show labels
+            const compact = isLandscape && !isTablet;
             return (
               <TouchableOpacity
                 key={cat.id}
                 onPress={() => openCategory(cat.id)}
-                style={styles.controlBarItem}>
+                style={compact ? styles.controlBarItemCompact : styles.controlBarItem}>
                 <View style={[
-                  styles.controlIconWrap,
+                  compact ? styles.controlIconWrapCompact : styles.controlIconWrap,
                   (isTabActive || isStatusActive) && styles.controlIconWrapActive
                 ]}>
-                  <cat.icon size={moderateScale(20)} color="#fff" strokeWidth={1.5} />
+                  <cat.icon
+                    size={isTablet ? moderateScale(22) : compact ? moderateScale(16) : moderateScale(20)}
+                    color="#fff"
+                    strokeWidth={1.5}
+                  />
                 </View>
-                <Text style={styles.controlLabel}>{cat.label}</Text>
+                {!compact && (
+                  <Text style={[styles.controlLabel, isTablet && { fontSize: moderateScale(10) }]}>{cat.label}</Text>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -996,7 +1028,11 @@ export default function ARViewerScreen() {
         onDismiss={() => setActiveControlCategory(null)}
         handleIndicatorStyle={{ backgroundColor: 'rgba(255,255,255,0.3)', width: scale(40) }}
         backgroundStyle={{ backgroundColor: 'rgb(20,20,40)', borderTopLeftRadius: moderateScale(24), borderTopRightRadius: moderateScale(24) }}>
-        <BottomSheetView style={styles.sheetContent}>
+        <BottomSheetScrollView
+          style={styles.sheetContent}
+          contentContainerStyle={styles.sheetContentContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
           {activeControlCategory === 'animation' && (
             <View style={styles.sheetInner}>
               <Text style={styles.sheetTitle}>Animations</Text>
@@ -1183,7 +1219,7 @@ export default function ARViewerScreen() {
               </TouchableOpacity>
             </View>
           )}
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheetModal>
 
       <ARInstructionModal
@@ -1196,136 +1232,266 @@ export default function ARViewerScreen() {
       />
 
       {showTargetPainter && (
-        <View style={styles.targetPainterOverlay}>
-          <View style={[styles.targetPainterHeader, { paddingTop: insets.top + verticalScale(8) }]}>
-            <Text style={styles.targetPainterTitle}>🖼️ Coloring Sheet</Text>
-            <TouchableOpacity
-              onPress={() => setShowTargetPainter(false)}
-              style={styles.targetPainterClose}>
-              <X size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
-            </TouchableOpacity>
-          </View>
+        useSidePanelLayout ? (
+          // ── LANDSCAPE / TABLET: Procreate-style side-panel + full canvas ─
+          <View style={[styles.targetPainterOverlay, { flexDirection: 'row' }]}>
 
-          <View style={styles.targetPainterBody}>
-            <WebView
-              ref={sheetWebViewRef}
-              source={{ html: colorSheetHtml, baseUrl: targetUrl }}
-              style={styles.targetPainterWebView}
-              originWhitelist={['*']}
-              javaScriptEnabled
-              domStorageEnabled
-              allowFileAccess
-              allowUniversalAccessFromFileURLs
-              onShouldStartLoadWithRequest={(request) => {
-                const { url } = request;
-                return (
-                  url.startsWith('http') ||
-                  url.startsWith('about:') ||
-                  url.startsWith('data:') ||
-                  url.startsWith('file:')
-                );
-              }}
-              onMessage={(event) => {
-                try {
-                  const data = JSON.parse(event.nativeEvent.data);
-                  if (data.type === 'textureReady') {
-                    setTargetTextureDataUrl(data.dataUrl);
-                    sendToWebView({ type: 'applyTargetTexture', dataUrl: data.dataUrl });
-                    setTextureDisplayMode('target-paint');
-                    setShowTargetPainter(false);
-                    setPaintMode('target');
-                    setPaintingEnabled(false);
-                    setShowBrushControls(false);
-                  } else if (data.type === 'log') {
-                    console.log('[SheetWebView]', data.message);
-                  } else if (data.type === 'error') {
-                    if ((data.message || '').includes('Export failed')) {
-                      setShowTargetPainter(false);
-                    } else {
-                      setViewerError(data.message || 'Coloring sheet failed');
-                    }
-                  }
-                } catch { }
-              }}
-            />
-          </View>
+            {/* Left control panel */}
+            <View style={[styles.tpPanel, {
+              width: tpPanelWidth,
+              paddingTop: insets.top + verticalScale(4),
+              paddingBottom: insets.bottom + verticalScale(8),
+              paddingLeft: insets.left + scale(10),
+            }]}>
 
-          <View style={styles.targetPainterControls}>
-            <View style={styles.targetPainterControlsHeader}>
-              <Text style={styles.targetPainterLabel}>Palette</Text>
-            </View>
-            <View style={styles.targetPainterColorsRow}>
-              <TouchableOpacity
-                onPress={() => setIsEraser(!isEraser)}
-                style={[
-                  styles.targetPainterEraserBtn,
-                  isEraser && styles.targetPainterEraserBtnActive,
-                ]}>
-                <Eraser size={moderateScale(18)} color={isEraser ? '#fff' : 'rgba(255,255,255,0.6)'} />
-              </TouchableOpacity>
-              <View style={styles.vDivider} />
-              
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.targetPainterColors}>
-                <View style={styles.targetPainterColorsInner}>
+              {/* Header */}
+              <View style={styles.tpPanelHeader}>
+                <View style={styles.tpPanelTitleRow}>
+                  <Text style={styles.tpPanelTitle}>🖼️ Sheet</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowTargetPainter(false)} style={styles.targetPainterClose}>
+                  <X size={moderateScale(17)} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.tpPanelScroll} showsVerticalScrollIndicator={false}>
+
+                {/* Eraser toggle */}
+                <TouchableOpacity
+                  onPress={() => setIsEraser(!isEraser)}
+                  style={[styles.tpEraserRow, isEraser && styles.tpEraserRowActive]}>
+                  <Eraser size={moderateScale(14)} color={isEraser ? '#fff' : 'rgba(255,255,255,0.7)'} strokeWidth={2} />
+                  <Text style={[styles.tpEraserLabel, isEraser && { color: '#fff' }]}>Eraser</Text>
+                </TouchableOpacity>
+
+                {/* Palette label */}
+                <Text style={styles.tpSectionLabel}>Palette</Text>
+
+                {/* Color grid — 4 × 2 */}
+                <View style={styles.tpColorGrid}>
                   {COLOR_SWATCHES.map(color => (
                     <TouchableOpacity
                       key={color}
-                      onPress={() => {
-                        setBrushColor(color);
-                        setIsEraser(false);
-                      }}
+                      onPress={() => { setBrushColor(color); setIsEraser(false); }}
                       style={[
-                        styles.targetPainterColorSwatch,
+                        styles.tpColorSwatch,
                         { backgroundColor: color },
-                        (!isEraser && brushColor === color) && styles.targetPainterColorSwatchActive,
+                        (!isEraser && brushColor === color) && styles.tpColorSwatchActive,
                       ]}
                     />
                   ))}
                 </View>
+
+                {/* Brush Size */}
+                <Text style={[styles.tpSectionLabel, { marginTop: verticalScale(10) }]}>
+                  Size · {sheetBrushSize}px
+                </Text>
+                {/* Preview dot */}
+                <View style={styles.tpBrushPreviewRow}>
+                  <View style={[styles.tpBrushPreviewDot, {
+                    width: Math.max(6, sheetBrushSize * 2.2),
+                    height: Math.max(6, sheetBrushSize * 2.2),
+                    backgroundColor: isEraser ? 'rgba(255,255,255,0.35)' : brushColor,
+                    borderRadius: 99,
+                  }]} />
+                </View>
+                <View style={[styles.targetPainterSizeRow, { marginTop: verticalScale(6), marginBottom: verticalScale(13) }]}>
+                  <TouchableOpacity
+                    onPress={() => setSheetBrushSize(v => Math.max(1, v - 1))}
+                    style={styles.targetPainterSizeBtn}>
+                    <Minus size={moderateScale(13)} color="#fff" strokeWidth={2.2} />
+                  </TouchableOpacity>
+                  <View style={styles.targetPainterSliderWrap}>
+                    <CustomSlider
+                      value={sheetBrushSize}
+                      min={1}
+                      max={10}
+                      onChange={setSheetBrushSize}
+                      color={isEraser ? '#6C4CFF' : brushColor}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setSheetBrushSize(v => Math.min(10, v + 1))}
+                    style={styles.targetPainterSizeBtn}>
+                    <Plus size={moderateScale(13)} color="#fff" strokeWidth={2.2} />
+                  </TouchableOpacity>
+                </View>
+
               </ScrollView>
+
+              {/* Action buttons at bottom of panel */}
+              <View style={styles.tpPanelFooter}>
+                <TouchableOpacity onPress={() => setShowTargetPainter(false)} style={styles.tpCancelBtn}>
+                  <Text style={styles.targetPainterSecondaryText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => sendToSheetWebView({ type: 'export' })} style={styles.tpApplyBtn}>
+                  <CheckCircle2 size={moderateScale(14)} color="#fff" strokeWidth={2.5} />
+                  <Text style={styles.targetPainterPrimaryText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <View style={styles.targetPainterSizeHeader}>
-              <Text style={styles.targetPainterLabel}>Brush Size: {sheetBrushSize}px</Text>
-            </View>
-            <View style={styles.targetPainterSizeRow}>
-              <TouchableOpacity
-                onPress={() => setSheetBrushSize(current => Math.max(1, current - 1))}
-                style={styles.targetPainterSizeBtn}>
-                <Minus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
-              </TouchableOpacity>
-              
-              <View style={styles.targetPainterSliderWrap}>
-                <CustomSlider
-                  value={sheetBrushSize}
-                  min={1}
-                  max={10}
-                  onChange={setSheetBrushSize}
-                  color={isEraser ? '#6C4CFF' : brushColor}
+            {/* Right: full-height canvas */}
+            <View style={[styles.tpCanvas, { paddingRight: insets.right + scale(8), paddingTop: insets.top + verticalScale(4), paddingBottom: insets.bottom + verticalScale(4) }]}>
+              <View style={styles.tpCanvasInner}>
+                <WebView
+                  ref={sheetWebViewRef}
+                  source={{ html: colorSheetHtml, baseUrl: targetUrl }}
+                  style={styles.targetPainterWebView}
+                  originWhitelist={['*']}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  allowFileAccess
+                  allowUniversalAccessFromFileURLs
+                  onShouldStartLoadWithRequest={(request) => {
+                    const { url } = request;
+                    return url.startsWith('http') || url.startsWith('about:') || url.startsWith('data:') || url.startsWith('file:');
+                  }}
+                  onMessage={(event) => {
+                    try {
+                      const data = JSON.parse(event.nativeEvent.data);
+                      if (data.type === 'textureReady') {
+                        setTargetTextureDataUrl(data.dataUrl);
+                        sendToWebView({ type: 'applyTargetTexture', dataUrl: data.dataUrl });
+                        setTextureDisplayMode('target-paint');
+                        setShowTargetPainter(false);
+                        setPaintMode('target');
+                        setPaintingEnabled(false);
+                        setShowBrushControls(false);
+                      } else if (data.type === 'log') {
+                        console.log('[SheetWebView]', data.message);
+                      } else if (data.type === 'error') {
+                        if ((data.message || '').includes('Export failed')) {
+                          setShowTargetPainter(false);
+                        } else {
+                          setViewerError(data.message || 'Coloring sheet failed');
+                        }
+                      }
+                    } catch { }
+                  }}
                 />
               </View>
-
+            </View>
+          </View>
+        ) : (
+          // ── PORTRAIT: original stacked layout ───────────────────────────
+          <View style={styles.targetPainterOverlay}>
+            <View style={[styles.targetPainterHeader, { paddingTop: insets.top + verticalScale(8) }]}>
+              <Text style={styles.targetPainterTitle}>🖼️ Coloring Sheet</Text>
               <TouchableOpacity
-                onPress={() => setSheetBrushSize(current => Math.min(10, current + 1))}
-                style={styles.targetPainterSizeBtn}>
-                <Plus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
+                onPress={() => setShowTargetPainter(false)}
+                style={styles.targetPainterClose}>
+                <X size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.targetPainterBody}>
+              <WebView
+                ref={sheetWebViewRef}
+                source={{ html: colorSheetHtml, baseUrl: targetUrl }}
+                style={styles.targetPainterWebView}
+                originWhitelist={['*']}
+                javaScriptEnabled
+                domStorageEnabled
+                allowFileAccess
+                allowUniversalAccessFromFileURLs
+                onShouldStartLoadWithRequest={(request) => {
+                  const { url } = request;
+                  return url.startsWith('http') || url.startsWith('about:') || url.startsWith('data:') || url.startsWith('file:');
+                }}
+                onMessage={(event) => {
+                  try {
+                    const data = JSON.parse(event.nativeEvent.data);
+                    if (data.type === 'textureReady') {
+                      setTargetTextureDataUrl(data.dataUrl);
+                      sendToWebView({ type: 'applyTargetTexture', dataUrl: data.dataUrl });
+                      setTextureDisplayMode('target-paint');
+                      setShowTargetPainter(false);
+                      setPaintMode('target');
+                      setPaintingEnabled(false);
+                      setShowBrushControls(false);
+                    } else if (data.type === 'log') {
+                      console.log('[SheetWebView]', data.message);
+                    } else if (data.type === 'error') {
+                      if ((data.message || '').includes('Export failed')) {
+                        setShowTargetPainter(false);
+                      } else {
+                        setViewerError(data.message || 'Coloring sheet failed');
+                      }
+                    }
+                  } catch { }
+                }}
+              />
+            </View>
+
+            <View style={styles.targetPainterControls}>
+              <View style={styles.targetPainterControlsHeader}>
+                <Text style={styles.targetPainterLabel}>Palette</Text>
+              </View>
+              <View style={styles.targetPainterColorsRow}>
+                <TouchableOpacity
+                  onPress={() => setIsEraser(!isEraser)}
+                  style={[styles.targetPainterEraserBtn, isEraser && styles.targetPainterEraserBtnActive]}>
+                  <Eraser size={moderateScale(18)} color={isEraser ? '#fff' : 'rgba(255,255,255,0.6)'} />
+                </TouchableOpacity>
+                <View style={styles.vDivider} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.targetPainterColors}>
+                  <View style={styles.targetPainterColorsInner}>
+                    {COLOR_SWATCHES.map(color => (
+                      <TouchableOpacity
+                        key={color}
+                        onPress={() => { setBrushColor(color); setIsEraser(false); }}
+                        style={[
+                          styles.targetPainterColorSwatch,
+                          { backgroundColor: color },
+                          (!isEraser && brushColor === color) && styles.targetPainterColorSwatchActive,
+                        ]}
+                      />
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              <View style={styles.targetPainterSizeHeader}>
+                <Text style={styles.targetPainterLabel}>Brush Size: {sheetBrushSize}px</Text>
+              </View>
+              <View style={styles.targetPainterSizeRow}>
+                <TouchableOpacity
+                  onPress={() => setSheetBrushSize(current => Math.max(1, current - 1))}
+                  style={styles.targetPainterSizeBtn}>
+                  <Minus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+                <View style={styles.targetPainterSliderWrap}>
+                  <CustomSlider
+                    value={sheetBrushSize}
+                    min={1}
+                    max={10}
+                    onChange={setSheetBrushSize}
+                    color={isEraser ? '#6C4CFF' : brushColor}
+                  />
+                </View>
+                <TouchableOpacity
+                  onPress={() => setSheetBrushSize(current => Math.min(10, current + 1))}
+                  style={styles.targetPainterSizeBtn}>
+                  <Plus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={[styles.targetPainterFooter, { paddingBottom: insets.bottom + verticalScale(12) }]}>
+              <TouchableOpacity
+                onPress={() => setShowTargetPainter(false)}
+                style={styles.targetPainterSecondary}>
+                <Text style={styles.targetPainterSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => sendToSheetWebView({ type: 'export' })}
+                style={styles.targetPainterPrimary}>
+                <Text style={styles.targetPainterPrimaryText}>Apply To Model</Text>
               </TouchableOpacity>
             </View>
           </View>
-
-          <View style={[styles.targetPainterFooter, { paddingBottom: insets.bottom + verticalScale(12) }]}>
-            <TouchableOpacity
-              onPress={() => setShowTargetPainter(false)}
-              style={styles.targetPainterSecondary}>
-              <Text style={styles.targetPainterSecondaryText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => sendToSheetWebView({ type: 'export' })}
-              style={styles.targetPainterPrimary}>
-              <Text style={styles.targetPainterPrimaryText}>Apply To Model</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        )
       )}
 
       {isExporting && (
@@ -1340,6 +1506,129 @@ export default function ARViewerScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ── Landscape Coloring Sheet (tp = targetPainter landscape) ────────────
+  tpPanel: {
+    width: scale(200),
+    backgroundColor: 'rgba(14,14,30,0.97)',
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.08)',
+    flexDirection: 'column',
+  },
+  tpPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop:verticalScale(0),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(8),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  tpPanelTitleRow: {
+    flex: 1,
+  },
+  tpPanelTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: '800',
+    color: '#fff',
+  },
+  tpPanelScroll: {
+    flex: 1,
+    paddingHorizontal: scale(10),
+    paddingTop: verticalScale(8),
+  },
+  tpEraserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(8),
+    borderRadius: moderateScale(8),
+    marginBottom: verticalScale(8),
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  tpEraserRowActive: {
+    backgroundColor: '#6C4CFF',
+    borderColor: '#6C4CFF',
+  },
+  tpEraserLabel: {
+    fontSize: moderateScale(12),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+  },
+  tpSectionLabel: {
+    fontSize: moderateScale(9),
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: verticalScale(6),
+  },
+  tpColorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: scale(7),
+  },
+  tpColorSwatch: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: moderateScale(14),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  tpColorSwatchActive: {
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  tpBrushPreviewRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: verticalScale(28),
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: moderateScale(8),
+    marginBottom: verticalScale(2),
+  },
+  tpBrushPreviewDot: {
+    // width/height/borderRadius/backgroundColor applied inline
+  },
+  tpPanelFooter: {
+    gap: verticalScale(6),
+    paddingHorizontal: scale(10),
+    paddingTop: verticalScale(8),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  tpCancelBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(10),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  tpApplyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(5),
+    paddingVertical: verticalScale(8),
+    borderRadius: moderateScale(10),
+    backgroundColor: '#6C4CFF',
+  },
+  tpCanvas: {
+    flex: 1,
+  },
+  tpCanvasInner: {
+    flex: 1,
+    borderRadius: moderateScale(12),
+    overflow: 'hidden',
+    backgroundColor: '#f0f0f0',
+  },
+  // ── end landscape painter styles ───────────────────────────────────────
+
   root: {
     flex: 1,
     backgroundColor: '#0b1226',
@@ -1869,6 +2158,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(108,76,255,0.25)',
     borderColor: '#6C4CFF',
   },
+  // Landscape compact variants
+  controlBarItemCompact: {
+    alignItems: 'center',
+    gap: 0,
+  },
+  controlIconWrapCompact: {
+    width: scale(34),
+    height: scale(34),
+    borderRadius: moderateScale(8),
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
   controlLabel: {
     fontSize: moderateScale(9),
     fontWeight: '600',
@@ -1878,6 +2182,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: scale(20),
     paddingTop: verticalScale(10),
+  },
+  sheetContentContainer: {
+    paddingBottom: verticalScale(24),
   },
   sheetInner: {
     flex: 1,

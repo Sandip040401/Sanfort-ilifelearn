@@ -671,7 +671,8 @@ function ARScreenContent() {
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   const [selectedModelForOptions, setSelectedModelForOptions] = useState<ARModel | null>(null);
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
-  const snapPoints = useMemo(() => ['62%'], []);
+  const { isLandscape } = useResponsiveLayout();
+  const snapPoints = useMemo(() => [isLandscape ? '92%' : '62%'], [isLandscape]);
 
   // Force-close sheet helper — dismiss + forceClose + clear state
   const closeSheet = useCallback(() => {
@@ -970,7 +971,64 @@ function ARModelOptionsSheet({
   onScan: () => void;
 }) {
   const { colors } = useTheme();
+  const { isLandscape } = useResponsiveLayout();
 
+  const buttons = [
+    {
+      label: '3D View',
+      sub: 'Spin & explore',
+      colors: ['#667eea', '#764ba2'] as [string, string],
+      onPress: onView3D,
+    },
+    {
+      label: 'Coloring Sheet',
+      sub: 'Color with crayons',
+      colors: ['#f093fb', '#f5576c'] as [string, string],
+      onPress: onViewSheet,
+    },
+    {
+      label: 'AR Scan',
+      sub: 'Bring to life!',
+      colors: ['#11998e', '#38ef7d'] as [string, string],
+      onPress: onScan,
+    },
+  ];
+
+  if (isLandscape) {
+    // ── Landscape: compact horizontal 3-column layout ──
+    return (
+      <View style={sheetLandscapeStyles.root}>
+        <View style={sheetLandscapeStyles.header}>
+          <Text style={[sheetLandscapeStyles.title, { color: colors.text }]} numberOfLines={1}>
+            {model.name}
+          </Text>
+          <Text style={[sheetLandscapeStyles.sub, { color: colors.textSecondary }]}>
+            Choose how to explore
+          </Text>
+        </View>
+        <View style={sheetLandscapeStyles.row}>
+          {buttons.map((btn) => (
+            <TouchableOpacity
+              key={btn.label}
+              activeOpacity={0.85}
+              onPress={btn.onPress}
+              style={sheetLandscapeStyles.btn}>
+              <LinearGradient
+                colors={btn.colors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Text style={sheetLandscapeStyles.btnTitle}>{btn.label}</Text>
+              <Text style={sheetLandscapeStyles.btnSub} numberOfLines={1}>{btn.sub}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  // ── Portrait: original vertical stack ──
   return (
     <View style={styles.sheetInner}>
       <Text style={[styles.sheetTitle, { color: colors.text }]}>{model.name}</Text>
@@ -979,57 +1037,80 @@ function ARModelOptionsSheet({
       </Text>
 
       <View style={styles.sheetActions}>
-        <TouchableOpacity activeOpacity={0.85} onPress={onView3D} style={styles.sheetButtonWrap}>
-          <LinearGradient
-            colors={['#667eea', '#764ba2']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.sheetButtonGradient}
-          />
-          <View style={styles.sheetButtonTexts}>
-            <Text style={styles.sheetButtonTitle}>3D View</Text>
-            <Text style={styles.sheetButtonSub}>Spin & explore the 3D model</Text>
-          </View>
-          <View style={styles.sheetButtonArrow}>
-            <Text style={styles.sheetButtonArrowText}>›</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity activeOpacity={0.85} onPress={onViewSheet} style={styles.sheetButtonWrap}>
-          <LinearGradient
-            colors={['#f093fb', '#f5576c']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.sheetButtonGradient}
-          />
-          <View style={styles.sheetButtonTexts}>
-            <Text style={styles.sheetButtonTitle}>Coloring Sheet</Text>
-            <Text style={styles.sheetButtonSub}>Color the page with crayons</Text>
-          </View>
-          <View style={styles.sheetButtonArrow}>
-            <Text style={styles.sheetButtonArrowText}>›</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity activeOpacity={0.85} onPress={onScan} style={styles.sheetButtonWrap}>
-          <LinearGradient
-            colors={['#11998e', '#38ef7d']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.sheetButtonGradient}
-          />
-          <View style={styles.sheetButtonTexts}>
-            <Text style={styles.sheetButtonTitle}>AR Scan</Text>
-            <Text style={styles.sheetButtonSub}>Bring your coloring to life!</Text>
-          </View>
-          <View style={styles.sheetButtonArrow}>
-            <Text style={styles.sheetButtonArrowText}>›</Text>
-          </View>
-        </TouchableOpacity>
+        {buttons.map((btn) => (
+          <TouchableOpacity key={btn.label} activeOpacity={0.85} onPress={btn.onPress} style={styles.sheetButtonWrap}>
+            <LinearGradient
+              colors={btn.colors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.sheetButtonGradient}
+            />
+            <View style={styles.sheetButtonTexts}>
+              <Text style={styles.sheetButtonTitle}>{btn.label}</Text>
+              <Text style={styles.sheetButtonSub}>{btn.sub}</Text>
+            </View>
+            <View style={styles.sheetButtonArrow}>
+              <Text style={styles.sheetButtonArrowText}>›</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );
 }
+
+// Landscape-specific sheet styles (inline, created once)
+const sheetLandscapeStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    paddingHorizontal: scale(16),
+    paddingTop: verticalScale(6),
+    paddingBottom: verticalScale(10),
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: verticalScale(10),
+  },
+  title: {
+    fontSize: moderateScale(18),
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    marginBottom: verticalScale(1),
+  },
+  sub: {
+    fontSize: moderateScale(11),
+    fontWeight: '500',
+    opacity: 0.65,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: scale(10),
+    flex: 1,
+  },
+  btn: {
+    flex: 1,
+    borderRadius: moderateScale(16),
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(8),
+  },
+  btnTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: verticalScale(2),
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  btnSub: {
+    fontSize: moderateScale(10),
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+});
 
 export default function ARScreen() {
   return (
