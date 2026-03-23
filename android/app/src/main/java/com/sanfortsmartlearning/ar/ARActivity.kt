@@ -1,5 +1,6 @@
 package com.sanfortsmartlearning.ar
 
+import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -9,9 +10,21 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.Window
+import android.view.WindowManager
 import android.widget.*
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.ImageView
+import android.widget.SeekBar
+import android.widget.ImageButton
+import android.widget.Button
+import android.widget.ScrollView
+import android.widget.Space
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -96,13 +109,21 @@ class ARActivity : AppCompatActivity() {
     // drawer state
     private var isDrawerOpen = false
     private var currentTab = "Audio" // "Audio", "Animation"
+    private var isGestureEnabled = true
+    private var audioDialog: Dialog? = null
+    private var animationDialog: Dialog? = null
+    private var audioDialogRoot: LinearLayout? = null
+    private var animationDialogRoot: LinearLayout? = null
 
     // UI refs
     private lateinit var rootLayout: FrameLayout
     private lateinit var drawerLayout: LinearLayout
     private lateinit var drawerContent: LinearLayout
+    private lateinit var bottomBar: LinearLayout
     private lateinit var headerBar: LinearLayout
     private lateinit var tabContainer: LinearLayout
+    private lateinit var animPill: FrameLayout
+    private lateinit var audioPill: FrameLayout
     private var safeAreaTop = 0
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -209,57 +230,57 @@ class ARActivity : AppCompatActivity() {
             try {
                 val scene = sceneView.scene
 
-                // 1. Primary Directional Light (The Sun) — balanced warm light
+                // 1. Primary Directional Light (The Sun)
                 val sun =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(3500f)
-                                .setColor(SfColor(1.0f, 0.97f, 0.93f))
-                                .setShadowCastingEnabled(true)
+                                .setIntensity(100000f)
+                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
+                                .setShadowCastingEnabled(false)
                                 .build()
                 val sunNode = Node()
                 sunNode.light = sun
                 sunNode.setParent(scene)
-                sunNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.8f, 0.3f), -50f)
+                sunNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 1.0f, 0.0f), -45f)
 
                 // Disable shadow receiving on the floor right from the start
                 arFragment.arSceneView.planeRenderer.isShadowReceiver = false
 
-                // 2. Add Ambient Fill Lights to match Three.js
-                // Top Light — cool sky fill
+                // 2. Top Light (Sky Fill)
                 val skyLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(1800f)
-                                .setColor(SfColor(0.92f, 0.95f, 1.0f))
+                                .setIntensity(50000f)
+                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
                                 .build()
                 val skyNode = Node()
                 skyNode.light = skyLight
                 skyNode.setParent(scene)
                 skyNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.0f, 0.0f), -90f)
 
-                // Bottom Light (fill to avoid pitch-black undersides)
+                // 3. Bottom Light (Ground Fill)
                 val groundLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(1000f)
-                                .setColor(SfColor(1.0f, 0.98f, 0.95f))
+                                .setIntensity(50000f)
+                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
                                 .build()
                 val groundNode = Node()
                 groundNode.light = groundLight
                 groundNode.setParent(scene)
                 groundNode.localRotation = Quaternion.axisAngle(Vector3(1.0f, 0.0f, 0.0f), 90f)
 
-                // 3. Back rim light for depth separation
+                // 4. Back rim light for depth separation
                 val rimLight =
                         Light.builder(Light.Type.DIRECTIONAL)
-                                .setIntensity(600f)
-                                .setColor(SfColor(0.98f, 0.96f, 1.0f))
+                                .setIntensity(30000f)
+                                .setColor(SfColor(1.0f, 1.0f, 1.0f))
                                 .build()
                 val rimNode = Node()
                 rimNode.light = rimLight
                 rimNode.setParent(scene)
                 rimNode.localRotation = Quaternion.axisAngle(Vector3(-0.3f, 1.0f, -0.8f), 135f)
 
-                // 4. Set exposure and dynamic resolution
+                // 5. Set exposure and dynamic resolution
                 sceneView.renderer?.let { renderer ->
+                    // Use a safer way to set dynamic resolution if previous way failed
                     try {
                         renderer.setDynamicResolutionEnabled(true)
                     } catch (e: Exception) {}
@@ -292,20 +313,25 @@ class ARActivity : AppCompatActivity() {
         // All overlay views go into DecorView — renders ABOVE the SurfaceView
         val decor = window.decorView as FrameLayout
         buildPillHeader(decor)
-        buildDrawer(decor)
+        buildBottomBar(decor)
+        buildLogo(decor)
+        // Separate modals are now Dialog based, requested by user
+        // buildDrawer(decor) -- Removed shared drawer
 
         setupTapListener()
         prepareAudio()
     }
 
     private fun updateHeaderPadding() {
-        if (::headerBar.isInitialized) {
-            // Ensure there's enough space for status bar and punch-hole camera
-            // Typical status bar is ~24-32dp. We add 16dp extra margin for clarity.
-            val topPadding = if (safeAreaTop > 0) safeAreaTop + dp(16) else dp(64)
-            headerBar.setPadding(dp(16), topPadding, dp(16), dp(8))
-        }
+        if (!::headerBar.isInitialized) return
+        val landscape = isLandscape()
+        val topPad = if (landscape) dp(15) else (safeAreaTop + dp(8))
+        val sidePad = if (landscape) dp(15) else dp(16)
+        headerBar.setPadding(sidePad, topPad, sidePad, dp(8))
     }
+
+    private fun isLandscape() = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    private fun isTablet() = resources.configuration.smallestScreenWidthDp >= 600
 
     override fun onPause() {
         super.onPause()
@@ -331,356 +357,556 @@ class ARActivity : AppCompatActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun buildPillHeader(parent: FrameLayout) {
-        headerBar =
-                LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    // Use a safer fallback initially
-                    setPadding(dp(16), dp(60), dp(16), dp(8))
-                }
+        headerBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        updateHeaderPadding()
 
-        // Handle insets specifically for the headerBar as well
         ViewCompat.setOnApplyWindowInsetsListener(headerBar) { _, insets ->
-            val safeInsets =
-                    insets.getInsets(
-                            WindowInsetsCompat.Type.statusBars() or
-                                    WindowInsetsCompat.Type.displayCutout()
-                    )
+            val safeInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout())
             safeAreaTop = safeInsets.top
             updateHeaderPadding()
             insets
         }
 
-        // 1. Exit Pill
-        val exitPill =
-                FrameLayout(this).apply {
-                    background = pillDrawable("#55000000")
-                    setPadding(dp(12), dp(8), dp(12), dp(8))
-                    setOnClickListener { finish() }
-                    addView(
-                            TextView(this@ARActivity).apply {
-                                text = "✕"
-                                setTextColor(Color.WHITE)
-                                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                            }
-                    )
-                }
-        headerBar.addView(exitPill)
-
-        // 2. Name Pill (Center)
-        val centerSpace = Space(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
-        headerBar.addView(centerSpace)
-
-        val namePill =
-                FrameLayout(this).apply {
-                    background = pillDrawable("#88000000")
-                    setPadding(dp(24), dp(8), dp(24), dp(8))
-                    addView(
-                            TextView(this@ARActivity).apply {
-                                text = modelName
-                                setTextColor(Color.WHITE)
-                                setTypeface(null, Typeface.BOLD)
-                                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                            }
-                    )
-                }
-        headerBar.addView(namePill)
-
-        val rightSpace = Space(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
-        headerBar.addView(rightSpace)
-
-        // 3. Settings Pill
-        val settingsPill =
-                FrameLayout(this).apply {
-                    background = pillDrawable("#55000000")
-                    setPadding(dp(12), dp(8), dp(12), dp(8))
-                    setOnClickListener { toggleDrawer() }
-                    addView(
-                            TextView(this@ARActivity).apply {
-                                text = "⚙"
-                                setTextColor(Color.WHITE)
-                                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                            }
-                    )
-                }
-        headerBar.addView(settingsPill)
-
+        refreshHeaderContent()
         parent.addView(headerBar, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 
-    private fun buildDrawer(parent: FrameLayout) {
-        if (::drawerLayout.isInitialized && drawerLayout.parent != null) {
-            refreshTabs()
-            refreshDrawer()
+    private fun refreshHeaderContent() {
+        if (!::headerBar.isInitialized) return
+        headerBar.removeAllViews()
+        val landscape = isLandscape()
+        val btnPadH = if (landscape) dp(14) else dp(12)
+        val btnPadV = if (landscape) dp(8) else dp(8)
+        val textSize = if (landscape) 16f else 18f
+        val nameTextSize = if (landscape) 13f else 15f
+
+        // 1. Exit Pill
+        val exitPill = FrameLayout(this).apply {
+            background = pillDrawable("#55000000")
+            setPadding(btnPadH, btnPadV, btnPadH, btnPadV)
+            setOnClickListener { finish() }
+            addView(TextView(this@ARActivity).apply {
+                text = "✕"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
+            })
+        }
+        headerBar.addView(exitPill)
+
+        headerBar.addView(Space(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
+
+        // 2. Name Pill
+        val namePill = FrameLayout(this).apply {
+            background = pillDrawable("#88000000")
+            setPadding(dp(16), btnPadV, dp(16), btnPadV)
+            addView(TextView(this@ARActivity).apply {
+                text = modelName; setTextColor(Color.WHITE); setTypeface(null, Typeface.BOLD)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, nameTextSize)
+            })
+        }
+        headerBar.addView(namePill)
+
+        headerBar.addView(Space(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
+
+        // 3. Instruction Pill
+        val instructionPill = FrameLayout(this).apply {
+            background = pillDrawable("#55000000")
+            setPadding(btnPadH, btnPadV, btnPadH, btnPadV)
+            setOnClickListener { showInstructions() }
+            addView(TextView(this@ARActivity).apply {
+                text = "ⓘ"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
+            })
+        }
+        headerBar.addView(instructionPill)
+    }
+
+
+
+    private fun buildBottomBar(parent: FrameLayout) {
+        bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#99000000"))
+                cornerRadius = dp(30).toFloat()
+            }
+        }
+        refreshBottomBarContent()
+
+        val lp = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.START
+            setMargins(dp(20), 0, 0, dp(20))
+        }
+        parent.addView(bottomBar, lp)
+    }
+
+    private fun buildLogo(parent: FrameLayout) {
+        val landscape = isLandscape()
+        val logo = ImageView(this).apply {
+            tag = "company_logo"
+            setImageResource(resources.getIdentifier("sanfort_logo", "drawable", packageName))
+            
+            // Reduced size for landscape to match reference image
+            val w = if (landscape) 110 else 160
+            val h = if (landscape) 55 else 75
+            
+            layoutParams = FrameLayout.LayoutParams(dp(w), dp(h)).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                val margin = if (landscape) dp(4) else dp(15)
+                val bottom = if (landscape) dp(12) else dp(15)
+                setMargins(0, 0, margin, bottom)
+            }
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        parent.addView(logo)
+    }
+
+    private fun refreshBottomBarContent() {
+        if (!::bottomBar.isInitialized) return
+        bottomBar.removeAllViews()
+        val landscape = isLandscape()
+        val btnPadH = if (landscape) dp(22) else dp(20)
+        val btnPadV = if (landscape) dp(12) else dp(10)
+        val labelSize = if (landscape) 15f else 13f
+
+        // Animation Pill
+        val animBtn = FrameLayout(this).apply {
+            val p = if (landscape) dp(8) else dp(15)
+            setPadding(p, p, p, p)
+            setOnClickListener { showAnimationModal() }
+            
+            val inner = LinearLayout(this@ARActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                
+                // Icon
+                addView(ImageView(this@ARActivity).apply {
+                    setImageResource(android.R.drawable.ic_menu_slideshow)
+                    setColorFilter(Color.WHITE)
+                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+                })
+                
+                if (landscape) {
+                    addView(TextView(this@ARActivity).apply { 
+                        text = " Animation"; setTextColor(Color.WHITE); setTypeface(null, Typeface.BOLD)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, labelSize); setPadding(dp(8), 0, 0, 0)
+                    })
+                }
+            }
+            addView(inner)
+        }
+
+        if (landscape) {
+            val divider = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(1), dp(16)).apply { setMargins(dp(10), 0, dp(10), 0) }
+                setBackgroundColor(Color.parseColor("#44FFFFFF"))
+            }
+            bottomBar.addView(animBtn)
+            bottomBar.addView(divider)
+        } else {
+            bottomBar.addView(animBtn)
+            bottomBar.addView(Space(this).apply { layoutParams = LinearLayout.LayoutParams(dp(15), 0) })
+        }
+
+        // Audio Pill
+        val audioBtn = FrameLayout(this).apply {
+            val p = if (landscape) dp(8) else dp(15)
+            setPadding(p, p, p, p)
+            setOnClickListener { showAudioModal() }
+            
+            // Highlight if audio is playing
+            if (isAudioPlaying) {
+                background = pillDrawable("#00C096")
+            }
+
+            val inner = LinearLayout(this@ARActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                
+                // Unicode Music Note Icon
+                addView(TextView(this@ARActivity).apply {
+                    text = "♪"
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+                    setTypeface(null, Typeface.BOLD)
+                    includeFontPadding = false
+                    gravity = Gravity.CENTER
+                    translationY = dp(-4).toFloat()
+                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+                })
+                
+                if (landscape) {
+                    addView(TextView(this@ARActivity).apply { 
+                        text = " Audio"; setTextColor(Color.WHITE); setTypeface(null, Typeface.BOLD)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, labelSize); setPadding(dp(8), 0, 0, 0)
+                    })
+                }
+            }
+            addView(inner)
+        }
+
+        bottomBar.addView(audioBtn)
+    }
+
+
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateHeaderPadding()
+        refreshHeaderContent()
+        refreshBottomBarContent()
+        
+        // Refresh Logo (re-layout for size)
+        val decor = window.decorView as FrameLayout
+        for (i in 0 until decor.childCount) {
+            val v = decor.getChildAt(i)
+            if (v is ImageView && v.tag == "company_logo") {
+                decor.removeView(v)
+                break
+            }
+        }
+        buildLogo(decor)
+
+        if (::bottomBar.isInitialized) {
+            bottomBar.layoutParams = (bottomBar.layoutParams as FrameLayout.LayoutParams).apply {
+                val margin = dp(20)
+                setMargins(margin, 0, 0, margin)
+            }
+        }
+    }
+
+    private fun showInstructions() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#EE1A1A1A"))
+                cornerRadius = dp(24).toFloat()
+                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+            }
+            
+            // Title
+            addView(TextView(this@ARActivity).apply {
+                text = "How to use AR"
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                setTypeface(null, Typeface.BOLD)
+                setPadding(0, 0, 0, dp(16))
+            })
+            
+            val steps = listOf(
+                "1. Move phone to find a flat surface.",
+                "2. Tap on white dots to place the model.",
+                "3. One finger to move, two to rotate/scale.",
+                "4. Use bottom bar for Audio and Animations."
+            )
+            
+            steps.forEach { step ->
+                addView(TextView(this@ARActivity).apply {
+                    text = step
+                    setTextColor(Color.parseColor("#E0E0E0"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    setPadding(0, dp(4), 0, dp(4))
+                })
+            }
+            
+            // Got it button
+            addView(TextView(this@ARActivity).apply {
+                text = "Got it"
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(dp(20), dp(12), dp(20), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#6C4CFF"))
+                    cornerRadius = dp(12).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+                    topMargin = dp(24)
+                }
+                setOnClickListener { dialog.dismiss() }
+            })
+        }
+        
+        dialog.setContentView(content)
+        dialog.window?.let { window ->
+            window.setLayout((resources.displayMetrics.widthPixels * 0.85).toInt(), WRAP_CONTENT)
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            val params = window.attributes
+            params.windowAnimations = android.R.style.Animation_Dialog // Basic fade
+            window.attributes = params
+        }
+        dialog.show()
+    }
+
+    private fun showAudioModal() {
+        animationDialog?.dismiss() // Ensure only one at a time
+        
+        if (audioDialog?.isShowing == true && audioDialogRoot != null) {
+            populateAudioModalContent(audioDialogRoot!!)
             return
         }
 
-        drawerLayout =
-                LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    background = roundedRectDrawable("#F2141828", dp(24))
-                    setPadding(dp(16), dp(12), dp(16), dp(24))
-                    visibility = View.GONE
-                }
+        val dialog = Dialog(this)
+        audioDialog = dialog
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-        tabContainer =
-                LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    background = pillDrawable("#336C4CFF")
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
-                }
-        drawerLayout.addView(
-                tabContainer,
-                LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                    bottomMargin = dp(16)
-                }
-        )
-
-        drawerContent = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        drawerLayout.addView(drawerContent)
-
-        val lp =
-                FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                    gravity = Gravity.BOTTOM
-                    setMargins(dp(8), dp(8), dp(8), dp(8))
-                }
-        parent.addView(drawerLayout, lp)
-
-        refreshTabs()
-        refreshDrawer()
-    }
-
-    private fun refreshTabs() {
-        if (!::tabContainer.isInitialized) return
-        tabContainer.removeAllViews()
-        val tabs = listOf("Audio", "Animation")
-        tabs.forEach { tabName ->
-            val tabView =
-                    TextView(this).apply {
-                        text = tabName
-                        setTextColor(if (currentTab == tabName) Color.WHITE else Color.GRAY)
-                        gravity = Gravity.CENTER
-                        setPadding(dp(12), dp(8), dp(12), dp(8))
-                        layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-                        if (currentTab == tabName) {
-                            background = roundedRectDrawable("#AA6C4CFF", dp(16))
-                        }
-                        setOnClickListener {
-                            currentTab = tabName
-                            refreshTabs()
-                            refreshDrawer()
-                        }
-                    }
-            tabContainer.addView(tabView)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(30))
+            background = roundedRectDrawable("#F2141828", dp(24))
         }
+        audioDialogRoot = root
+        populateAudioModalContent(root)
+        
+        dialog.setContentView(root)
+        styleDialog(dialog)
+        dialog.show()
     }
 
-    private fun refreshDrawer() {
-        runOnUiThread {
-            if (!::drawerContent.isInitialized) return@runOnUiThread
-            drawerContent.removeAllViews()
-            when (currentTab) {
-                "Audio" -> buildAudioTab()
-                "Animation" -> buildAnimationTab()
-            }
+    private fun populateAudioModalContent(root: LinearLayout) {
+        root.removeAllViews()
+        val landscape = isLandscape()
+        val titleSize = if (landscape) 16f else 18f
+        
+        // Title Row with Close Button
+        val titleBar = LinearLayout(this@ARActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(15))
         }
-    }
 
-    private fun buildAudioTab() {
-        // Level
-        drawerContent.addView(createLabel("Level"))
-        val levels = getDistinctOrderedLevels()
-        drawerContent.addView(
-                createSpinnerPill(levels, selectedLevel ?: "Select Level") {
-                    selectedLevel = it
-                    reloadAudio()
-                    refreshDrawer()
-                }
-        )
+        titleBar.addView(TextView(this@ARActivity).apply {
+            text = "Audio Settings"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSize)
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+        })
 
-        // Language
-        drawerContent.addView(createLabel("Language"))
-        val langs = getDistinctOrderedLangs()
-        drawerContent.addView(
-                createSpinnerPill(langs, selectedLanguage ?: "Select Language") {
-                    selectedLanguage = it
-                    selectedLevel = getDistinctOrderedLevels().firstOrNull() ?: ""
-                    reloadAudio()
-                    refreshDrawer()
-                }
-        )
+        titleBar.addView(ImageButton(this@ARActivity).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setColorFilter(Color.WHITE)
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { audioDialog?.dismiss() }
+        })
 
-        // Audio Track (using the model name or list of tracks if applicable)
-        drawerContent.addView(createLabel("Audio Track"))
-        val tracks =
-                listOf(modelName ?: "Track") // Assuming 1 track per model for now, or use allAudios
-        drawerContent.addView(
-                createSpinnerPill(tracks, modelName ?: "Track") { /* handle track change */}
-        )
+        root.addView(titleBar)
 
-        // Audio controls row (ONLY if model is mounted)
         if (activeAnchorNode != null) {
-            val audioRow =
-                    LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        background = roundedRectDrawable("#22FFFFFF", dp(16))
-                        setPadding(dp(12), dp(12), dp(12), dp(12))
-                    }
+            val scroll = ScrollView(this@ARActivity)
+            val inner = LinearLayout(this@ARActivity).apply { orientation = LinearLayout.VERTICAL }
+            
+            // Level
+            inner.addView(createLabel("Level"))
+            val levels = getDistinctOrderedLevels()
+            inner.addView(createSpinnerPill(levels, selectedLevel ?: "Select Level") {
+                selectedLevel = it
+                reloadAudio()
+                showAudioModal() // Refresh
+            })
 
-            val playBtn =
-                    ImageButton(this).apply {
-                        background = roundedRectDrawable("#00C096", dp(8))
-                        setImageResource(
-                                if (isAudioPlaying) android.R.drawable.ic_media_pause
-                                else android.R.drawable.ic_media_play
-                        )
-                        setColorFilter(Color.WHITE)
-                        setPadding(dp(8), dp(8), dp(8), dp(8))
-                        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
-                        setOnClickListener {
-                            toggleAudio()
-                            refreshDrawer()
-                        }
-                    }
-            audioRow.addView(playBtn)
+            // Language
+            inner.addView(createLabel("Language"))
+            val langs = getDistinctOrderedLangs()
+            inner.addView(createSpinnerPill(langs, selectedLanguage ?: "Select Language") {
+                selectedLanguage = it
+                selectedLevel = getDistinctOrderedLevels().firstOrNull() ?: ""
+                reloadAudio()
+                showAudioModal() // Refresh
+            })
 
-            val volumeIcon =
-                    TextView(this).apply {
-                        text = "🔊"
-                        setPadding(dp(12), 0, dp(8), 0)
-                    }
-            audioRow.addView(volumeIcon)
+            // Audio controls
+            val audioRow = LinearLayout(this@ARActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = roundedRectDrawable("#22FFFFFF", dp(16))
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+            }
+            val playBtn = ImageButton(this@ARActivity).apply {
+                background = roundedRectDrawable("#00C096", dp(8))
+                setImageResource(if (isAudioPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+                setColorFilter(Color.WHITE)
+                setOnClickListener {
+                    toggleAudio()
+                    showAudioModal() // Refresh UI
+                }
+            }
+            audioRow.addView(playBtn, LinearLayout.LayoutParams(dp(44), dp(44)))
+            
+            audioRow.addView(ImageView(this@ARActivity).apply {
+                setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+                setColorFilter(Color.GRAY)
+                setPadding(dp(12), 0, dp(8), 0)
+            })
 
-            val volumeBar =
-                    SeekBar(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-                        progress = (mediaPlayer?.let { 100 } ?: 100)
-                        setOnSeekBarChangeListener(
-                                object : SeekBar.OnSeekBarChangeListener {
-                                    override fun onProgressChanged(
-                                            p0: SeekBar?,
-                                            p1: Int,
-                                            p2: Boolean
-                                    ) {
-                                        val vol = p1 / 100f
-                                        mediaPlayer?.setVolume(vol, vol)
-                                    }
-                                    override fun onStartTrackingTouch(p0: SeekBar?) {}
-                                    override fun onStopTrackingTouch(p0: SeekBar?) {}
-                                }
-                        )
+            val volumeBar = SeekBar(this@ARActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                progress = 100
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(p0: SeekBar?, p1: Int, p2: Boolean) {
+                        val vol = p1 / 100f
+                        mediaPlayer?.setVolume(vol, vol)
                     }
+                    override fun onStartTrackingTouch(p0: SeekBar?) {}
+                    override fun onStopTrackingTouch(p0: SeekBar?) {}
+                })
+            }
             audioRow.addView(volumeBar)
+            inner.addView(audioRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { 
+                setMargins(0, dp(20), 0, 0)
+            })
 
-            drawerContent.addView(
-                    audioRow,
-                    LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                        topMargin = dp(16)
-                    }
-            )
+            scroll.addView(inner)
+            root.addView(scroll)
         } else {
-            drawerContent.addView(
-                    TextView(this).apply {
-                        text = "Tap on surface to place model to play audio"
-                        setTextColor(Color.GRAY)
-                        setPadding(0, dp(16), 0, 0)
-                        gravity = Gravity.CENTER
-                    }
-            )
+            root.addView(TextView(this@ARActivity).apply {
+                text = "Tap on surface to place model first"
+                setTextColor(Color.GRAY)
+                setPadding(0, dp(20), 0, 0)
+                gravity = Gravity.CENTER
+            })
         }
     }
 
-    private fun buildAnimationTab() {
-        if (activeAnchorNode != null) {
-            // Gesture Mode Toggle
-            val gestureRow =
-                    createToggleRow("Gesture Mode", true) { enabled ->
-                        activeTransformNode?.let { node ->
-                            node.translationController.isEnabled = enabled
-                            node.rotationController.isEnabled = enabled
-                            node.scaleController.isEnabled = enabled
-                        }
-                    }
-            drawerContent.addView(gestureRow)
+    private fun showAnimationModal() {
+        audioDialog?.dismiss() // Ensure only one at a time
+        
+        if (animationDialog?.isShowing == true && animationDialogRoot != null) {
+            populateAnimationModalContent(animationDialogRoot!!)
+            return
+        }
 
-            // Animation selection if multiple available
+        val dialog = Dialog(this)
+        animationDialog = dialog
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(30))
+            background = roundedRectDrawable("#F2141828", dp(24))
+        }
+        animationDialogRoot = root
+        populateAnimationModalContent(root)
+
+        dialog.setContentView(root)
+        styleDialog(dialog)
+        dialog.show()
+    }
+
+    private fun populateAnimationModalContent(root: LinearLayout) {
+        root.removeAllViews()
+        val landscape = isLandscape()
+        val titleSize = if (landscape) 16f else 18f
+        
+        // Title Row with Close Button
+        val titleBar = LinearLayout(this@ARActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(15))
+        }
+
+        titleBar.addView(TextView(this@ARActivity).apply {
+            text = "Animations"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSize)
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+        })
+
+        titleBar.addView(ImageButton(this@ARActivity).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setColorFilter(Color.WHITE)
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener { animationDialog?.dismiss() }
+        })
+
+        root.addView(titleBar)
+
+        if (activeAnchorNode != null) {
+            val scroll = ScrollView(this@ARActivity)
+            val inner = LinearLayout(this@ARActivity).apply { orientation = LinearLayout.VERTICAL }
+
+            inner.addView(createToggleRow("Gesture Mode", isGestureEnabled) { enabled ->
+                isGestureEnabled = enabled
+                activeTransformNode?.let { node ->
+                    node.translationController.isEnabled = enabled
+                    node.rotationController.isEnabled = enabled
+                    node.scaleController.isEnabled = enabled
+                }
+            })
+
             if (allAnimations.size > 1) {
-                drawerContent.addView(createLabel("Change Animation"))
+                inner.addView(createLabel("Change Animation"))
                 val animNames = allAnimations.map { it.name }
-                drawerContent.addView(
-                        createSpinnerPill(animNames, selectedAnimationName) { name ->
-                            selectedAnimationName = name
-                            allAnimations.find { it.name == name }?.let { playAnimation(it) }
-                            refreshDrawer()
-                        }
-                )
+                inner.addView(createSpinnerPill(animNames, selectedAnimationName) { name ->
+                    selectedAnimationName = name
+                    allAnimations.find { it.name == name }?.let { playAnimation(it) }
+                    showAnimationModal() // Refresh
+                })
             }
 
-            // Toggle Animation Button
-            val animBtn =
-                    Button(this).apply {
-                        val isPaused = activeModelAnimator?.isPaused == true
-                        text = if (isPaused) "Resume Animation" else "Pause Animation"
-                        background =
-                                roundedRectDrawable(
-                                        if (isPaused) "#FF4BC24B" else "#FFFF4B4B",
-                                        dp(12)
-                                )
-                        setTextColor(Color.WHITE)
-                        setOnClickListener {
-                            activeModelAnimator?.let {
-                                if (it.isPaused) it.resume() else it.pause()
-                                refreshDrawer()
-                            }
-                        }
+            val isPaused = activeModelAnimator?.isPaused == true
+            inner.addView(Button(this@ARActivity).apply {
+                text = if (isPaused) "Resume Animation" else "Pause Animation"
+                background = roundedRectDrawable(if (isPaused) "#00C096" else "#FF4B4B", dp(12))
+                setTextColor(Color.WHITE)
+                setOnClickListener {
+                    activeModelAnimator?.let {
+                        if (it.isPaused) it.resume() else it.pause()
+                        showAnimationModal()
                     }
-            drawerContent.addView(
-                    animBtn,
-                    LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                        topMargin = dp(12)
-                    }
-            )
+                }
+            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { 
+                setMargins(0, dp(16), 0, 0)
+            })
 
-            // Reset Rotation Button
-            val fixBtn =
-                    Button(this).apply {
-                        text = "Reset Rotation"
-                        background = roundedRectDrawable("#33FFFFFF", dp(12))
-                        setTextColor(Color.WHITE)
-                        setOnClickListener {
-                            activeTransformNode?.localRotation = Quaternion.identity()
-                            refreshDrawer()
-                        }
-                    }
-            drawerContent.addView(
-                    fixBtn,
-                    LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-                        topMargin = dp(12)
-                    }
-            )
-
-            // Manual Rotations
-            drawerContent.addView(createLabel("Manual Rotation"))
-            drawerContent.addView(createAxisSlider("X Axis") { deg -> updateRotation(deg, 0f, 0f) })
-            drawerContent.addView(createAxisSlider("Y Axis") { deg -> updateRotation(0f, deg, 0f) })
-            drawerContent.addView(createAxisSlider("Z Axis") { deg -> updateRotation(0f, 0f, deg) })
+            scroll.addView(inner)
+            root.addView(scroll)
         } else {
-            drawerContent.addView(
-                    TextView(this).apply {
-                        text = "Tap on surface to place model to see animations"
-                        setTextColor(Color.GRAY)
-                        setPadding(0, dp(16), 0, 0)
-                        gravity = Gravity.CENTER
-                    }
-            )
+            root.addView(TextView(this@ARActivity).apply {
+                text = "Tap on surface to place model first"
+                setTextColor(Color.GRAY)
+                setPadding(0, dp(20), 0, 0)
+                gravity = Gravity.CENTER
+            })
         }
     }
 
-    private fun toggleDrawer() {
-        isDrawerOpen = !isDrawerOpen
-        drawerLayout.visibility = if (isDrawerOpen) View.VISIBLE else View.GONE
+
+
+    private fun styleDialog(dialog: Dialog) {
+        val landscape = isLandscape()
+        val tablet = isTablet()
+        dialog.window?.let { window ->
+            val screenW = resources.displayMetrics.widthPixels
+            // Constraints width and gravity for Side-Docking in landscape or tablet
+            val w = if (landscape || tablet) 
+                dp(340).coerceAtMost((screenW * 0.45).toInt()) 
+            else 
+                (screenW * 0.9).toInt()
+                
+            window.setLayout(w, WRAP_CONTENT)
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            val params = window.attributes
+            
+            if (landscape || tablet) {
+                params.gravity = Gravity.BOTTOM or Gravity.START
+                params.x = dp(20) // Floating from left edge
+                params.y = dp(100) // Floating 100dp from bottom edge (above the bottom bar)
+            } else {
+                params.gravity = Gravity.BOTTOM
+                params.x = 0
+                params.y = dp(20)
+            }
+            window.attributes = params
+        }
     }
+
+
 
     private fun updateRotation(rx: Float, ry: Float, rz: Float) {
         activeTransformNode?.let { node ->
@@ -689,10 +915,6 @@ class ARActivity : AppCompatActivity() {
             node.localRotation = Quaternion.multiply(current, axis)
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    //  UI Helpers
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun pillDrawable(color: String) =
             GradientDrawable().apply {
@@ -712,7 +934,8 @@ class ARActivity : AppCompatActivity() {
             TextView(this).apply {
                 text = txt
                 setTextColor(Color.GRAY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                val textSize = if (isLandscape()) 11f else 12f
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
                 setPadding(0, dp(8), 0, dp(4))
             }
 
@@ -954,7 +1177,7 @@ class ARActivity : AppCompatActivity() {
         // Auto play first animation and audio
         if (allAnimations.isNotEmpty()) playAnimation(allAnimations[0])
         reloadAudio()
-        refreshDrawer()
+        refreshBottomBarContent()
     }
 
     fun playAnimation(index: Int) {
@@ -1028,12 +1251,12 @@ class ARActivity : AppCompatActivity() {
                             if (activeAnchorNode != null) {
                                 it.start()
                                 isAudioPlaying = true
-                                refreshDrawer()
+                                refreshBottomBarContent()
                             }
                         }
                         setOnCompletionListener {
                             isAudioPlaying = false
-                            refreshDrawer()
+                            refreshBottomBarContent()
                         }
                     }
         } catch (e: Exception) {
@@ -1042,16 +1265,18 @@ class ARActivity : AppCompatActivity() {
     }
 
     private fun toggleAudio() {
-        val player = mediaPlayer ?: return run { reloadAudio() }
+        val player = mediaPlayer ?: run { 
+            reloadAudio()
+            return
+        }
         if (isAudioPlaying) {
             player.pause()
             isAudioPlaying = false
-            refreshDrawer()
         } else {
             player.start()
             isAudioPlaying = true
-            refreshDrawer()
         }
+        refreshBottomBarContent()
     }
 
     // ─────────────────────────────────────────────────────────────────────────

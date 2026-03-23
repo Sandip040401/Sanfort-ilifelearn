@@ -106,7 +106,8 @@ export default function ARInstructionModal({
   onStartScan,
 }: ARInstructionModalProps) {
   const {colors} = useTheme();
-  const {width: SCREEN_WIDTH} = useWindowDimensions();
+  const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = useWindowDimensions();
+  const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
   const [currentStep, setCurrentStep] = useState(0);
 
   const modalScale = useSharedValue(0.85);
@@ -157,19 +158,19 @@ export default function ARInstructionModal({
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} style={styles.warningScroll}>
         {/* Middle Section with Shield and Adult/Child */}
-        <View style={styles.shieldSection}>
-          <View style={[styles.shieldContainer, {backgroundColor: '#FFA500'}]}>
+        <View style={[styles.shieldSection, isLandscape && {flexDirection: 'row', alignItems: 'center'}]}>
+          <View style={[styles.shieldContainer, {backgroundColor: '#FFA500'}, isLandscape && {width: moderateScale(60), height: moderateScale(60)}]}>
             <View style={styles.iconWrapper}>
-              <User size={moderateScale(44)} color="#FFFFFF" strokeWidth={2} style={styles.adultIcon} />
-              <User size={moderateScale(27)} color="#FFFFFF" strokeWidth={2} style={styles.childIcon} />
+              <User size={moderateScale(isLandscape ? 30 : 44)} color="#FFFFFF" strokeWidth={2} style={styles.adultIcon} />
+              <User size={moderateScale(isLandscape ? 18 : 27)} color="#FFFFFF" strokeWidth={2} style={styles.childIcon} />
             </View>
-            <Shield size={moderateScale(64)} color="#FFFFFF" strokeWidth={1} style={styles.shieldIcon} />
+            <Shield size={moderateScale(isLandscape ? 40 : 64)} color="#FFFFFF" strokeWidth={1} style={styles.shieldIcon} />
           </View>
           
           <View style={styles.mainTextBox}>
-            <Text style={[styles.mainText, {color: colors.textSecondary}]}>
+            <Text style={[styles.mainText, {color: colors.textSecondary}, isLandscape && {fontSize: moderateScale(12), lineHeight: moderateScale(16)}]}>
               Always ask a grown-up before using this app. Watch out for other people when using this app and be aware of your surroundings.
             </Text>
           </View>
@@ -177,8 +178,8 @@ export default function ARInstructionModal({
 
         {/* Bottom Section: Parents' Note */}
         <View style={styles.parentsNoteSection}>
-          <Text style={styles.parentsTitle}>Parents and guardians please note:</Text>
-          <Text style={[styles.noteText, {color: colors.textSecondary}]}>
+          <Text style={[styles.parentsTitle, isLandscape && {fontSize: moderateScale(13), marginBottom: verticalScale(4)}]}>Parents and guardians please note:</Text>
+          <Text style={[styles.noteText, {color: colors.textSecondary}, isLandscape && {fontSize: moderateScale(11), lineHeight: moderateScale(15)}]}>
             It is recommended that younger children have adult supervision while using Augmented Reality. While using Augmented Reality there is a tendency for users to step backwards to view Augmented 3D animals & other 3D Models.
           </Text>
         </View>
@@ -189,15 +190,15 @@ export default function ARInstructionModal({
   const renderInstructionStep = (step: any, index: number) => {
     const Icon = step.icon || Box;
     return (
-      <View key={step.id} style={styles.stepContainer}>
-        <View style={[styles.iconCircle, {backgroundColor: colors.primary + '15'}]}>
-          <Icon size={moderateScale(70)} color={colors.primary} strokeWidth={1.5} />
+      <View key={step.id} style={[styles.stepContainer, isLandscape && styles.stepContainerLandscape]}>
+        <View style={[styles.iconCircle, isLandscape && styles.iconCircleLandscape, {backgroundColor: colors.primary + '15'}]}>
+          <Icon size={moderateScale(isLandscape ? 45 : 70)} color={colors.primary} strokeWidth={1.5} />
         </View>
-        <View style={styles.textContainer}>
+        <View style={[styles.textContainer, isLandscape && styles.textContainerLandscape]}>
           <View style={styles.stepBadge}>
             <Text style={styles.stepBadgeText}>Slide {index}</Text>
           </View>
-          <Text style={[styles.stepTitle, {color: colors.text}]}>{step.title}</Text>
+          <Text style={[styles.stepTitle, {color: colors.text}, isLandscape && {fontSize: moderateScale(18), marginBottom: verticalScale(8), textAlign: 'left'}]}>{step.title}</Text>
           <View style={styles.instructionsContainer}>
             <ScrollView 
               showsVerticalScrollIndicator={true} 
@@ -211,7 +212,9 @@ export default function ARInstructionModal({
                     styles.stepDescription, 
                     {
                       color: colors.textSecondary,
-                      textAlign: step.instructions.length > 1 ? 'left' : 'center'
+                      textAlign: (step.instructions.length > 1 || isLandscape) ? 'left' : 'center',
+                      fontSize: isLandscape ? moderateScale(12) : moderateScale(14),
+                      lineHeight: isLandscape ? moderateScale(17) : moderateScale(20),
                     }
                   ]}
                 >
@@ -242,7 +245,12 @@ export default function ARInstructionModal({
       </Animated.View>
 
       <View style={styles.center} pointerEvents="box-none">
-        <Animated.View style={[styles.card, {backgroundColor: colors.surface}, cardStyle]}>
+        <Animated.View style={[
+          styles.card, 
+          {backgroundColor: colors.surface}, 
+          cardStyle,
+          isLandscape && styles.cardLandscape
+        ]}>
           
           <View style={styles.contentWrapper}>
             {STEPS.map((step, index) => {
@@ -296,36 +304,35 @@ export default function ARInstructionModal({
           </View>
 
           {/* Footer Buttons */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, isLandscape && styles.footerLandscape]}>
             <View style={styles.buttonRow}>
               {currentStep > 0 && (
                 <TouchableOpacity
-                  style={[styles.prevBtn, {backgroundColor: colors.border}]}
+                  style={[styles.prevBtn, {backgroundColor: colors.border}, isLandscape && styles.btnLandscape]}
                   onPress={prevStep}
                   activeOpacity={0.8}
                 >
-                  <ChevronLeft size={moderateScale(18)} color={colors.text} />
-
+                  <ChevronLeft size={moderateScale(isLandscape ? 16 : 18)} color={colors.text} />
                 </TouchableOpacity>
               )}
 
               <TouchableOpacity
-                style={[styles.skipBtn, {backgroundColor: isLastStep ? colors.primary : colors.primary + '15'}]}
+                style={[styles.skipBtn, {backgroundColor: isLastStep ? colors.primary : colors.primary + '15'}, isLandscape && styles.btnLandscape]}
                 onPress={onStartScan}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.btnText, {color: isLastStep ? '#FFF' : colors.primary}]}>
+                <Text style={[styles.btnText, {color: isLastStep ? '#FFF' : colors.primary}, isLandscape && {fontSize: moderateScale(13)}]}>
                   {isLastStep ? 'Start AR' : 'Skip'}
                 </Text>
               </TouchableOpacity>
 
               {!isLastStep && (
                 <TouchableOpacity
-                  style={[styles.nextBtn, {backgroundColor: colors.primary}]}
+                  style={[styles.nextBtn, {backgroundColor: colors.primary}, isLandscape && styles.btnLandscape]}
                   onPress={nextStep}
                   activeOpacity={0.8}
                 >
-                  <ChevronRight size={moderateScale(18)} color="#FFF" />
+                  <ChevronRight size={moderateScale(isLandscape ? 16 : 18)} color="#FFF" />
                 </TouchableOpacity>
               )}
             </View>
@@ -356,7 +363,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: scale(450),
     maxHeight: '85%',
-    minHeight: verticalScale(520),
     borderRadius: moderateScale(20),
     overflow: 'hidden',
     shadowColor: '#000',
@@ -366,14 +372,17 @@ const styles = StyleSheet.create({
     elevation: 10,
     backgroundColor: '#fff',
   },
+  cardLandscape: {
+    maxWidth: scale(550),
+    maxHeight: '95%',
+  },
   contentWrapper: {
-    flex: 1,
+    flexShrink: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stepContent: {
     width: '100%',
-    maxHeight:'100%',
   },
   warningContainer: {
     flex: 1,
@@ -381,16 +390,19 @@ const styles = StyleSheet.create({
   },
   warningHeader: {
     flexDirection: 'row',
-    height: verticalScale(55),
+    minHeight: moderateScale(52),
+    
     backgroundColor: '#EEEEEE',
     borderTopStartRadius: moderateScale(20),
     borderTopEndRadius: moderateScale(20),
     overflow: 'hidden',
+    alignItems: 'center',
   },
   cautionBox: {
     flex: 0.25,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: moderateScale(14),
   },
   cautionTextBox: {
     flex: 0.75,
@@ -403,9 +415,12 @@ const styles = StyleSheet.create({
     color: '#333',
     letterSpacing: 1,
   },
+  warningScroll: {
+    flexShrink: 1,
+  },
   scrollContent: {
     padding: moderateScale(20),
-    height:'100%',
+    flexGrow: 1,
   },
   shieldSection: {
     flexDirection: 'row',
@@ -467,6 +482,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stepContainerLandscape: {
+    flexDirection: 'row',
+    padding: moderateScale(20),
+    paddingTop: moderateScale(36),
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
   iconCircle: {
     width: scale(120),
     height: scale(120),
@@ -475,8 +497,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: verticalScale(24),
   },
+  iconCircleLandscape: {
+    width: scale(100),
+    height: scale(100),
+    borderRadius: scale(50),
+    marginBottom: 0,
+    marginRight: scale(20),
+  },
   textContainer: {
     alignItems: 'center',
+    width: '100%',
+  },
+  textContainerLandscape: {
+    flex: 1,
+    alignItems: 'flex-start',
   },
   stepBadge: {
     backgroundColor: '#6C4CFF20',
@@ -497,9 +531,9 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(16),
   },
   instructionsContainer: {
-    maxHeight: verticalScale(200),
     width: '100%',
     paddingHorizontal: scale(5),
+    flexShrink: 1,
   },
   instructionsList: {
     width: '100%',
@@ -528,6 +562,14 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: moderateScale(20),
     paddingBottom: verticalScale(10),
+  },
+  footerLandscape: {
+    paddingBottom: verticalScale(8),
+    paddingHorizontal: moderateScale(15),
+  },
+  btnLandscape: {
+    height: verticalScale(38),
+    borderRadius: moderateScale(10),
   },
   buttonRow: {
     flexDirection: 'row',

@@ -1,7 +1,6 @@
 // WebVR main screen – fetches folders from API, Facebook/Blinkit-grade perf
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  Dimensions,
   FlatList,
   Image,
   InteractionManager,
@@ -31,12 +30,32 @@ import type {WebVRStackParamList} from '@/types';
 type Nav = StackNavigationProp<WebVRStackParamList, 'WebVRHome'>;
 
 // ── Stable constants (computed once at module load) ────────────────────
-const {width: SCREEN_W} = Dimensions.get('window');
 const H_PAD = scale(16);
-const GAP = scale(12);
+const GAP = scale(10);
 const CARD_HEIGHT = verticalScale(150);
 const CARD_MARGIN_BOTTOM = verticalScale(12);
 const CARD_BORDER_RADIUS = moderateScale(20);
+
+// ── Responsive layout hook ─────────────────────────────────────────────
+function useWebVRLayout() {
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  // Use the SHORT side to detect tablet — a phone in landscape has width>768
+  // but its short side is always ~360-430px. Tablets always have short side ≥600.
+  const shortSide = Math.min(width, height);
+  const isTablet = shortSide >= 600;
+  const isLargeTablet = shortSide >= 900;
+  const availableWidth = width - H_PAD * 2;
+  const gap = GAP;
+  // Phone landscape: 4 cols if card ≥130 px wide, otherwise 3
+  const numColumns = isTablet
+    ? (isLargeTablet ? 3 : 2)
+    : isLandscape
+      ? ((availableWidth - gap * 3) / 4 >= 130 ? 4 : 3)
+      : 2;
+  const cardWidth = (availableWidth - gap * (numColumns - 1)) / numColumns;
+  return { numColumns, cardWidth, gap };
+}
 
 // Pre-computed gradient start/end to avoid re-creation
 const GRADIENT_START = {x: 0, y: 0} as const;
@@ -117,10 +136,12 @@ const FolderCard = React.memo(function FolderCard({
   item,
   index,
   onPress,
+  cardWidth,
 }: {
   item: FolderItem;
   index: number;
   onPress: (item: FolderItem) => void;
+  cardWidth: number;
 }) {
   const handlePress = useCallback(() => onPress(item), [item, onPress]);
   const colors = useMemo(() => [item.gradient[0], item.gradient[1]], [item.gradient]);
@@ -131,17 +152,14 @@ const FolderCard = React.memo(function FolderCard({
       layout={folderCardLayout}>
       <TouchableOpacity
         activeOpacity={0.9}
-        style={styles.card}
+        style={[styles.card, { width: cardWidth }]}
         onPress={handlePress}>
         <View style={styles.cardContainer}>
-
             <Image
               source={item.image}
-              style={{position: 'absolute', inset: 0, width: '100%', height: '100%',  transform: [{ translateY: -12 }] }}
+              style={{position: 'absolute', inset: 0, width: '100%', height: '100%', transform: [{ translateY: -12 }] }}
               resizeMode="cover"
-              
             />
-          
           <View style={styles.cardContent}>
             <LinearGradient
               colors={colors}
@@ -161,9 +179,9 @@ const FolderCard = React.memo(function FolderCard({
             <WebVRIcon width={moderateScale(16)} height={moderateScale(16)} color={item.accent} />
             <Text style={[styles.worldCountText, { color: item.accent }]}>{item.assetCount ?? 0}</Text>
           </View>
-        <View style={styles.cardDecor1} />
-      </View>
-    </TouchableOpacity>
+          <View style={styles.cardDecor1} />
+        </View>
+      </TouchableOpacity>
     </Animated.View>
   );
 });
@@ -171,23 +189,25 @@ const FolderCard = React.memo(function FolderCard({
 // ── Skeleton loader (memoized) ─────────────────────────────────────────
 const SKELETON_ROWS = [0, 1, 2, 3, 4, 5] as const;
 
-const FolderSkeleton = React.memo(function FolderSkeleton() {
-  const cardWidth = (SCREEN_W - H_PAD * 2 - GAP) / 2;
-  
+const FolderSkeleton = React.memo(function FolderSkeleton({
+  numColumns,
+  cardWidth,
+}: {
+  numColumns: number;
+  cardWidth: number;
+}) {
   return (
     <View style={styles.skeletonGrid}>
       {SKELETON_ROWS.map(row => (
-        <View key={row} style={styles.skeletonRow}>
-          <Skeleton
-            width={cardWidth}
-            height={CARD_HEIGHT}
-            borderRadius={CARD_BORDER_RADIUS}
-          />
-          <Skeleton
-            width={cardWidth}
-            height={CARD_HEIGHT}
-            borderRadius={CARD_BORDER_RADIUS}
-          />
+        <View key={row} style={[styles.skeletonRow, { gap: GAP }]}>
+          {Array.from({ length: numColumns }).map((_, col) => (
+            <Skeleton
+              key={col}
+              width={cardWidth}
+              height={CARD_HEIGHT}
+              borderRadius={CARD_BORDER_RADIUS}
+            />
+          ))}
         </View>
       ))}
     </View>
@@ -249,7 +269,7 @@ function WebVRContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
-  const {width: screenWidth} = useWindowDimensions();
+  const {width: screenWidth, height: screenHeight} = useWindowDimensions();
   const {tabBarTranslateY} = useTabBarScroll();
   const {showARWarning} = useModals();
   const hasTriggeredRef = useRef(false);
@@ -264,7 +284,8 @@ function WebVRContent() {
 
 
   const lastScrollY = useRef(0);
-  const isTabletDynamic = screenWidth >= 768;
+  // Use short side for tablet detection — phones in landscape have width>768 but short side ~390px
+  const isTabletDynamic = Math.min(screenWidth, screenHeight) >= 600;
   const contentWidth = isTabletDynamic ? Math.min(screenWidth * 0.85, 720) : undefined;
 
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
@@ -321,12 +342,14 @@ function WebVRContent() {
   const handleRefresh = useCallback(() => fetchFolders(true), [fetchFolders]);
   const handleRetry = useCallback(() => fetchFolders(), [fetchFolders]);
 
+  const { numColumns, cardWidth } = useWebVRLayout();
+
   // Stable renderItem
   const renderItem = useCallback(
     ({item, index}: ListRenderItemInfo<FolderItem>) => (
-      <FolderCard item={item} index={index} onPress={handleFolderPress} />
+      <FolderCard item={item} index={index} onPress={handleFolderPress} cardWidth={cardWidth} />
     ),
-    [handleFolderPress],
+    [handleFolderPress, cardWidth],
   );
 
   const bottomContentInset = useMemo(
@@ -436,7 +459,7 @@ function WebVRContent() {
             styles.content,
             contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined,
           ]}>
-          <FolderSkeleton />
+          <FolderSkeleton numColumns={numColumns} cardWidth={cardWidth} />
         </View>
       );
     }
@@ -471,17 +494,17 @@ function WebVRContent() {
         </Text>
       </View>
     );
-  }, [loading, error, colors.text, colors.textSecondary, handleRetry, contentWidth]);
+  }, [loading, error, colors.text, colors.textSecondary, handleRetry, contentWidth, numColumns, cardWidth]);
 
   return (
     <View style={[styles.root, {backgroundColor: colors.background}]}>
       <FlatList
-        key="webvr-grid-2"
+        key={numColumns}
         data={folders}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        numColumns={2}
-        columnWrapperStyle={styles.columnWrapper}
+        numColumns={numColumns}
+        columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
         showsVerticalScrollIndicator={false}
         refreshing={refreshing}
         onRefresh={handleRefresh}
@@ -627,7 +650,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PAD,
   },
   card: {
-    width: (SCREEN_W - H_PAD * 2 - GAP) / 2,
+    // width is now set dynamically via inline style (cardWidth from useWebVRLayout)
     marginBottom: CARD_MARGIN_BOTTOM,
     borderRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',

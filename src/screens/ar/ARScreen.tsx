@@ -75,24 +75,38 @@ import { useTheme } from '@/theme';
 function useResponsiveLayout() {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-  const isTablet = width >= 768;
-  const isLargeTablet = width >= 1024;
+  // Use the SHORT side to detect tablet — a phone in landscape has width>768
+  // but its short side is always ~360-430px. Tablets always have short side ≥600.
+  const shortSide = Math.min(width, height);
+  const isTablet = shortSide >= 600;
+  const isLargeTablet = shortSide >= 900;
   const horizontalPadding = isTablet
     ? (isLandscape ? 18 : (isLargeTablet ? 28 : 24))
     : scale(16);
   const maxContentWidth = isLargeTablet ? 980 : isTablet ? 820 : width;
   const availableWidth = width - horizontalPadding * 2;
   const contentWidth = isLandscape ? availableWidth : Math.min(availableWidth, maxContentWidth);
-  const gap = isTablet ? 16 : scale(12);
-  const numColumns = isLandscape ? 2 : (isLargeTablet ? 3 : isTablet ? 2 : 2);
+  const gap = isTablet ? 16 : scale(10);
+  // Phone landscape: 4 cols if card ≥130 px wide, otherwise 3
+  const numColumns = isTablet
+    ? (isLargeTablet ? 3 : 2)
+    : isLandscape
+      ? ((contentWidth - scale(10) * 3) / 4 >= 130 ? 4 : 3)
+      : 2;
   const cardWidth = (contentWidth - gap * (numColumns - 1)) / numColumns;
-  const isCompactCard = cardWidth < 240;
+  const isCompactCard = cardWidth < 200;
   const worldCardHeight = isTablet
     ? (isLandscape
       ? Math.max(Math.min(cardWidth * 0.62, 320), 200)
       : Math.max(Math.min(cardWidth * 0.75, 340), 220))
-    : Math.max(cardWidth * 0.97, 165);
-  const modelPreviewHeight = isTablet ? Math.min(cardWidth * 0.55, 170) : verticalScale(67);
+    : isLandscape
+      ? Math.max(cardWidth * 0.82, 110)
+      : Math.max(cardWidth * 0.97, 165);
+  const modelPreviewHeight = isTablet
+    ? Math.min(cardWidth * 0.55, 170)
+    : isLandscape
+      ? Math.max(cardWidth * 0.52, 55)
+      : verticalScale(67);
   return {
     isTablet,
     isLargeTablet,
@@ -297,7 +311,7 @@ function EnvironmentGallery({
   onScroll: (e: any) => void;
 }) {
   const { colors } = useTheme();
-  const { isTablet, isCompactCard } = useResponsiveLayout();
+  const { isTablet, isCompactCard, numColumns, cardWidth } = useResponsiveLayout();
   const emojiSize = isCompactCard ? scale(42) : scale(48);
   const emojiRadius = isCompactCard ? moderateScale(14) : moderateScale(16);
 
@@ -352,7 +366,7 @@ function EnvironmentGallery({
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => onEnvironmentSelect(item)}
-          style={[styles.worldCardWrap, { width: (SCREEN_W - H_PAD * 2 - GAP) / 2 }]}>
+          style={[styles.worldCardWrap, { width: cardWidth }]}>
           <View style={styles.worldCard}>
             {envMatch?.image && (
               <Image
@@ -396,11 +410,12 @@ function EnvironmentGallery({
 
   return (
     <FlatList
+      key={numColumns}
       data={environments}
       keyExtractor={(item) => item._id}
       renderItem={renderItem}
-      numColumns={2}
-      columnWrapperStyle={styles.columnWrapper}
+      numColumns={numColumns}
+      columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
       contentContainerStyle={{ paddingBottom: bottomInset }}
       onScroll={onScroll}
       scrollEventThrottle={16}
@@ -487,7 +502,7 @@ function ModelGallery({
 }) {
   const { colors, isDark } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
-  const { modelPreviewHeight } = useResponsiveLayout();
+  const { modelPreviewHeight, numColumns, cardWidth } = useResponsiveLayout();
 
   const headerPaddingTop = useMemo(
     () => ({ paddingTop: topInset + verticalScale(10) }),
@@ -584,7 +599,7 @@ function ModelGallery({
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => onOpenModel(item)}
-          style={[styles.modelCardWrap, { width: (SCREEN_W - H_PAD * 2 - GAP) / 2, backgroundColor: colors.card }]}>
+          style={[styles.modelCardWrap, { width: cardWidth, backgroundColor: colors.card }]}>
           <View style={styles.modelGradient}>
             <LinearGradient
               colors={gradientColors}
@@ -599,7 +614,7 @@ function ModelGallery({
                 previewUri={previewUri || referenceUri}
                 fallbackIcon={item.icon || environment.emoji || '🎨'}
                 style={styles.modelPreviewImage}
-                resizeMode="contain"
+                resizeMode="cover"
               />
             </View>
 
@@ -619,11 +634,12 @@ function ModelGallery({
 
   return (
     <FlatList
+      key={numColumns}
       data={models}
       keyExtractor={(item, index) => getModelStableId(item, index)}
       renderItem={renderItem}
-      numColumns={2}
-      columnWrapperStyle={styles.columnWrapper}
+      numColumns={numColumns}
+      columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
       contentContainerStyle={{ paddingBottom: bottomInset }}
       onScroll={onScroll}
       scrollEventThrottle={16}
