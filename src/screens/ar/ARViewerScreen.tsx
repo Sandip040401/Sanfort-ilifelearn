@@ -29,7 +29,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  Cuboid,
   Grid2X2,
   Image as ImageIcon,
   Lightbulb,
@@ -48,6 +47,7 @@ import {
   X,
   Minus,
   Eraser,
+  Rotate3D
 } from 'lucide-react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import {
@@ -73,6 +73,7 @@ import {
   normalizeReferenceForDisplay,
   getReferenceImageSource,
 } from './ar.reference';
+import ARIcon from '@/components/icons/ARIcon';
 
 type ARViewerRouteProp = RouteProp<MainStackParamList, 'ARViewer'>;
 type ARViewerNavigationProp = StackNavigationProp<MainStackParamList, 'ARViewer'>;
@@ -229,7 +230,7 @@ export default function ARViewerScreen() {
   const [animations, setAnimations] = useState<string[]>([]);
   const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [autoRotate, setAutoRotate] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [environment, setEnvironment] = useState('sunset');
   const [showLeftMenu, setShowLeftMenu] = useState(false);
@@ -744,7 +745,7 @@ export default function ARViewerScreen() {
               styles.iconPill,
               autoRotate && styles.iconPillActive,
             ]}>
-            <RefreshCw size={moderateScale(15)} color="#fff" strokeWidth={2.1} />
+            <Rotate3D size={moderateScale(15)} color="#fff" strokeWidth={2.1} />
           </TouchableOpacity>
         </View>
       </View>
@@ -831,7 +832,7 @@ export default function ARViewerScreen() {
           <View style={styles.sidePanelHeader}>
             <View style={styles.sidePanelTitleRow}>
               <View style={styles.sidePanelIconBubble}>
-                <Cuboid size={moderateScale(16)} color="#6C4CFF" strokeWidth={2} />
+                <ARIcon width={moderateScale(16)} height={moderateScale(16)} color="#6C4CFF" strokeWidth={2} />
               </View>
               <Text style={styles.sidePanelTitle}>Menu</Text>
             </View>
@@ -952,30 +953,36 @@ export default function ARViewerScreen() {
         </View>
       )}
 
-      <TouchableOpacity
-        onPress={() => {
-          const next = textureDisplayMode !== 'model-paint';
-          if (next) {
-            setTextureDisplayMode('model-paint');
-            setPaintingEnabled(true);
-            sendToWebView({ type: 'enablePaint', value: true });
-            sendToWebView({ type: 'showPaintTexture' });
-          } else {
-            setTextureDisplayMode('original');
-            setPaintingEnabled(false);
-            sendToWebView({ type: 'enablePaint', value: false });
-            sendToWebView({ type: 'showOriginalTexture' });
-          }
-        }}
-        style={[styles.paintSwitch, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }, textureDisplayMode === 'model-paint' && styles.paintSwitchActive]}>
-        <View style={[styles.paintSwitchThumb, textureDisplayMode === 'model-paint' && styles.paintSwitchThumbActive]} />
-        <Text style={styles.paintSwitchLabel}>{textureDisplayMode === 'model-paint' ? '3D' : 'OFF'}</Text>
-      </TouchableOpacity>
+      <View style={[styles.paintSwitchContainer, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }]}>
+        <Text style={styles.paintSwitchTopLabel}>Real Texture</Text>
+        <TouchableOpacity
+          onPress={() => {
+            const next = textureDisplayMode !== 'original';
+            if (next) {
+              setTextureDisplayMode('original');
+              setPaintingEnabled(false);
+              sendToWebView({ type: 'enablePaint', value: false });
+              sendToWebView({ type: 'showOriginalTexture' });
+            } else {
+              setTextureDisplayMode('model-paint');
+              setPaintingEnabled(true);
+              sendToWebView({ type: 'enablePaint', value: true });
+              sendToWebView({ type: 'showPaintTexture' });
+            }
+          }}
+          activeOpacity={0.8}
+          style={[styles.paintSwitch, textureDisplayMode === 'original' && styles.paintSwitchActiveHighlight]}>
+          <View style={[styles.paintSwitchThumb, textureDisplayMode === 'original' && styles.paintSwitchThumbActive]} />
+          <Text style={styles.paintSwitchLabel}>
+            {textureDisplayMode === 'original' ? 'ON' : 'OFF'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <TouchableOpacity
         onPress={handleOpenAR}
         style={[styles.arButton, { bottom: verticalScale(bottomBarHeight) }]}>
-        <Cuboid size={moderateScale(18)} color="#fff" strokeWidth={2.2} />
+        <ARIcon width={moderateScale(22)} height={moderateScale(22)} color="#fff" strokeWidth={2.5} />
         <Text style={styles.arButtonText}>AR</Text>
       </TouchableOpacity>
 
@@ -989,30 +996,39 @@ export default function ARViewerScreen() {
             ...(paintingEnabled ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
             { id: 'audio', label: 'Audio', icon: Volume2 },
             { id: 'lighting', label: 'Lighting', icon: Lightbulb },
-            { id: 'sheet', label: 'Sheet', icon: ImageIcon },
+            { id: 'sheet', label: 'Coloring Sheet', icon: ImageIcon },
           ].map(cat => {
             const isTabActive = activeControlCategory === cat.id;
             const isStatusActive = (cat.id === 'audio' && audioPlaying) || (cat.id === 'paint' && paintingEnabled);
-            // Compact (icon-only) only on phone landscape; tablets always show labels
+            // Compact (one-line) only on phone landscape; tablets always show normal labels
             const compact = isLandscape && !isTablet;
+            const isActive = isTabActive || isStatusActive;
             return (
               <TouchableOpacity
                 key={cat.id}
                 onPress={() => openCategory(cat.id)}
-                style={compact ? styles.controlBarItemCompact : styles.controlBarItem}>
+                style={[
+                  compact ? styles.controlBarItemCompact : styles.controlBarItem,
+                  (compact && isActive) && styles.controlBarItemCompactActive
+                ]}>
                 <View style={[
                   compact ? styles.controlIconWrapCompact : styles.controlIconWrap,
-                  (isTabActive || isStatusActive) && styles.controlIconWrapActive
+                  (!compact && isActive) && styles.controlIconWrapActive
                 ]}>
                   <cat.icon
-                    size={isTablet ? moderateScale(22) : compact ? moderateScale(16) : moderateScale(20)}
+                    size={isTablet ? moderateScale(22) : compact ? moderateScale(14) : moderateScale(20)}
                     color="#fff"
-                    strokeWidth={1.5}
+                    strokeWidth={compact ? 2 : 1.5}
                   />
                 </View>
-                {!compact && (
-                  <Text style={[styles.controlLabel, isTablet && { fontSize: moderateScale(10) }]}>{cat.label}</Text>
-                )}
+                <Text style={[
+                  styles.controlLabel, 
+                  isTablet && { fontSize: moderateScale(10) },
+                  compact && styles.controlLabelCompact,
+                  (compact && isActive) && styles.controlLabelCompactActive
+                ]}>
+                  {cat.label}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -1159,7 +1175,7 @@ export default function ARViewerScreen() {
               <Text style={styles.controlSubLabel}>Size: {brushSize}px</Text>
               <View style={styles.brushSizeRow}>
                 <TouchableOpacity
-                  onPress={() => setBrushSize(current => Math.max(1, current - 4))}
+                  onPress={() => setBrushSize(current => Math.max(1, current - 2))}
                   style={styles.brushSizeButton}>
                   <Minus size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
                 </TouchableOpacity>
@@ -1167,13 +1183,13 @@ export default function ARViewerScreen() {
                   <CustomSlider
                     value={brushSize}
                     min={1}
-                    max={128}
+                    max={50}
                     onChange={setBrushSize}
                     color={brushColor}
                   />
                 </View>
                 <TouchableOpacity
-                  onPress={() => setBrushSize(current => Math.min(128, current + 4))}
+                  onPress={() => setBrushSize(current => Math.min(50, current + 2))}
                   style={styles.brushSizeButton}>
                   <Plus size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
                 </TouchableOpacity>
@@ -1297,7 +1313,7 @@ export default function ARViewerScreen() {
                 </View>
                 <View style={[styles.targetPainterSizeRow, { marginTop: verticalScale(6), marginBottom: verticalScale(13) }]}>
                   <TouchableOpacity
-                    onPress={() => setSheetBrushSize(v => Math.max(1, v - 1))}
+                    onPress={() => setSheetBrushSize(v => Math.max(1, v - 2))}
                     style={styles.targetPainterSizeBtn}>
                     <Minus size={moderateScale(13)} color="#fff" strokeWidth={2.2} />
                   </TouchableOpacity>
@@ -1305,13 +1321,13 @@ export default function ARViewerScreen() {
                     <CustomSlider
                       value={sheetBrushSize}
                       min={1}
-                      max={10}
+                      max={50}
                       onChange={setSheetBrushSize}
                       color={isEraser ? '#6C4CFF' : brushColor}
                     />
                   </View>
                   <TouchableOpacity
-                    onPress={() => setSheetBrushSize(v => Math.min(10, v + 1))}
+                    onPress={() => setSheetBrushSize(v => Math.min(50, v + 2))}
                     style={styles.targetPainterSizeBtn}>
                     <Plus size={moderateScale(13)} color="#fff" strokeWidth={2.2} />
                   </TouchableOpacity>
@@ -1465,13 +1481,13 @@ export default function ARViewerScreen() {
                   <CustomSlider
                     value={sheetBrushSize}
                     min={1}
-                    max={10}
+                    max={50}
                     onChange={setSheetBrushSize}
                     color={isEraser ? '#6C4CFF' : brushColor}
                   />
                 </View>
                 <TouchableOpacity
-                  onPress={() => setSheetBrushSize(current => Math.min(10, current + 1))}
+                  onPress={() => setSheetBrushSize(current => Math.min(50, current + 2))}
                   style={styles.targetPainterSizeBtn}>
                   <Plus size={moderateScale(15)} color="#fff" strokeWidth={2.2} />
                 </TouchableOpacity>
@@ -2061,22 +2077,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+  paintSwitchContainer: {
+    position: 'absolute',
+    left: scale(10),
+    zIndex: 40,
+    alignItems: 'center',
+    gap: verticalScale(4),
+  },
+  paintSwitchTopLabel: {
+    fontSize: moderateScale(9),
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.6)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   paintSwitch: {
     width: scale(65),
     height: verticalScale(28),
     borderRadius: moderateScale(14),
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(20,20,40,0.8)',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: scale(2),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
-    position: 'absolute',
-    left: scale(10),
-    zIndex: 40,
   },
-  paintSwitchActive: {
+  paintSwitchActiveHighlight: {
     backgroundColor: 'rgba(108,76,255,0.3)',
+    borderColor: 'rgba(108,76,255,0.5)',
   },
   paintSwitchThumb: {
     width: scale(22),
@@ -2160,18 +2188,32 @@ const styles = StyleSheet.create({
   },
   // Landscape compact variants
   controlBarItemCompact: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 0,
+    gap: scale(6),
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(20),
+  },
+  controlBarItemCompactActive: {
+    backgroundColor: '#6C4CFF',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   controlIconWrapCompact: {
-    width: scale(34),
-    height: scale(34),
-    borderRadius: moderateScale(8),
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: scale(22),
+    height: scale(22),
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  controlLabelCompact: {
+    fontSize: moderateScale(10),
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+  },
+  controlLabelCompactActive: {
+    color: '#fff',
+    fontWeight: '800',
   },
   controlLabel: {
     fontSize: moderateScale(9),
@@ -2250,7 +2292,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(14,165,164)',
     borderRadius: moderateScale(12),
     paddingHorizontal: scale(14),
-    paddingVertical: verticalScale(10),
+    paddingVertical: verticalScale(7),
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(4),

@@ -447,14 +447,14 @@ class ARActivity : AppCompatActivity() {
             tag = "company_logo"
             setImageResource(resources.getIdentifier("sanfort_logo", "drawable", packageName))
             
-            // Reduced size for landscape to match reference image
-            val w = if (landscape) 110 else 160
-            val h = if (landscape) 55 else 75
+            // Reduced size for portrait to be more consistent with landscape
+            val w = if (landscape) 110 else 125
+            val h = if (landscape) 55 else 60
             
             layoutParams = FrameLayout.LayoutParams(dp(w), dp(h)).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
-                val margin = if (landscape) dp(4) else dp(15)
-                val bottom = if (landscape) dp(12) else dp(15)
+                val margin = if (landscape) dp(4) else dp(10)
+                val bottom = if (landscape) dp(12) else dp(10)
                 setMargins(0, 0, margin, bottom)
             }
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -472,7 +472,7 @@ class ARActivity : AppCompatActivity() {
 
         // Animation Pill
         val animBtn = FrameLayout(this).apply {
-            val p = if (landscape) dp(8) else dp(15)
+            val p = if (landscape) dp(8) else dp(11)
             setPadding(p, p, p, p)
             setOnClickListener { showAnimationModal() }
             
@@ -480,11 +480,12 @@ class ARActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 
-                // Icon
+                // Animation Icon (Running Person)
                 addView(ImageView(this@ARActivity).apply {
-                    setImageResource(android.R.drawable.ic_menu_slideshow)
+                    val resId = resources.getIdentifier("ic_anim_run", "drawable", packageName)
+                    if (resId != 0) setImageResource(resId) else setImageResource(android.R.drawable.ic_menu_slideshow)
                     setColorFilter(Color.WHITE)
-                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+                    layoutParams = LinearLayout.LayoutParams(if (landscape) dp(32) else dp(26), if (landscape) dp(32) else dp(26))
                 })
                 
                 if (landscape) {
@@ -506,12 +507,12 @@ class ARActivity : AppCompatActivity() {
             bottomBar.addView(divider)
         } else {
             bottomBar.addView(animBtn)
-            bottomBar.addView(Space(this).apply { layoutParams = LinearLayout.LayoutParams(dp(15), 0) })
+            bottomBar.addView(Space(this).apply { layoutParams = LinearLayout.LayoutParams(dp(10), 0) })
         }
 
         // Audio Pill
         val audioBtn = FrameLayout(this).apply {
-            val p = if (landscape) dp(8) else dp(15)
+            val p = if (landscape) dp(8) else dp(11)
             setPadding(p, p, p, p)
             setOnClickListener { showAudioModal() }
             
@@ -524,16 +525,12 @@ class ARActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 
-                // Unicode Music Note Icon
-                addView(TextView(this@ARActivity).apply {
-                    text = "♪"
-                    setTextColor(Color.WHITE)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
-                    setTypeface(null, Typeface.BOLD)
-                    includeFontPadding = false
-                    gravity = Gravity.CENTER
-                    translationY = dp(-4).toFloat()
-                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28))
+                // Custom Audio Volume Icon
+                addView(ImageView(this@ARActivity).apply {
+                    val resId = resources.getIdentifier("ic_audio_volume", "drawable", packageName)
+                    if (resId != 0) setImageResource(resId) else setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+                    setColorFilter(Color.WHITE)
+                    layoutParams = LinearLayout.LayoutParams(if (landscape) dp(32) else dp(26), if (landscape) dp(32) else dp(26))
                 })
                 
                 if (landscape) {

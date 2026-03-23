@@ -1,7 +1,7 @@
-import React, {useEffect} from 'react';
-import {StyleSheet, Text, TouchableOpacity} from 'react-native';
-import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import React, { useEffect } from 'react';
+import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   interpolateColor,
@@ -19,9 +19,9 @@ import {
   Gamepad2,
   BookOpen,
 } from 'lucide-react-native';
-import type {BottomTabBarProps} from '@react-navigation/bottom-tabs';
-import {useTheme} from '@/theme';
-import {useTabBarScroll} from './TabBarScrollContext';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useTheme } from '@/theme';
+import { useTabBarScroll } from './TabBarScrollContext';
 
 export const TAB_BAR_HEIGHT = verticalScale(56);
 
@@ -30,16 +30,16 @@ export const TAB_BAR_HEIGHT = verticalScale(56);
 const VISIBLE_TABS = ['Home', 'AR', 'WebVR', 'Books'] as const;
 
 const TAB_ICONS = {
-  Home:  Home,
-  AR:    Glasses,
+  Home: Home,
+  AR: Glasses,
   WebVR: Globe,
   Games: Gamepad2,
   Books: BookOpen,
 } as const;
 
 const TAB_LABELS: Record<string, string> = {
-  Home:  'Home',
-  AR:    'AR',
+  Home: 'Home',
+  AR: 'AR',
   WebVR: 'WebVR',
   Games: 'Games',
   Books: 'Books',
@@ -47,22 +47,22 @@ const TAB_LABELS: Record<string, string> = {
 
 // ── Per-tab animated item ─────────────────────────────────────────────
 type TabItemProps = {
-  route:     {key: string; name: string};
+  route: { key: string; name: string };
   isFocused: boolean;
-  onPress:   () => void;
+  onPress: () => void;
   onLongPress: () => void;
   primaryColor: string;
   inactiveColor: string;
 };
 
-function TabItem({route, isFocused, onPress, onLongPress, primaryColor, inactiveColor}: TabItemProps) {
-  const Icon    = TAB_ICONS[route.name as keyof typeof TAB_ICONS];
-  const label   = TAB_LABELS[route.name] || route.name;
+function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiveColor }: TabItemProps) {
+  const Icon = TAB_ICONS[route.name as keyof typeof TAB_ICONS];
+  const label = TAB_LABELS[route.name] || route.name;
 
   // 0 = inactive, 1 = active
   const progress = useSharedValue(isFocused ? 1 : 0);
   // Per-tap bounce
-  const scale    = useSharedValue(1);
+  const scale = useSharedValue(1);
 
   useEffect(() => {
     progress.value = withTiming(isFocused ? 1 : 0, {
@@ -73,21 +73,21 @@ function TabItem({route, isFocused, onPress, onLongPress, primaryColor, inactive
 
   const handlePress = () => {
     scale.value = withSequence(
-      withSpring(1.22, {damping: 5, stiffness: 500, mass: 0.6}),
-      withSpring(1.0,  {damping: 10, stiffness: 300}),
+      withSpring(1.22, { damping: 5, stiffness: 500, mass: 0.6 }),
+      withSpring(1.0, { damping: 10, stiffness: 300 }),
     );
     onPress();
   };
 
   // Active indicator — slide down from top + fade
   const indicatorStyle = useAnimatedStyle(() => ({
-    opacity:   progress.value,
-    transform: [{scaleX: withSpring(isFocused ? 1 : 0.3, {damping: 14, stiffness: 200})}],
+    opacity: progress.value,
+    transform: [{ scaleX: withSpring(isFocused ? 1 : 0.3, { damping: 14, stiffness: 200 }) }],
   }));
 
   // Icon + label scale bounce
   const iconStyle = useAnimatedStyle(() => ({
-    transform: [{scale: scale.value}],
+    transform: [{ scale: scale.value }],
   }));
 
   // Animated icon/label color (interpolateColor needs a numeric driver 0→1)
@@ -99,8 +99,8 @@ function TabItem({route, isFocused, onPress, onLongPress, primaryColor, inactive
   }));
 
   // We use two overlapping icons (active + inactive) with opacity cross-fade
-  const activeIconOpacity   = useAnimatedStyle(() => ({opacity: progress.value}));
-  const inactiveIconOpacity = useAnimatedStyle(() => ({opacity: 1 - progress.value}));
+  const activeIconOpacity = useAnimatedStyle(() => ({ opacity: progress.value }));
+  const inactiveIconOpacity = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
 
   const labelColorStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
@@ -113,7 +113,7 @@ function TabItem({route, isFocused, onPress, onLongPress, primaryColor, inactive
   return (
     <TouchableOpacity
       accessibilityRole="button"
-      accessibilityState={isFocused ? {selected: true} : {}}
+      accessibilityState={isFocused ? { selected: true } : {}}
       onPress={handlePress}
       onLongPress={onLongPress}
       activeOpacity={1}
@@ -123,7 +123,7 @@ function TabItem({route, isFocused, onPress, onLongPress, primaryColor, inactive
       <Animated.View
         style={[
           styles.activeIndicator,
-          {backgroundColor: primaryColor},
+          { backgroundColor: primaryColor },
           indicatorStyle,
         ]}
       />
@@ -151,10 +151,10 @@ function TabItem({route, isFocused, onPress, onLongPress, primaryColor, inactive
 }
 
 // ── Main TabBar ───────────────────────────────────────────────────────
-export function CustomTabBar({state, descriptors, navigation}: BottomTabBarProps) {
-  const {colors} = useTheme();
-  const insets   = useSafeAreaInsets();
-  const {tabBarTranslateY} = useTabBarScroll();
+export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { tabBarTranslateY } = useTabBarScroll();
 
   const totalHeight = TAB_BAR_HEIGHT + insets.bottom;
 
@@ -167,7 +167,7 @@ export function CustomTabBar({state, descriptors, navigation}: BottomTabBarProps
   }, [state.index, tabBarTranslateY]);
 
   const containerStyle = useAnimatedStyle(() => ({
-    transform: [{translateY: tabBarTranslateY.value}],
+    transform: [{ translateY: tabBarTranslateY.value }],
   }));
 
   return (
@@ -175,15 +175,15 @@ export function CustomTabBar({state, descriptors, navigation}: BottomTabBarProps
       style={[
         styles.container,
         {
-          height:          totalHeight,
-          paddingBottom:   insets.bottom,
+          height: totalHeight,
+          paddingBottom: insets.bottom,
           backgroundColor: colors.tabBar,
-          borderTopColor:  colors.divider,
+          borderTopColor: colors.divider,
         },
         containerStyle,
       ]}>
       {state.routes.filter(r => (VISIBLE_TABS as readonly string[]).includes(r.name)).map((route) => {
-        const index   = state.routes.indexOf(route);
+        const index = state.routes.indexOf(route);
         const isFocused = state.index === index;
 
         const onPress = () => {
@@ -198,7 +198,7 @@ export function CustomTabBar({state, descriptors, navigation}: BottomTabBarProps
         };
 
         const onLongPress = () => {
-          navigation.emit({type: 'tabLongPress', target: route.key});
+          navigation.emit({ type: 'tabLongPress', target: route.key });
         };
 
         return (
@@ -219,46 +219,46 @@ export function CustomTabBar({state, descriptors, navigation}: BottomTabBarProps
 
 const styles = StyleSheet.create({
   container: {
-    position:      'absolute',
-    left:          0,
-    right:         0,
-    bottom:        0,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     borderTopWidth: 0,
-    elevation:      8,
-    shadowColor:   '#000',
-    shadowOffset:  {width: 0, height: -verticalScale(2)},
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -verticalScale(2) },
     shadowOpacity: 0.08,
-    shadowRadius:  moderateScale(8),
+    shadowRadius: moderateScale(8),
   },
   tab: {
-    flex:           1,
-    alignItems:     'center',
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    height:         TAB_BAR_HEIGHT,
-    paddingTop:     verticalScale(4),
+    height: TAB_BAR_HEIGHT,
+    paddingTop: verticalScale(4),
   },
   activeIndicator: {
-    position:               'absolute',
-    top:                    0,
-    width:                  '40%',
-    height:                 verticalScale(3),
-    borderBottomLeftRadius:  moderateScale(3),
+    position: 'absolute',
+    top: 0,
+    width: '40%',
+    height: verticalScale(3),
+    borderBottomLeftRadius: moderateScale(3),
     borderBottomRightRadius: moderateScale(3),
   },
   iconWrap: {
-    width:          scale(26),
-    height:         scale(26),
-    alignItems:     'center',
+    width: scale(26),
+    height: scale(26),
+    alignItems: 'center',
     justifyContent: 'center',
   },
   iconLayer: {
-    alignItems:     'center',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize:   moderateScale(9),
-    marginTop:  verticalScale(3),
+    fontSize: moderateScale(9),
+    marginTop: verticalScale(3),
     fontWeight: '500',
   },
   labelActive: {
