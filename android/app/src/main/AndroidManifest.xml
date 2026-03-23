@@ -30,6 +30,8 @@
       <activity
         android:name=".ar.ARScannerActivity"
         android:exported="false"
+        android:process=":ar_scanner"
+        android:screenOrientation="sensorLandscape"
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" />
       <activity

@@ -14,25 +14,24 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- ==================== TOP HEADER ==================== -->
+    <!-- ==================== TOP HEADER (compact landscape) ==================== -->
 
-    <!-- Top gradient overlay for readability -->
     <View
         android:id="@+id/topGradient"
         android:layout_width="0dp"
-        android:layout_height="120dp"
+        android:layout_height="56dp"
         android:background="@android:color/transparent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Back Button (top-left) — large round colorful button -->
+    <!-- Back Button — small round -->
     <ImageButton
         android:id="@+id/btnBack"
-        android:layout_width="46dp"
-        android:layout_height="46dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="20dp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="8dp"
         android:background="@android:color/transparent"
         android:contentDescription="Back"
         android:elevation="8dp"
@@ -40,31 +39,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Model Name Badge (top-center) — big colorful pill -->
+    <!-- Model Name Badge — compact pill -->
     <TextView
         android:id="@+id/modelNameText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:paddingHorizontal="28dp"
-        android:paddingVertical="10dp"
+        android:layout_marginTop="10dp"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="5dp"
         android:textColor="#FFFFFF"
-        android:textSize="18sp"
+        android:textSize="13sp"
         android:textStyle="bold"
-        android:letterSpacing="0.06"
+        android:letterSpacing="0.04"
         android:visibility="gone"
         android:elevation="8dp"
-        app:layout_constraintStart_toEndOf="@id/btnBack"
-        app:layout_constraintEnd_toStartOf="@id/btnClose"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Close Button (top-right) — large round colorful button -->
+    <!-- Close Button — small round -->
     <ImageButton
         android:id="@+id/btnClose"
-        android:layout_width="46dp"
-        android:layout_height="46dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="20dp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="8dp"
         android:background="@android:color/transparent"
         android:contentDescription="Close"
         android:elevation="8dp"
@@ -72,15 +71,15 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Live Coloring Status pill — colorful badge below header -->
+    <!-- Live Coloring Status — compact badge -->
     <LinearLayout
         android:id="@+id/liveColoringContainer"
         android:layout_width="wrap_content"
-        android:layout_height="32dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="20dp"
+        android:layout_marginTop="2dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="8dp"
         android:elevation="6dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -88,9 +87,9 @@
 
         <View
             android:id="@+id/liveColoringDot"
-            android:layout_width="8dp"
-            android:layout_height="8dp"
-            android:layout_marginEnd="8dp" />
+            android:layout_width="5dp"
+            android:layout_height="5dp"
+            android:layout_marginEnd="4dp" />
 
         <TextView
             android:id="@+id/liveColoringLabel"
@@ -98,18 +97,17 @@
             android:layout_height="wrap_content"
             android:text="Live Coloring"
             android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.04" />
+            android:textSize="8sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/liveColoringStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="4dp"
             android:text="ON"
             android:textColor="#00E676"
-            android:textSize="12sp"
+            android:textSize="8sp"
             android:textStyle="bold" />
 
     </LinearLayout>
@@ -117,8 +115,8 @@
     <!-- Hidden menu button -->
     <ImageButton
         android:id="@+id/btnMenu"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:background="@android:color/transparent"
         android:contentDescription="Menu"
         android:scaleType="centerInside"
@@ -127,9 +125,8 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
 
-    <!-- ==================== BOTTOM PANEL — KID FRIENDLY ==================== -->
+    <!-- ==================== BOTTOM PANEL — right-aligned compact for landscape ==================== -->
 
-    <!-- Bottom panel frosted background -->
     <View
         android:id="@+id/bottomPanelBg"
         android:layout_width="0dp"
@@ -144,35 +141,35 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingTop="18dp"
-        android:paddingBottom="24dp"
-        android:paddingHorizontal="18dp"
+        android:paddingTop="5dp"
+        android:paddingBottom="6dp"
+        android:paddingHorizontal="12dp"
+        android:gravity="center_horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Row: Audio + Toggle — two colorful cards -->
+        <!-- Row: Audio + Toggle — compact, centered -->
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <!-- Audio Button — vibrant rounded card -->
+            <!-- Audio Button — small pill -->
             <LinearLayout
                 android:id="@+id/audioButtonContainer"
-                android:layout_width="0dp"
-                android:layout_height="56dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="10dp"
+                android:layout_width="wrap_content"
+                android:layout_height="30dp"
+                android:layout_marginEnd="8dp"
                 android:gravity="center"
                 android:orientation="horizontal"
-                android:paddingHorizontal="6dp">
+                android:paddingHorizontal="10dp">
 
                 <ImageButton
                     android:id="@+id/btnAudio"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:contentDescription="Play Audio"
                     android:scaleType="centerInside"
                     android:background="@android:color/transparent" />
@@ -181,33 +178,31 @@
                     android:id="@+id/audioLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="6dp"
+                    android:layout_marginStart="4dp"
                     android:text="Let's Spell"
                     android:textColor="#FFFFFF"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.02" />
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
 
             </LinearLayout>
 
-            <!-- Toggle Colours — vibrant rounded card -->
+            <!-- Toggle Colours — small pill -->
             <LinearLayout
                 android:id="@+id/toggleColoursContainer"
                 android:layout_width="wrap_content"
-                android:layout_height="56dp"
+                android:layout_height="30dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingHorizontal="16dp">
+                android:paddingHorizontal="10dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="10dp"
+                    android:layout_marginEnd="5dp"
                     android:text="Colors"
                     android:textColor="#FFFFFF"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.02" />
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
 
                 <Switch
                     android:id="@+id/switchToggleColours"
@@ -221,17 +216,16 @@
 
         </LinearLayout>
 
-        <!-- Instruction Text — fun and warm -->
+        <!-- Instruction Text -->
         <TextView
             android:id="@+id/instructionText"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="2dp"
             android:gravity="center"
             android:text="Point camera at the coloring page"
             android:textColor="#B3FFFFFF"
-            android:textSize="13sp"
-            android:letterSpacing="0.02" />
+            android:textSize="9sp" />
 
     </LinearLayout>
 
@@ -257,27 +251,27 @@
 
             <ProgressBar
                 android:id="@+id/loadingProgress"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:indeterminateTint="#00E5FF" />
 
             <TextView
                 android:id="@+id/loadingText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:text="Loading 3D model..."
                 android:textColor="#FFFFFF"
-                android:textSize="15sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="3dp"
                 android:text="Please wait a moment"
                 android:textColor="#80FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="9sp" />
 
         </LinearLayout>
 

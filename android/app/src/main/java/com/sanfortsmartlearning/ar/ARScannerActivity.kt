@@ -192,6 +192,25 @@ class ARScannerActivity : AppCompatActivity() {
   private var telemetryLastReportMs = 0L
   private var consecutiveGlErrors = 0
 
+  // ── Phase 6: Non-AR Fallback Mode (model on solid background when tracking lost) ──
+  // Uses a large blue plane in the AR scene to cover the camera feed,
+  // with the 3D model positioned in front of it. Single SurfaceView, no conflicts.
+  private var isInFallbackMode = false
+  private var fallbackBgNode: Node? = null
+  private var fallbackModelNode: Node? = null
+  private var fallbackRotationAnimator: ValueAnimator? = null
+  private var fallbackRotationDegrees: Float = 0f
+  private var fallbackUserYaw: Float = 0f       // user drag rotation (Y axis)
+  private var fallbackUserPitch: Float = 0f     // user drag rotation (X axis)
+  private var fallbackUserScale: Float = 1f     // pinch-to-zoom multiplier
+  private var fallbackLastTouchX: Float = 0f
+  private var fallbackLastTouchY: Float = 0f
+  private var fallbackIsDragging: Boolean = false
+  // Fixed camera snapshot — locks position so model doesn't jitter
+  private var fallbackCameraPos: Vector3? = null
+  private var fallbackCameraForward: Vector3? = null
+  private var fallbackCameraRotation: Quaternion? = null
+
   private val onUpdateListener = Scene.OnUpdateListener {
     onARFrameUpdate()
   }
@@ -309,6 +328,10 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   override fun onDestroy() {
+    // Cleanup fallback mode resources
+    cleanupFallbackScene()
+    isInFallbackMode = false
+
     gpuTextureProcessor?.release()
     gpuTextureProcessor = null
     gpuProcessorInitialized = false
@@ -350,27 +373,27 @@ class ARScannerActivity : AppCompatActivity() {
         intArrayOf(Color.parseColor("#CC000000"), Color.parseColor("#00000000"))
     )
 
-    // ── Back button — vibrant round gradient ──
+    // ── Back button — compact round gradient ──
     btnBack.background = createGradientCircleDrawable("#FF6B6B", "#EE5A24")
-    btnBack.elevation = 10f * density
+    btnBack.elevation = 6f * density
     btnBack.setOnClickListener { finish() }
 
-    // ── Close button — vibrant round gradient ──
+    // ── Close button — compact round gradient ──
     btnClose.background = createGradientCircleDrawable("#A55EEA", "#8854D0")
-    btnClose.elevation = 10f * density
+    btnClose.elevation = 6f * density
     btnClose.setOnClickListener { finish() }
 
     // ── Menu button — hidden ──
     btnMenu.visibility = View.GONE
 
-    // ── Model name badge — colorful gradient pill ──
-    modelNameText.background = createGradientPillDrawable("#6C5CE7", "#A55EEA", 24f)
-    modelNameText.elevation = 10f * density
-    modelNameText.setShadowLayer(8f, 0f, 3f, Color.parseColor("#40000000"))
+    // ── Model name badge — compact gradient pill ──
+    modelNameText.background = createGradientPillDrawable("#6C5CE7", "#A55EEA", 16f)
+    modelNameText.elevation = 6f * density
+    modelNameText.setShadowLayer(4f, 0f, 2f, Color.parseColor("#40000000"))
 
-    // ── Live coloring status badge — glass pill with glow dot ──
-    liveColoringContainer.background = createGradientPillDrawable("#2D3436", "#636E72", 18f)
-    liveColoringContainer.elevation = 6f * density
+    // ── Live coloring status badge — compact glass pill ──
+    liveColoringContainer.background = createGradientPillDrawable("#2D3436", "#636E72", 12f)
+    liveColoringContainer.elevation = 4f * density
     val liveColoringDot = findViewById<View>(R.id.liveColoringDot)
     val dotDrawable = GradientDrawable().apply {
       shape = GradientDrawable.OVAL
@@ -378,26 +401,26 @@ class ARScannerActivity : AppCompatActivity() {
     }
     liveColoringDot.background = dotDrawable
 
-    // ── Bottom panel — frosted glass gradient ──
+    // ── Bottom panel — compact frosted glass gradient ──
     val bottomPanelBg = findViewById<View>(R.id.bottomPanelBg)
     bottomPanelBg.background = GradientDrawable(
         GradientDrawable.Orientation.BOTTOM_TOP,
         intArrayOf(Color.parseColor("#E6111111"), Color.parseColor("#CC1A1A2E"))
-    ).apply { cornerRadii = floatArrayOf(28f * density, 28f * density, 28f * density, 28f * density, 0f, 0f, 0f, 0f) }
+    ).apply { cornerRadii = floatArrayOf(16f * density, 16f * density, 16f * density, 16f * density, 0f, 0f, 0f, 0f) }
 
-    // ── Audio button container — vibrant gradient card ──
+    // ── Audio button container — compact gradient card ──
     val audioContainer = findViewById<LinearLayout>(R.id.audioButtonContainer)
-    audioContainer.background = createGradientPillDrawable("#00B894", "#00CEC9", 16f)
-    audioContainer.elevation = 8f * density
+    audioContainer.background = createGradientPillDrawable("#00B894", "#00CEC9", 12f)
+    audioContainer.elevation = 4f * density
 
-    // ── Audio icon — colorful circle ──
+    // ── Audio icon — compact colorful circle ──
     btnAudio.background = createGradientCircleDrawable("#FFEAA7", "#FDCB6E")
     audioContainer.setOnClickListener { showAudioSettingsSheet() }
 
-    // ── Toggle container — vibrant gradient card ──
+    // ── Toggle container — compact gradient card ──
     val toggleContainer = findViewById<LinearLayout>(R.id.toggleColoursContainer)
-    toggleContainer.background = createGradientPillDrawable("#6C5CE7", "#A55EEA", 16f)
-    toggleContainer.elevation = 8f * density
+    toggleContainer.background = createGradientPillDrawable("#6C5CE7", "#A55EEA", 12f)
+    toggleContainer.elevation = 4f * density
 
     // ── Toggle switch styling ──
     switchToggleColours.thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E5FF"))
@@ -611,7 +634,7 @@ class ARScannerActivity : AppCompatActivity() {
 
   /** Draw a bold back arrow icon with shadow for depth */
   private fun drawBackArrowIcon(button: ImageButton) {
-    val sizePx = (46 * resources.displayMetrics.density).toInt()
+    val sizePx = (32 * resources.displayMetrics.density).toInt()
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
     val paint = android.graphics.Paint().apply {
@@ -638,7 +661,7 @@ class ARScannerActivity : AppCompatActivity() {
 
   /** Draw a bold close (X) icon with shadow */
   private fun drawCloseIcon(button: ImageButton) {
-    val sizePx = (46 * resources.displayMetrics.density).toInt()
+    val sizePx = (32 * resources.displayMetrics.density).toInt()
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
     val paint = android.graphics.Paint().apply {
@@ -660,7 +683,7 @@ class ARScannerActivity : AppCompatActivity() {
 
   /** Draw a colorful music note icon with depth */
   private fun drawMusicIcon(button: ImageButton) {
-    val sizePx = (42 * resources.displayMetrics.density).toInt()
+    val sizePx = (22 * resources.displayMetrics.density).toInt()
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
     val paint = android.graphics.Paint().apply {
@@ -1406,83 +1429,137 @@ class ARScannerActivity : AppCompatActivity() {
     val frame = sceneView.arFrame ?: return
     val renderable = sharedRenderable ?: return
 
+    // ── In fallback mode: reposition model relative to current camera each frame ──
+    if (isInFallbackMode) {
+      // Track camera each frame so model stays in front of wherever camera is
+      val cam = scene.camera
+      fallbackCameraPos = Vector3(cam.worldPosition.x, cam.worldPosition.y, cam.worldPosition.z)
+      fallbackCameraForward = Vector3(cam.forward.x, cam.forward.y, cam.forward.z)
+      fallbackCameraRotation = Quaternion(cam.worldRotation.x, cam.worldRotation.y, cam.worldRotation.z, cam.worldRotation.w)
+      updateFallbackPositions()
+
+      frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
+        if (image.trackingState == TrackingState.TRACKING && isImageFullyTracked(image)) {
+          lastTrackingActiveTimeMs = now
+          exitFallbackMode()
+          if (!trackedNodes.containsKey(image.index)) {
+            trackedNodes[image.index] = createTrackedNode(image, renderable, scene)
+            modelEverCreated = true
+          }
+          val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
+          instructionText.text =
+              "Great! Now color your ${name.lowercase()} with crayons and watch it come alive!"
+        }
+      }
+      return
+    }
+
     var anyTracking = false
     frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
       when (image.trackingState) {
         TrackingState.TRACKING -> {
-          anyTracking = true
-          lastTrackingActiveTimeMs = now
+          // CRITICAL: Check if image is ACTUALLY visible in camera (FULL_TRACKING)
+          // vs just remembered position (LAST_KNOWN_POSE).
+          // ARCore keeps reporting TRACKING even when camera moves away!
+          val isFullyVisible = isImageFullyTracked(image)
 
-          // Detect sheet switch: if existing node's position jumped far,
-          // the user moved to a different physical sheet (same reference image).
-          val existingNode = trackedNodes[image.index]
-          if (existingNode != null) {
-            val oldPos = existingNode.anchorNode.worldPosition
-            val newPos = Vector3(image.centerPose.tx(), image.centerPose.ty(), image.centerPose.tz())
-            val dx = newPos.x - oldPos.x
-            val dy = newPos.y - oldPos.y
-            val dz = newPos.z - oldPos.z
-            val jumpDistSq = (dx * dx) + (dy * dy) + (dz * dz)
-            if (jumpDistSq > SHEET_SWITCH_DISTANCE_SQ) {
-              android.util.Log.i("ARScannerActivity", "Sheet switch detected (dist=${sqrt(jumpDistSq)}m). Recreating node.")
-              removeTrackedNode(image.index)
-              // Fall through to create new node below
-            }
-          }
+          if (isFullyVisible) {
+            anyTracking = true
+            lastTrackingActiveTimeMs = now
 
-          if (!trackedNodes.containsKey(image.index)) {
-            if (trackedNodes.isEmpty()) {
-              firstTrackDetectedTimeMs = now
+            if (isInFallbackMode) {
+              exitFallbackMode()
             }
-            trackedNodes[image.index] = createTrackedNode(image, renderable, scene)
-            modelEverCreated = true
-            val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
-            instructionText.text =
-                "Great! Now color your ${name.lowercase()} with crayons and watch it come alive!"
-          } else {
-            // Smoothly update anchor position for existing tracked node
-            val trackedNode = trackedNodes[image.index]
-            if (trackedNode != null) {
-              smoothUpdateAnchorPose(trackedNode, image)
-              // Ensure model is visible when tracking resumes
-              if (!trackedNode.modelNode.isEnabled) {
-                val shouldShow = !isLiveColoringEnabled || hasAppliedPageTexture
-                if (shouldShow) {
-                  trackedNode.modelNode.isEnabled = true
+
+            // Detect sheet switch
+            val existingNode = trackedNodes[image.index]
+            if (existingNode != null) {
+              val oldPos = existingNode.anchorNode.worldPosition
+              val newPos = Vector3(image.centerPose.tx(), image.centerPose.ty(), image.centerPose.tz())
+              val dx = newPos.x - oldPos.x
+              val dy = newPos.y - oldPos.y
+              val dz = newPos.z - oldPos.z
+              val jumpDistSq = (dx * dx) + (dy * dy) + (dz * dz)
+              if (jumpDistSq > SHEET_SWITCH_DISTANCE_SQ) {
+                android.util.Log.i("ARScannerActivity", "Sheet switch detected (dist=${sqrt(jumpDistSq)}m). Recreating node.")
+                removeTrackedNode(image.index)
+              }
+            }
+
+            if (!trackedNodes.containsKey(image.index)) {
+              if (trackedNodes.isEmpty()) {
+                firstTrackDetectedTimeMs = now
+              }
+              trackedNodes[image.index] = createTrackedNode(image, renderable, scene)
+              modelEverCreated = true
+              val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
+              instructionText.text =
+                  "Great! Now color your ${name.lowercase()} with crayons and watch it come alive!"
+            } else {
+              val trackedNode = trackedNodes[image.index]
+              if (trackedNode != null) {
+                smoothUpdateAnchorPose(trackedNode, image)
+                if (!trackedNode.modelNode.isEnabled) {
+                  val shouldShow = !isLiveColoringEnabled || hasAppliedPageTexture
+                  if (shouldShow) {
+                    trackedNode.modelNode.isEnabled = true
+                  }
+                }
+                if (trackedNode.animator == null) {
+                  ensureTrackedNodeAnimation(trackedNode)
                 }
               }
-              // Retry animation start if renderableInstance wasn't ready at creation
-              if (trackedNode.animator == null) {
-                ensureTrackedNodeAnimation(trackedNode)
+            }
+          } else {
+            // TRACKING but LAST_KNOWN_POSE — image NOT visible in camera
+            // Treat same as PAUSED: after grace period, enter fallback
+            val timeSinceLastTracking = now - lastTrackingActiveTimeMs
+            if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS && trackedNodes.containsKey(image.index)) {
+              android.util.Log.i("ARScannerActivity", "Image LAST_KNOWN_POSE for ${timeSinceLastTracking}ms — entering fallback")
+              removeTrackedNode(image.index)
+              if (!isInFallbackMode && modelEverCreated) {
+                enterFallbackMode()
               }
+            } else {
+              anyTracking = trackedNodes.containsKey(image.index)
             }
           }
         }
 
         TrackingState.STOPPED -> {
-          // Only remove if tracking has been lost for a long time
           val trackedNode = trackedNodes[image.index]
           if (trackedNode != null) {
             val timeSinceLastTracking = now - lastTrackingActiveTimeMs
-            if (timeSinceLastTracking > TRACKING_GRACE_PERIOD_MS) {
+            if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS) {
               removeTrackedNode(image.index)
+              if (!isInFallbackMode && modelEverCreated) {
+                enterFallbackMode()
+              }
             }
-            // Don't hide - keep model visible at last known position
           }
         }
         TrackingState.PAUSED -> {
-          // Keep model visible at last known good position during PAUSED
-          anyTracking = trackedNodes.containsKey(image.index)
+          val timeSinceLastTracking = now - lastTrackingActiveTimeMs
+          if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS && trackedNodes.containsKey(image.index)) {
+            removeTrackedNode(image.index)
+            if (!isInFallbackMode && modelEverCreated) {
+              enterFallbackMode()
+            }
+          } else {
+            anyTracking = trackedNodes.containsKey(image.index)
+          }
         }
       }
     }
 
-    // Also check: if we have nodes but none are currently updating, still keep them alive
+    // Batch cleanup: nodes exist but none actively tracking
     if (trackedNodes.isNotEmpty() && !anyTracking) {
       val timeSinceLastTracking = now - lastTrackingActiveTimeMs
-      if (timeSinceLastTracking > TRACKING_GRACE_PERIOD_MS && lastTrackingActiveTimeMs > 0L) {
-        // Only clean up after extended tracking loss
+      if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS && lastTrackingActiveTimeMs > 0L) {
         trackedNodes.keys.toList().forEach { removeTrackedNode(it) }
+        if (!isInFallbackMode && modelEverCreated) {
+          enterFallbackMode()
+        }
       }
     }
 
@@ -1518,7 +1595,7 @@ class ARScannerActivity : AppCompatActivity() {
       }
       // Phase 5: Enforce bitmap pool limits to prevent OOM
       enforceBitmapPoolLimit()
-    } else if (!modelEverCreated || (now - lastTrackingActiveTimeMs) > TRACKING_GRACE_PERIOD_MS) {
+    } else if (!isInFallbackMode && (!modelEverCreated || (now - lastTrackingActiveTimeMs) > TRACKING_GRACE_PERIOD_MS)) {
       lastTintVector = null
       lastAcceptedSampleColor = null
       lastAcceptedSampleTimeMs = 0L
@@ -2462,6 +2539,217 @@ class ARScannerActivity : AppCompatActivity() {
       trackedNode.anchorNode.anchor?.detach()
       trackedNode.anchorNode.setParent(null)
     }
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  Phase 6: Non-AR Fallback Mode
+  //  Uses a large blue plane INSIDE the existing ArSceneView to cover
+  //  the camera feed, with the 3D model positioned in front of it.
+  //  Single SurfaceView — no z-ordering conflicts.
+  // ══════════════════════════════════════════════════════════════════
+
+  private fun enterFallbackMode() {
+    if (isInFallbackMode) return
+    val sceneView = arFragment.arSceneView ?: return
+    val scene = sceneView.scene ?: return
+    val renderable = sharedRenderable ?: return
+
+    isInFallbackMode = true
+
+    // Reset gesture state
+    fallbackUserYaw = 0f
+    fallbackUserPitch = 0f
+    fallbackUserScale = 1f
+    fallbackIsDragging = false
+
+    // Snapshot camera — freeze position for stable rendering
+    val camera = scene.camera
+    fallbackCameraPos = Vector3(camera.worldPosition.x, camera.worldPosition.y, camera.worldPosition.z)
+    fallbackCameraForward = Vector3(camera.forward.x, camera.forward.y, camera.forward.z)
+    fallbackCameraRotation = Quaternion(camera.worldRotation.x, camera.worldRotation.y, camera.worldRotation.z, camera.worldRotation.w)
+
+    runCatching { sceneView.planeRenderer?.isVisible = false }
+
+    // Hide AR UI
+    runOnUiThread {
+      liveColoringContainer.visibility = View.GONE
+      findViewById<View>(R.id.bottomPanelBg).visibility = View.GONE
+      findViewById<LinearLayout>(R.id.bottomPanelContent).visibility = View.GONE
+      runCatching {
+        arFragment.view?.let { fragView ->
+          if (fragView is android.view.ViewGroup) {
+            for (i in 0 until fragView.childCount) {
+              val child = fragView.getChildAt(i)
+              if (child !is com.google.ar.sceneform.ArSceneView) child.visibility = View.GONE
+            }
+          }
+        }
+      }
+      val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
+      instructionText.text = "Point camera at the coloring page to see ${name.lowercase()} in AR!"
+      instructionText.visibility = View.VISIBLE
+      modelNameText.visibility = if (!modelName.isNullOrBlank()) View.VISIBLE else View.GONE
+    }
+
+    // Blue background plane (covers camera feed)
+    MaterialFactory.makeOpaqueWithColor(this,
+        com.google.ar.sceneform.rendering.Color(Color.parseColor("#1B2559"))
+    ).thenAccept { bgMat ->
+      if (!isInFallbackMode) return@thenAccept
+      val bgRenderable = ShapeFactory.makeCube(Vector3(200f, 200f, 0.001f), Vector3.zero(), bgMat)
+      bgRenderable.isShadowCaster = false
+      bgRenderable.isShadowReceiver = false
+      fallbackBgNode = Node().apply {
+        setParent(scene)
+        this.renderable = bgRenderable
+      }
+      updateFallbackPositions()
+    }
+
+    // Model with original textures, centered via pivot node
+    val nodeRenderable = renderable.makeCopy()
+    nodeRenderable.isShadowCaster = false
+    nodeRenderable.isShadowReceiver = false
+    val modelBounds = estimateModelBounds(nodeRenderable)
+    val modelMaxDim = max(modelBounds.horizontalSize, max(modelBounds.sizeY, modelBounds.sizeZ)).coerceAtLeast(0.01f)
+    val fitScale = FALLBACK_MODEL_VIEW_SIZE / modelMaxDim
+
+    // Pivot node: model child offset by -center so rotation is around visual center
+    fallbackModelNode = Node().apply { setParent(scene) }
+    Node().apply {
+      setParent(fallbackModelNode)
+      this.renderable = nodeRenderable
+      localScale = Vector3(fitScale, fitScale, fitScale)
+      localPosition = Vector3(
+          -modelBounds.centerX * fitScale,
+          -modelBounds.centerY * fitScale,
+          -modelBounds.centerZ * fitScale,
+      )
+    }
+
+    updateFallbackPositions()
+
+    // Skeletal animation
+    val ri = fallbackModelNode?.children?.firstOrNull()?.renderableInstance
+    if (ri != null && ri.animationCount > 0) {
+      runCatching {
+        val anim = ModelAnimator.ofAnimation(ri, pickBestAnimationIndex(ri))
+        anim.interpolator = LinearInterpolator()
+        if (anim.duration > 0L) anim.duration = (anim.duration / ANIMATION_PLAYBACK_SPEED).toLong().coerceAtLeast(280L)
+        anim.repeatCount = ValueAnimator.INFINITE
+        anim.start()
+      }
+    }
+  }
+
+  /** Updates fallback model + bg positions at frozen camera snapshot. */
+  private fun updateFallbackPositions() {
+    if (!isInFallbackMode) return
+    val cameraPos = fallbackCameraPos ?: return
+    val forward = fallbackCameraForward ?: return
+    val camRotation = fallbackCameraRotation ?: return
+
+    // Background plane behind model
+    fallbackBgNode?.let { bg ->
+      bg.worldPosition = Vector3(
+          cameraPos.x + forward.x * FALLBACK_BG_DISTANCE,
+          cameraPos.y + forward.y * FALLBACK_BG_DISTANCE,
+          cameraPos.z + forward.z * FALLBACK_BG_DISTANCE,
+      )
+      bg.worldRotation = camRotation
+    }
+
+    // Model: fixed at snapshot position, only user touch rotates it
+    fallbackModelNode?.let { model ->
+      model.worldPosition = Vector3(
+          cameraPos.x + forward.x * FALLBACK_MODEL_DISTANCE,
+          cameraPos.y + forward.y * FALLBACK_MODEL_DISTANCE,
+          cameraPos.z + forward.z * FALLBACK_MODEL_DISTANCE,
+      )
+      val yawQ = Quaternion.axisAngle(Vector3.up(), fallbackUserYaw)
+      val pitchQ = Quaternion.axisAngle(Vector3.right(), fallbackUserPitch)
+      model.worldRotation = Quaternion.multiply(camRotation, Quaternion.multiply(yawQ, pitchQ))
+      model.localScale = Vector3(fallbackUserScale, fallbackUserScale, fallbackUserScale)
+    }
+  }
+
+  /**
+   * Check if the image is truly visible to the camera (FULL_TRACKING),
+   * as opposed to ARCore just remembering its position (LAST_KNOWN_POSE).
+   */
+  private fun isImageFullyTracked(image: AugmentedImage): Boolean {
+    return runCatching {
+      image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING
+    }.getOrDefault(true) // default true for older ARCore versions without trackingMethod
+  }
+
+  private fun exitFallbackMode() {
+    if (!isInFallbackMode) return
+    isInFallbackMode = false
+    android.util.Log.i("ARScannerActivity", "Exiting fallback mode (tracking resumed)")
+
+    cleanupFallbackScene()
+
+    // Restore AR plane visualizations
+    runCatching { arFragment.arSceneView?.planeRenderer?.isVisible = true }
+
+    // Restore AR UI elements
+    runOnUiThread {
+      liveColoringContainer.visibility = View.VISIBLE
+      findViewById<View>(R.id.bottomPanelBg).visibility = View.VISIBLE
+      findViewById<LinearLayout>(R.id.bottomPanelContent).visibility = View.VISIBLE
+      // Restore ArFragment's scanning overlay children
+      runCatching {
+        arFragment.view?.let { fragView ->
+          if (fragView is android.view.ViewGroup) {
+            for (i in 0 until fragView.childCount) {
+              fragView.getChildAt(i).visibility = View.VISIBLE
+            }
+          }
+        }
+      }
+      val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
+      instructionText.text =
+          "Great! Now color your ${name.lowercase()} with crayons and watch it come alive!"
+    }
+  }
+
+  private fun cleanupFallbackScene() {
+    fallbackRotationAnimator?.cancel()
+    fallbackRotationAnimator = null
+
+    // Cleanup pivot and its child model node
+    fallbackModelNode?.let { pivot ->
+      pivot.children.toList().forEach { child ->
+        child.renderable = null
+        child.setParent(null)
+      }
+      pivot.setParent(null)
+    }
+    fallbackModelNode = null
+
+    // Cleanup background plane node
+    fallbackBgNode?.let {
+      it.renderable = null
+      it.setParent(null)
+    }
+    fallbackBgNode = null
+
+    fallbackCameraPos = null
+    fallbackCameraForward = null
+    fallbackCameraRotation = null
+  }
+
+  private fun pickBestAnimationIndex(ri: RenderableInstance): Int {
+    val count = ri.animationCount
+    if (count <= 0) return 0
+    for (hint in PREFERRED_ANIMATION_NAME_HINTS) {
+      for (i in 0 until count) {
+        val animName = runCatching { ri.getAnimation(i).name?.lowercase() ?: "" }.getOrDefault("")
+        if (animName.contains(hint)) return i
+      }
+    }
+    return 0
   }
 
   private var textureResetGeneration = 0
@@ -4833,6 +5121,14 @@ class ARScannerActivity : AppCompatActivity() {
               override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val incrementalFactor =
                     detector.scaleFactor.coerceIn(MIN_PINCH_STEP_FACTOR, MAX_PINCH_STEP_FACTOR)
+
+                // Fallback mode: pinch to zoom the 3D model
+                if (isInFallbackMode) {
+                  fallbackUserScale = (fallbackUserScale * incrementalFactor).coerceIn(0.3f, 4f)
+                  updateFallbackPositions()
+                  return true
+                }
+
                 if (trackedNodes.isEmpty()) {
                   return false
                 }
@@ -4849,6 +5145,11 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun handleGestureTouch(motionEvent: MotionEvent): Boolean {
+    // ── Fallback mode: separate touch handling (rotate + pinch zoom) ──
+    if (isInFallbackMode) {
+      return handleFallbackTouch(motionEvent)
+    }
+
     val scaleGestureHandled = scaleGestureDetector.onTouchEvent(motionEvent)
     var rotationHandled = false
 
@@ -4914,6 +5215,41 @@ class ARScannerActivity : AppCompatActivity() {
     }
 
     return scaleGestureHandled || rotationHandled
+  }
+
+  /** Touch handling for fallback (non-AR) mode: single-finger rotate, pinch to zoom. */
+  private fun handleFallbackTouch(motionEvent: MotionEvent): Boolean {
+    // Pinch-to-zoom
+    scaleGestureDetector.onTouchEvent(motionEvent)
+
+    when (motionEvent.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        fallbackLastTouchX = motionEvent.x
+        fallbackLastTouchY = motionEvent.y
+        fallbackIsDragging = true
+      }
+
+      MotionEvent.ACTION_MOVE -> {
+        if (motionEvent.pointerCount == 1 && fallbackIsDragging) {
+          val dx = motionEvent.x - fallbackLastTouchX
+          val dy = motionEvent.y - fallbackLastTouchY
+          // Horizontal drag → rotate around Y axis (smooth sensitivity for kids)
+          fallbackUserYaw += dx * 0.4f
+          // Vertical drag → tilt around X axis (clamped so model doesn't flip)
+          fallbackUserPitch = (fallbackUserPitch + dy * 0.3f).coerceIn(-60f, 60f)
+          fallbackLastTouchX = motionEvent.x
+          fallbackLastTouchY = motionEvent.y
+          updateFallbackPositions()
+        } else if (motionEvent.pointerCount >= 2) {
+          fallbackIsDragging = false
+        }
+      }
+
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        fallbackIsDragging = false
+      }
+    }
+    return true
   }
 
   private fun applyUserTransform(trackedNode: TrackedImageNode) {
@@ -5222,6 +5558,14 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 3
     private const val TEXTURE_ONLY_WARMUP_MS = 120L  // was 200 → faster initial texture apply
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
+    // Grace period before transitioning to non-AR fallback view (shorter = more responsive)
+    private const val FALLBACK_GRACE_PERIOD_MS = 400L
+    // Fallback mode: distance of background plane from camera (must cover entire FOV)
+    private const val FALLBACK_BG_DISTANCE = 12f
+    // Fallback mode: distance of 3D model from camera
+    private const val FALLBACK_MODEL_DISTANCE = 0.80f
+    // Fallback mode: virtual size of the model in fallback view (meters)
+    private const val FALLBACK_MODEL_VIEW_SIZE = 0.18f
     // If tracked image position jumps more than ~15cm, assume different physical sheet
     private const val SHEET_SWITCH_DISTANCE_SQ = 0.0225f  // 0.15m squared
     private const val ANCHOR_SMOOTHING_ALPHA = 0.22f             // was 0.35 → smoother position lerp (less jitter)

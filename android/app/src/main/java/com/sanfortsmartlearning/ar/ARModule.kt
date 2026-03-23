@@ -98,9 +98,14 @@ class ARModule(private val reactContext: ReactApplicationContext) :
         val launchIntent = Intent(reactContext, ARScannerActivity::class.java).apply {
             putExtra(ARScannerActivity.EXTRA_REFERENCE_IMAGE_ASSET, referenceImageAsset)
             putExtra(ARScannerActivity.EXTRA_MODEL_ASSET, modelAsset)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        reactContext.startActivity(launchIntent)
+        val activity = reactContext.currentActivity
+        if (activity != null) {
+            activity.startActivity(launchIntent)
+        } else {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactContext.startActivity(launchIntent)
+        }
     }
 
     @ReactMethod
@@ -160,11 +165,16 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                     }
                     putExtra("modelName", modelName)
                     if (!audiosJson.isNullOrBlank()) putExtra("audiosJson", audiosJson)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                reactContext.currentActivity?.runOnUiThread {
+                val activity = reactContext.currentActivity
+                if (activity != null) {
+                    activity.runOnUiThread {
+                        activity.startActivity(launchIntent)
+                    }
+                } else {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     reactContext.startActivity(launchIntent)
-                } ?: reactContext.startActivity(launchIntent)
+                }
 
                 promise.resolve(true)
             } catch (error: Exception) {
