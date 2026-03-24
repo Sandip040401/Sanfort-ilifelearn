@@ -58,6 +58,27 @@ export interface LoginResponse {
   token: string;
 }
 
+export interface SendOtpRequest {
+  phone:      string;
+  clientMeta?: ClientMeta;
+}
+
+export interface SendOtpResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface VerifyOtpRequest {
+  phone:      string;
+  otp:        string;
+  clientMeta?: ClientMeta;
+}
+
+export interface VerifyOtpResponse {
+  user:  User;
+  token: string;
+}
+
 // ─── AR ───────────────────────────────────────────────────────────────
 export interface ARModel {
   id?:          string;

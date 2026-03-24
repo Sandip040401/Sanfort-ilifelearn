@@ -18,8 +18,10 @@ export const API_BASE_URL = __DEV__
 
 export const Endpoints = {
   // Auth
-  login:    '/learn/auth/login',
-  register: '/learn/auth/register',
+  login:     '/learn/auth/login',
+  register:  '/learn/auth/register',
+  sendOtp:   '/learn/auth/send-otp',
+  verifyOtp: '/learn/auth/verify-otp',
 
   // Account
   deleteAccount: '/learn/account/delete-account',
