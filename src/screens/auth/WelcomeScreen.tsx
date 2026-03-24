@@ -1,10 +1,10 @@
 import React from 'react';
-import {ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions} from 'react-native';
+import {Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions} from 'react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import type {StackNavigationProp} from '@react-navigation/stack';
-import {BookOpen, ChevronRight, Globe, Sparkles} from 'lucide-react-native';
+import {BookOpen, ChevronRight, Globe} from 'lucide-react-native';
 import type {AuthStackParamList} from '@/types';
 import Animated, {FadeInDown, FadeInUp, ZoomIn} from 'react-native-reanimated';
 import {APP_NAME} from '@/config/appInfo';
@@ -52,9 +52,13 @@ export default function WelcomeScreen({navigation}: Props) {
           <Animated.View 
             entering={ZoomIn.delay(300).duration(600)}
             style={styles.logoWrap} accessibilityRole="image" accessibilityLabel={`${APP_NAME} logo`}>
-            <View style={styles.logoInner}>
-              <Sparkles size={moderateScale(36)} color="#6C4CFF" strokeWidth={1.8} />
-            </View>
+
+              <Image
+                source={require('@/assets/images/logo/sanfort-splash-screen-logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+          
             <View style={styles.logoBadge}>
               <BookOpen size={moderateScale(12)} color="#fff" strokeWidth={2} />
             </View>
@@ -122,7 +126,8 @@ const styles = StyleSheet.create({
   hero:       {alignItems:'center', paddingHorizontal:scale(24)},
   logoWrap:   {marginBottom:verticalScale(20), position:'relative'},
   logoInner:  {width:scale(96), height:scale(96), borderRadius:moderateScale(28), backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0, height:verticalScale(10)}, shadowOpacity:0.25, shadowRadius:moderateScale(20), elevation:12},
-  logoBadge:  {position:'absolute', bottom:verticalScale(-4), right:scale(-4), width:scale(28), height:scale(28), borderRadius:scale(14), backgroundColor:'#FFB020', alignItems:'center', justifyContent:'center', borderWidth:2, borderColor:'#fff'},
+  logoImage:  {width:scale(110), height:scale(110)},
+  logoBadge:  {position:'absolute', bottom:verticalScale(0), right:scale(0), width:scale(28), height:scale(28), borderRadius:scale(14), backgroundColor:'#FFB020', alignItems:'center', justifyContent:'center', borderWidth:2, borderColor:'#fff'},
   appName:    {fontSize:moderateScale(28), lineHeight:moderateScale(34), fontWeight:'800', color:'#fff', letterSpacing:0.3, marginBottom:verticalScale(6), textAlign:'center'},
   tagline:    {fontSize:moderateScale(14), color:'rgba(255,255,255,0.7)', letterSpacing:2},
 
