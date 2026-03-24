@@ -20,6 +20,7 @@ import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
+import {BooksService} from '@/services/books.service';
 import {getGradeMeta, SUBJECT_OPTIONS, withAlpha} from './books.data';
 
 const H_PAD = scale(20);
@@ -35,13 +36,13 @@ function SubjectsScreenContent() {
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectsRouteProp>();
   const [refreshing, setRefreshing] = React.useState(false);
-  const {gradeKey, gradeName, gradeColors} = route.params;
+  const {gradeKey, gradeName, gradeColors, books = []} = route.params as any;
   const {width} = useWindowDimensions();
-  const cardText = isDark ? '#1B1533' : colors.text;
-  const cardSubText = isDark ? '#5B547A' : colors.textSecondary;
-  const cardMetaText = isDark ? '#6B618C' : colors.textSecondary;
+  const cardText = colors.text;
+  const cardSubText = colors.textSecondary;
+  const cardMetaText = colors.textSecondary;
   const gradeMeta = getGradeMeta(gradeKey);
-  const headerColors = gradeColors.length >= 2
+  const headerColors = gradeColors?.length >= 2
     ? gradeColors
     : [...(gradeMeta?.colors ?? ['#2563EB', '#60A5FA'])];
   const isTablet = width >= 768;
@@ -52,7 +53,7 @@ function SubjectsScreenContent() {
   const isNarrowCard = cardWidth < scale(320);
   const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const cardHeight = isTablet
-    ? Math.max(verticalScale(270), Math.min(verticalScale(340), cardWidth * 1.2))
+    ? Math.max(verticalScale(240), Math.min(verticalScale(300), cardWidth * 1.1))
     : undefined;
 
   const handleRefresh = () => {
@@ -144,119 +145,118 @@ function SubjectsScreenContent() {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionCopy}>
                 <Text style={styles.sectionEyebrow}>Learning Streams</Text>
-                <Text style={[styles.sectionTitle, {color: colors.text}]}>Choose your subject</Text>
-                <Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>
-                  Each subject opens a focused library for {gradeName} with concepts, videos and ebooks.
+                <Text style={[styles.sectionTitle, {color: colors.text}]}>
+                  Choose your book
                 </Text>
-              </View>
-
-              <View style={styles.sectionCountPill}>
-                <Text style={styles.sectionCountText}>4 subjects</Text>
+                <Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>
+                  Select a book to access live concepts, videos and ebooks.
+                </Text>
               </View>
             </View>
 
             <View style={[styles.grid, isTablet && styles.gridTablet]}>
-            {SUBJECT_OPTIONS.map(subject => {
-              const Icon = subject.icon;
-
-                return (
-                  <TouchableOpacity
-                    key={subject.key}
-                    activeOpacity={0.88}
-                    style={[styles.subjectCardWrap, {width: cardWidth}]}
-                    onPress={() =>
-                      navigation.navigate('SubjectContent', {
-                        gradeKey,
-                        gradeName,
-                        subjectKey: subject.key,
-                        subjectName: subject.name,
-                        subjectColor: subject.color,
-                      })
-                    }>
-                    <View
-                      style={[
-                        styles.subjectCard,
-                        cardHeight ? {height: cardHeight} : undefined,
-                        {
-                          borderColor: withAlpha(subject.color, 0.14),
-                        },
-                      ]}>
-                    <LinearGradient
-                      colors={['#FFFFFF', subject.soft]}
-                      locations={[0, 1]}
-                      start={{x: 0, y: 0}}
-                      end={{x: 1, y: 1}}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <View style={styles.subjectTopRow}>
+              {books.length === 0 ? (
+                <View style={{ width: '100%', padding: moderateScale(40), alignItems: 'center' }}>
+                  <Text style={{ color: cardSubText, marginTop: verticalScale(12) }}>No books found.</Text>
+                </View>
+              ) : (
+                books.map((book: any, idx: number) => {
+                  const subjectColor = book.design?.accent || headerColors[0];
+                  return (
+                    <TouchableOpacity
+                      key={book._id || idx}
+                      activeOpacity={0.88}
+                      style={[styles.subjectCardWrap, {width: cardWidth}]}
+                      onPress={() => {
+                        navigation.navigate('SubjectContent', {
+                          gradeKey,
+                          gradeName,
+                          subjectKey: book._id,
+                          subjectName: book.subject,
+                          subjectColor: subjectColor,
+                        });
+                      }}>
+                      <View
+                        style={[
+                          styles.subjectCard,
+                          cardHeight ? {height: cardHeight} : undefined,
+                          {
+                            borderColor: withAlpha(subjectColor, isDark ? 0.22 : 0.14),
+                            shadowColor: isDark ? '#000' : '#28145B',
+                            shadowOpacity: isDark ? 0.3 : 0.08,
+                          },
+                        ]}>
                       <LinearGradient
-                        colors={subject.colors as unknown as string[]}
+                        colors={isDark ? [colors.card, colors.surface] : ['#FFFFFF', '#F8F9FA']}
                         locations={[0, 1]}
                         start={{x: 0, y: 0}}
                         end={{x: 1, y: 1}}
-                        style={styles.subjectIconWrap}>
-                        <Icon size={moderateScale(22)} color="#fff" strokeWidth={2} />
-                      </LinearGradient>
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <View style={styles.subjectTopRow}>
+                        <LinearGradient
+                          colors={[subjectColor, subjectColor]}
+                          locations={[0, 1]}
+                          start={{x: 0, y: 0}}
+                          end={{x: 1, y: 1}}
+                          style={styles.subjectIconWrap}>
+                          <Layers3 size={moderateScale(18)} color="#fff" strokeWidth={2} />
+                        </LinearGradient>
 
-                      <View
-                        style={[
-                          styles.subjectArrowWrap,
-                          {backgroundColor: withAlpha(subject.color, 0.10)},
-                        ]}>
-                        <ChevronRight size={moderateScale(18)} color={subject.color} strokeWidth={2.5} />
+                        <View
+                          style={[
+                            styles.subjectArrowWrap,
+                            {backgroundColor: withAlpha(subjectColor, 0.10)},
+                          ]}>
+                          <ChevronRight size={moderateScale(14)} color={subjectColor} strokeWidth={2.5} />
+                        </View>
                       </View>
-                    </View>
 
-                    <Text style={[styles.subjectEyebrow, {color: subject.color}]}>
-                      {subject.badge}
-                    </Text>
-                    <Text
-                      style={[styles.subjectName, {color: cardText}]}
-                      numberOfLines={2}
-                      ellipsizeMode="tail">
-                      {subject.name}
-                    </Text>
-                    <Text
-                      style={[styles.subjectDescription, {color: cardSubText}]}
-                      numberOfLines={3}
-                      ellipsizeMode="tail">
-                      {subject.description}
-                    </Text>
-
-                    <View
-                      style={[
-                        styles.subjectFooter,
-                        isTablet && styles.subjectFooterFixed,
-                        isNarrowCard && styles.subjectFooterCompact,
-                      ]}>
-                      <View
-                        style={[
-                          styles.subjectBadge,
-                          {backgroundColor: withAlpha(subject.color, 0.10)},
-                          isNarrowCard && styles.subjectBadgeCompact,
-                        ]}>
-                        <Text style={[styles.subjectBadgeText, {color: subject.color}]}>
-                          Open {subject.shortName.toLowerCase()}
-                        </Text>
-                      </View>
-                      <Text
-                        style={[styles.subjectMeta, {color: cardMetaText}, isNarrowCard && styles.subjectMetaCompact]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail">
-                        Live content
+                      <Text style={[styles.subjectEyebrow, {color: subjectColor}]}>
+                        {book.category}
                       </Text>
-                    </View>
+                      <Text
+                        style={[styles.subjectName, {color: cardText}]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail">
+                        {book.subject}
+                      </Text>
+                      <Text
+                        style={[styles.subjectDescription, {color: cardSubText}]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail">
+                        Tap to explore concepts
+                      </Text>
 
-                    <View
-                      style={[
-                        styles.subjectGlow,
-                        {backgroundColor: withAlpha(subject.color, 0.08)},
-                      ]}
-                    />
-                  </View>
-                  </TouchableOpacity>
-                );
-              })}
+                      <View
+                        style={[
+                          styles.subjectFooter,
+                          isTablet && styles.subjectFooterFixed,
+                          isNarrowCard && styles.subjectFooterCompact,
+                        ]}>
+                        <View
+                          style={[
+                            styles.subjectBadge,
+                            {backgroundColor: withAlpha(subjectColor, 0.10)},
+                            isNarrowCard && styles.subjectBadgeCompact,
+                          ]}>
+                          <Text style={[styles.subjectBadgeText, {color: subjectColor}]}>
+                            {book.weeks?.length ? `${book.weeks.length} Weeks` : 'Open Book'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.subjectGlow,
+                          {backgroundColor: withAlpha(subjectColor, isDark ? 0.15 : 0.08)},
+                        ]}
+                      />
+                    </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
             </View>
           </View>
         </View>
@@ -436,55 +436,53 @@ const styles = StyleSheet.create({
     marginBottom: CARD_GAP,
   },
   subjectCard: {
-    minHeight: verticalScale(196),
-    borderRadius: moderateScale(22),
-    padding: moderateScale(18),
+    minHeight: verticalScale(160),
+    borderRadius: moderateScale(20),
+    padding: moderateScale(16),
     borderWidth: 1,
     overflow: 'hidden',
-    shadowColor: '#28145B',
-    shadowOpacity: 0.08,
     shadowRadius: moderateScale(14),
-    shadowOffset: {width: 0, height: verticalScale(8)},
+    shadowOffset: {width: 0, height: verticalScale(6)},
   },
   subjectTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(14),
+    marginBottom: verticalScale(10),
   },
   subjectIconWrap: {
-    width: scale(52),
-    height: scale(52),
-    borderRadius: moderateScale(16),
+    width: scale(44),
+    height: scale(44),
+    borderRadius: moderateScale(14),
     alignItems: 'center',
     justifyContent: 'center',
   },
   subjectArrowWrap: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: moderateScale(20),
+    width: scale(32),
+    height: scale(32),
+    borderRadius: moderateScale(16),
     alignItems: 'center',
     justifyContent: 'center',
   },
   subjectEyebrow: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(9),
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: verticalScale(8),
+    marginBottom: verticalScale(6),
   },
   subjectName: {
-    fontSize: moderateScale(22),
+    fontSize: moderateScale(19),
     fontWeight: '800',
-    marginBottom: verticalScale(8),
+    marginBottom: verticalScale(4),
   },
   subjectDescription: {
-    fontSize: moderateScale(12),
-    lineHeight: moderateScale(18),
+    fontSize: moderateScale(11),
+    lineHeight: moderateScale(16),
     flex: 1,
   },
   subjectFooter: {
-    marginTop: verticalScale(16),
+    marginTop: verticalScale(12),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -520,10 +518,10 @@ const styles = StyleSheet.create({
   },
   subjectGlow: {
     position: 'absolute',
-    width: scale(108),
-    height: scale(108),
-    borderRadius: scale(54),
-    top: verticalScale(-26),
-    right: scale(-24),
+    width: scale(80),
+    height: scale(80),
+    borderRadius: scale(40),
+    top: verticalScale(-20),
+    right: scale(-20),
   },
 });

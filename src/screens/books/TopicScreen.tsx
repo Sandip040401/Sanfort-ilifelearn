@@ -37,29 +37,7 @@ type TopicNavigationProp = StackNavigationProp<BooksStackParamList>;
 
 type ResourceKind = 'image' | 'video' | 'document';
 
-const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
-  const raw = (hex || '').replace('#', '').trim();
-  if (!raw) return light;
-  const value = raw.length === 3
-    ? raw.split('').map(ch => ch + ch).join('')
-    : raw;
-  if (value.length !== 6) return light;
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return light;
-  const toLinear = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  const L =
-    0.2126 * toLinear(r) +
-    0.7152 * toLinear(g) +
-    0.0722 * toLinear(b);
-  const contrastLight = (1.05) / (L + 0.05);
-  const contrastDark = (L + 0.05) / 0.05;
-  return contrastDark > contrastLight ? dark : light;
-};
+
 
 const getFileLabelFromUrl = (url: string, fallback: string) => {
   if (!url) return fallback;
@@ -76,7 +54,7 @@ const getFileLabelFromUrl = (url: string, fallback: string) => {
 };
 
 function TopicScreenContent() {
-  const {colors} = useTheme();
+  const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
   const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation<TopicNavigationProp>();
@@ -87,17 +65,13 @@ function TopicScreenContent() {
   const safeAccent = subjectColor && subjectColor.startsWith('#')
     ? subjectColor
     : colors.primary || '#F97316';
-  const headerTextColor = getContrastText(safeAccent);
-  const headerSubTextColor = withAlpha(headerTextColor, 0.82);
-  const headerBadgeBg = headerTextColor === '#fff'
-    ? 'rgba(255,255,255,0.18)'
-    : 'rgba(0,0,0,0.10)';
-  const headerBadgeBorder = headerTextColor === '#fff'
-    ? 'rgba(255,255,255,0.22)'
-    : 'rgba(0,0,0,0.18)';
-  const quickStatBg = withAlpha(headerTextColor, 0.14);
-  const quickStatBorder = withAlpha(headerTextColor, 0.18);
-  const quickStatLabelColor = withAlpha(headerTextColor, 0.75);
+  const headerTextColor = '#FFFFFF';
+  const headerSubTextColor = 'rgba(255,255,255,0.82)';
+  const headerBadgeBg = 'rgba(255,255,255,0.18)';
+  const headerBadgeBorder = 'rgba(255,255,255,0.22)';
+  const quickStatBg = 'rgba(255,255,255,0.14)';
+  const quickStatBorder = 'rgba(255,255,255,0.18)';
+  const quickStatLabelColor = 'rgba(255,255,255,0.75)';
   const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const safeTopic = {
     ...topic,
@@ -151,7 +125,7 @@ function TopicScreenContent() {
                   styles.resourceCard,
                   {
                     backgroundColor: colors.surface,
-                    borderColor: withAlpha(safeAccent, 0.14),
+                    borderColor: isDark ? colors.border : withAlpha(safeAccent, 0.14),
                   },
                 ]}>
                 {kind === 'image' ? (
@@ -207,7 +181,7 @@ function TopicScreenContent() {
 
   return (
     <>
-      <View style={[styles.root, {backgroundColor: safeAccent}]}>
+      <View style={[styles.root, {backgroundColor: isDark ? colors.background : safeAccent}]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           onScroll={onScroll}
@@ -242,7 +216,8 @@ function TopicScreenContent() {
             </Text>
             <Text style={[styles.headerTitle, {color: headerTextColor}]}>{safeTopic.title}</Text>
             <Text style={[styles.headerSubtitle, {color: headerSubTextColor}]}>
-              {safeTopic.conceptTitle} • Volume {safeTopic.volumeNumber}
+              {safeTopic.conceptTitle} 
+              {/* • Volume {safeTopic.volumeNumber} */}
             </Text>
 
             {/* Quick stats removed as requested */}
@@ -268,7 +243,7 @@ function TopicScreenContent() {
                       styles.keywordCard,
                       {
                         backgroundColor: colors.surface,
-                        borderColor: withAlpha(safeAccent, 0.14),
+                        borderColor: isDark ? colors.border : withAlpha(safeAccent, 0.14),
                       },
                     ]}>
                     <View style={[styles.keywordIconWrap, {backgroundColor: withAlpha(safeAccent, 0.10)}]}>

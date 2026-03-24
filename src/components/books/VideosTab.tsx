@@ -38,7 +38,7 @@ export default function VideosTab({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
-  const {colors} = useTheme();
+  const {colors, isDark} = useTheme();
   const {onScroll} = useTabBarHideOnScroll();
   const {width} = useWindowDimensions();
   const [selectedVolumeId, setSelectedVolumeId] = useState<'all' | string>('all');
@@ -178,8 +178,8 @@ export default function VideosTab({
                       style={[
                         styles.filterChip,
                         {
-                          backgroundColor: selected ? accentColor : colors.surface,
-                          borderColor: selected ? accentColor : colors.border,
+                          backgroundColor: selected ? accentColor : (isDark ? colors.surface : colors.surface),
+                          borderColor: selected ? accentColor : (isDark ? colors.border : colors.border),
                         },
                       ]}>
                       <Text
@@ -226,7 +226,7 @@ export default function VideosTab({
                 styles.card,
                 {
                   backgroundColor: colors.surface,
-                  borderColor: withAlpha(accentColor, 0.14),
+                  borderColor: isDark ? colors.border : withAlpha(accentColor, 0.14),
                   opacity: pressed ? 0.96 : 1,
                   marginHorizontal: isTablet ? 0 : scale(20),
                 },
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(10),
     paddingTop: verticalScale(10),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(15,23,42,0.06)',
+    borderTopColor: 'rgba(128,128,128,0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

@@ -305,6 +305,15 @@ export default function ProfileScreen() {
                 />
               </>
             )}
+            {/* Added Grade field as requested */}
+            <Divider color={colors.divider} />
+            <CardRow
+              icon={<Baby size={moderateScale(18)} color="#EC4899" />}
+              iconBg={isDark ? '#2D1424' : '#FDF2F8'}
+              label="Grade"
+              value={user?.gradeName || "San Toddler"}
+              colors={colors}
+            />
           </View>
         </View>
 

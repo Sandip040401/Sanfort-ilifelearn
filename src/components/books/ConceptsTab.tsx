@@ -56,6 +56,7 @@ export default function ConceptsTab({
   refreshing,
   onRefresh,
   onSelectTopic,
+  filterPrefix,
 }: {
   data: ConceptsResponse;
   subjectColor: string;
@@ -64,8 +65,9 @@ export default function ConceptsTab({
   refreshing: boolean;
   onRefresh: () => void;
   onSelectTopic: (topic: FlatTopic) => void;
+  filterPrefix?: string;
 }) {
-  const {colors} = useTheme();
+  const {colors, isDark} = useTheme();
   const {onScroll} = useTabBarHideOnScroll();
   const [selectedVolume, setSelectedVolume] = useState<'all' | number>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -186,7 +188,7 @@ export default function ConceptsTab({
                   allowFontScaling={false}
                   numberOfLines={1}
                   style={selectedVolume === 'all' ? activeFilterTextStyle : inactiveFilterTextStyle}>
-                  All Volumes
+                  All Weeks
                 </Text>
               </Pressable>
 
@@ -208,7 +210,7 @@ export default function ConceptsTab({
                       allowFontScaling={false}
                       numberOfLines={1}
                       style={selected ? activeFilterTextStyle : inactiveFilterTextStyle}>
-                      Vol {volume}
+                      {filterPrefix || 'Vol'} {volume}
                     </Text>
                   </Pressable>
                 );
@@ -235,7 +237,7 @@ export default function ConceptsTab({
             styles.card,
             {
               backgroundColor: colors.surface,
-              borderColor: withAlpha(subjectColor, 0.14),
+              borderColor: isDark ? colors.border : withAlpha(subjectColor, 0.14),
               opacity: pressed ? 0.96 : 1,
               marginHorizontal: scale(20),
             },
@@ -243,7 +245,7 @@ export default function ConceptsTab({
           <View style={styles.cardTopRow}>
             <View style={styles.cardTitleBlock}>
               <Text style={[styles.cardOverline, {color: subjectColor}]}>
-                {item.conceptTitle} • Vol {item.volumeNumber}
+                {item.conceptTitle} • {filterPrefix || 'Vol'} {item.volumeNumber}
               </Text>
               <Text style={[styles.cardTitle, {color: colors.text}]} numberOfLines={2}>
                 {item.title}
@@ -396,15 +398,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   metricPillNeutral: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.03)',
   },
   metricPillBlue: {
-    backgroundColor: '#EFF6FF',
-    borderColor: 'rgba(37,99,235,0.14)',
+    backgroundColor: 'rgba(37,99,235,0.08)',
+    borderColor: 'rgba(37,99,235,0.18)',
   },
   metricPillAmber: {
-    backgroundColor: '#FFFBEB',
-    borderColor: 'rgba(217,119,6,0.16)',
+    backgroundColor: 'rgba(217,119,6,0.08)',
+    borderColor: 'rgba(217,119,6,0.18)',
   },
   metricText: {
     fontSize: moderateScale(11),
@@ -431,7 +433,7 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(14),
     paddingTop: verticalScale(12),
     borderTopWidth: 1,
-    borderTopColor: 'rgba(15,23,42,0.06)',
+    borderTopColor: 'rgba(128,128,128,0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

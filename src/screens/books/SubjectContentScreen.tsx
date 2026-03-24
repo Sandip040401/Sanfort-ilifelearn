@@ -82,14 +82,39 @@ function SubjectContentScreenContent() {
   const booksQuery = useQuery({
     queryKey: ['books-content', gradeKey, subjectKey],
     queryFn: async () => {
-      const response = await BooksService.getConceptsForHome(gradeKey, subjectKey);
-      return normalizeConceptsPayload(response.data?.data ?? response.data, {
-        gradeKey,
-        gradeName,
-        subjectKey,
-        subjectName,
-        subjectColor,
-      });
+      const isSanfort = gradeName?.toLowerCase()?.includes('san');
+      if (isSanfort) {
+        const response = await BooksService.getGradeById(subjectKey);
+        const data = response.data as any;
+        const book = data?.book || {};
+        const payload = {
+          concepts: (book.weeks || []).map((week: any) => ({
+            id: `week-${week.weekNumber}`,
+            title: week.title || `Week ${week.weekNumber}`,
+            volumeNumber: week.weekNumber || 1,
+            topics: week.topics || []
+          })),
+          ebooks: [],
+          videoVolumes: [],
+          arSheets: []
+        };
+        return normalizeConceptsPayload(payload, {
+          gradeKey,
+          gradeName,
+          subjectKey,
+          subjectName: book.subject || subjectName,
+          subjectColor,
+        });
+      } else {
+        const response = await BooksService.getConceptsForHome(gradeKey, subjectKey);
+        return normalizeConceptsPayload(response.data?.data ?? response.data, {
+          gradeKey,
+          gradeName,
+          subjectKey,
+          subjectName,
+          subjectColor,
+        });
+      }
     },
   });
 
@@ -381,6 +406,7 @@ function SubjectContentScreenContent() {
             headerContent={headerContent}
             refreshing={booksQuery.isRefetching}
             onRefresh={refreshContent}
+            filterPrefix={gradeName?.toLowerCase()?.includes('san') ? 'Week' : 'Vol'}
             onSelectTopic={topic =>
               navigation.navigate('TopicDetail', {
                 topic,

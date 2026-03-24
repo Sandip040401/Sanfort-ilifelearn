@@ -17,11 +17,12 @@ export interface Pagination {
 
 // ─── Auth ─────────────────────────────────────────────────────────────
 export interface User {
-  id?:   string;
-  _id?:  string;
-  name:  string;
-  email: string;
-  role?: string;
+  id?:     string;
+  _id?:    string;
+  name:    string;
+  email:   string;
+  role?:   string;
+  gradeName?: string;
 }
 
 export interface ClientMeta {

@@ -1052,7 +1052,7 @@ function ARModelOptionsSheet({
               <Text style={styles.sheetButtonSub}>{btn.sub}</Text>
             </View>
             <View style={styles.sheetButtonArrow}>
-              <ChevronRight size={moderateScale(24)} color={colors.text} />
+              <ChevronRight size={moderateScale(24)} color="#fff" />
             </View>
           </TouchableOpacity>
         ))}

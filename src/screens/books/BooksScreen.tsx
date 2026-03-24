@@ -7,11 +7,20 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
+import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useFocusEffect, useNavigation} from '@react-navigation/native';
-import type {StackNavigationProp} from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import {
+  ActivityIndicator,
+  Image,
+} from 'react-native';
+import Animated, {
+  FadeInLeft,
+  FadeInRight,
+  Layout,
+} from 'react-native-reanimated';
 import {
   ArrowRight,
   BookOpen,
@@ -20,36 +29,85 @@ import {
   PlayCircle,
 } from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
-import {useTheme} from '@/theme';
-import type {BooksStackParamList} from '@/types';
-import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
-import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
-import {BooksService} from '@/services/books.service';
-import {GRADE_OPTIONS} from './books.data';
+import { useTheme } from '@/theme';
+import type { BooksStackParamList } from '@/types';
+import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
+import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
+import { BooksService } from '@/services/books.service';
+import { useAuth } from '@/store';
+import { GRADE_OPTIONS } from './books.data';
 
 const H_PAD = scale(20);
 const CARD_GAP = scale(14);
 
 const RESOURCE_PILLS = [
-  {label: 'Concepts', Icon: Layers3},
-  {label: 'Videos', Icon: PlayCircle},
-  {label: 'Ebooks', Icon: FileText},
+  { label: 'Concepts', Icon: Layers3 },
+  { label: 'Videos', Icon: PlayCircle },
+  { label: 'Ebooks', Icon: FileText },
 ] as const;
+
+const DESIGN_MAP: Record<string, any> = {
+  'SAN Toddler': {
+    name: 'SAN Toddler',
+    subtitle: '2–3 Years',
+    description: 'Nurturing curiosity in the earliest steps.',
+    image: 'https://www.sanfortschools.com/wp-content/uploads/2024/05/image-16-1.webp',
+    gradient: ['#FFF1F1', '#FFE4E4'],
+    darkGradient: ['#3D1E1E', '#2D1616'],
+    accent: '#EF4444',
+    border: '#FEE2E2',
+    darkBorder: '#5D2E2E',
+  },
+  'SAN Learner': {
+    name: 'SAN Learner',
+    subtitle: '3–4 Years',
+    description: 'Where playing and learning go hand in hand.',
+    image: 'https://www.sanfortschools.com/wp-content/uploads/2024/08/SAN-LEARNER.jpg',
+    gradient: ['#F0F9FF', '#E0F2FE'],
+    darkGradient: ['#1E2D3D', '#16232D'],
+    accent: '#0EA5E9',
+    border: '#E0F2FE',
+    darkBorder: '#2E3E5D',
+  },
+  'SAN Junior': {
+    name: 'SAN Junior',
+    subtitle: '4–5 Years',
+    description: 'Developing skills for a brighter future.',
+    image: 'https://www.sanfortschools.com/wp-content/uploads/2024/07/DSC_0887-scaled-e1721393030714.jpg',
+    gradient: ['#FFFAF5', '#FFF1E6'],
+    darkGradient: ['#3D2E1E', '#2D2316'],
+    accent: '#F97316',
+    border: '#FFEDD5',
+    darkBorder: '#5D462E',
+  },
+  'SAN Senior': {
+    name: 'SAN Senior',
+    subtitle: '5–6 Years',
+    description: 'Preparing little leaders for school years.',
+    image: 'https://www.sanfortschools.com/wp-content/uploads/2024/07/DSC_0868-scaled-e1721393135916.jpg',
+    gradient: ['#F0FDF4', '#DCFCE7'],
+    darkGradient: ['#1E3D2E', '#162D23'],
+    accent: '#22C55E',
+    border: '#DCFCE7',
+    darkBorder: '#2E5D46',
+  },
+};
 
 const FLOW_STEPS = [
-  {id: '01', title: 'Choose grade', caption: 'Start by level', Icon: BookOpen},
-  {id: '02', title: 'Open subject', caption: 'Pick one stream', Icon: Layers3},
-  {id: '03', title: 'Explore library', caption: 'Read, watch, practise', Icon: FileText},
+  { id: '01', title: 'Choose grade', caption: 'Start by level', Icon: BookOpen },
+  { id: '02', title: 'Open subject', caption: 'Pick one stream', Icon: Layers3 },
+  { id: '03', title: 'Explore library', caption: 'Read, watch, practise', Icon: FileText },
 ] as const;
 
-const rootBackgroundStyle = {backgroundColor: '#3D2799'} as const;
+const rootBackgroundStyle = { backgroundColor: '#3D2799' } as const;
 
 function BooksScreenContent() {
-  const {colors} = useTheme();
+  const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const {onScroll} = useTabBarHideOnScroll();
+  const { onScroll } = useTabBarHideOnScroll();
   const navigation = useNavigation<StackNavigationProp<BooksStackParamList>>();
-  const {width, height} = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   const isTablet = width >= 768;
   const isLandscape = width > height;
@@ -63,33 +121,72 @@ function BooksScreenContent() {
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : singleCardWidth;
 
-  const handleGradePress = (grade: typeof GRADE_OPTIONS[number]) => {
+  const [grades, setGrades] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  const handleGradePress = (grade: any) => {
+    const { design } = grade;
+    const colorsArr = [design.accent + 'DD', design.accent + '99']; // Using target gradient colors
+
     navigation.navigate('Subjects', {
-      gradeKey: grade.key,
-      gradeName: grade.name,
-      gradeColors: [...grade.colors],
-    });
+      gradeKey: grade._id,
+      gradeName: grade.baseName,
+      gradeColors: colorsArr,
+      books: grade.books,
+    } as any);
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      console.log('--- Books Tab Entered ---');
-      
       const fetchGrades = async () => {
-        console.warn('🚀 FETCHING ALL-GRADES API...');
         try {
           const response = await BooksService.getAllGrades();
-          console.log('✅ API SUCCESS [all-grades]:', JSON.stringify(response.data, null, 2));
+          const resData = response.data as any;
+          if (resData.success) {
+            const sequence = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'];
+            let groupedGradesMap = new Map();
+            
+            resData.grades.forEach((g: any) => {
+              const baseName = g.category.split(' (')[0];
+              const design = DESIGN_MAP[baseName] || DESIGN_MAP['SAN Toddler'];
+              if (!groupedGradesMap.has(baseName)) {
+                groupedGradesMap.set(baseName, { 
+                  _id: baseName, 
+                  category: g.category,
+                  books: [], 
+                  design, 
+                  baseName 
+                });
+              }
+              groupedGradesMap.get(baseName).books.push({...g, design, baseName});
+            });
+
+            let apiGrades = Array.from(groupedGradesMap.values())
+              .sort((a: any, b: any) => sequence.indexOf(a.baseName) - sequence.indexOf(b.baseName));
+              
+            const role = user?.role?.toLowerCase();
+            if (role !== 'teacher' && role !== 'super-admin' && role !== 'admin') {
+              const targetGrade = ((user as any)?.gradeName || 'SAN Toddler').trim().toLowerCase();
+              const filtered = apiGrades.filter((g: any) => g.baseName.trim().toLowerCase() === targetGrade);
+              
+              if (filtered.length > 0) {
+                apiGrades = filtered;
+              } else if (apiGrades.length > 0) {
+                apiGrades = [apiGrades[0]];
+              }
+            }
+
+            setGrades(apiGrades);
+          }
         } catch (error: any) {
-          const url = error.config?.url || 'unknown';
-          const status = error.response?.status || 'no status';
-          console.warn(`❌ API FAILURE [all-grades]: ${status} @ ${url}`);
-          console.error('Full stack:', error.message);
+          console.error('API Error:', error.message);
+        } finally {
+          setLoading(false);
         }
       };
 
       fetchGrades();
-    }, [])
+    }, [user])
   );
 
   return (
@@ -115,11 +212,11 @@ function BooksScreenContent() {
           <LinearGradient
             colors={['#35239A', '#5038CC', '#6C4CFF']}
             locations={[0, 0.5, 1]}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 1}}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <View style={[styles.headerInner, {width: contentWidth - H_PAD * 2}]}>
+          <View style={[styles.headerInner, { width: contentWidth - H_PAD * 2 }]}>
             {/* <View style={styles.headerTopRow}>
               <View style={styles.modulePill}>
                 <BookOpen size={moderateScale(16)} color="#fff" strokeWidth={2} />
@@ -153,83 +250,117 @@ function BooksScreenContent() {
             </View> */}
           </View>
 
-          <View style={[styles.curve, {backgroundColor: colors.background}]} />
+          <View style={[styles.curve, { backgroundColor: colors.background }]} />
         </View>
 
         <View style={styles.content}>
-          <View style={[styles.contentInner, {width: contentWidth - H_PAD * 2}]}>
+          <View style={[styles.contentInner, { width: contentWidth - H_PAD * 2 }]}>
 
 
-            <Text style={[styles.sectionTitle, {color: colors.text}]}>
-              Choose A Level
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Choose Grade
             </Text>
-            <Text style={[styles.sectionSub, {color: colors.textSecondary}]}>
+            <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
               Start with the right learning stage and open the matching subject library.
             </Text>
 
             <View style={[styles.gradeGrid, showTwoColumn && styles.gradeGridTablet]}>
-              {GRADE_OPTIONS.map(grade => {
-                const Icon = grade.icon;
+              {loading ? (
+                <View style={[styles.loadingWrap, { width: singleCardWidth }]}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              ) : (
+                grades.map((grade, index) => {
+                  const { design } = grade;
+                  const isEven = index % 2 === 0;
+                  const cardGradients = isDark ? design.darkGradient : design.gradient;
+                  const borderCol = isDark ? design.darkBorder : design.border;
+                  const subTextColor = isDark ? 'rgba(255,255,255,0.7)' : design.accent + 'CC';
 
-                return (
-                  <TouchableOpacity
-                    key={grade.key}
-                    activeOpacity={0.88}
-                    onPress={() => handleGradePress(grade)}
-                    style={[
-                      styles.cardTouchable,
-                      {
-                        width: cardWidth,
-                      },
-                    ]}>
-                    <View style={styles.gradeCard}>
-                      <LinearGradient
-                        colors={grade.colors as unknown as string[]}
-                        locations={[0, 1]}
-                        start={{x: 0, y: 0}}
-                        end={{x: 1, y: 1}}
-                        style={StyleSheet.absoluteFill}
+                  // Unified Gradient Mask for seamless blending
+                  // We flip the gradient logic based on the image's position
+                  const unifiedGradients = isEven
+                    ? ['transparent', 'transparent', cardGradients[0], cardGradients[1]]
+                    : [cardGradients[0], cardGradients[1], 'transparent', 'transparent'];
+
+                  const unifiedLocations = isEven
+                    ? [0, 0.15, 0.45, 1]     // Image Left: wait till 0.15, then fade to completely solid at 0.55
+                    : [0, 0.53, 0.85, 1];    // Image Right: solid until 0.45, then fade to transparent at 0.85
+
+                  const ImageSection = (
+                    <View style={[styles.gradeImageSideWrap, isEven ? { left: scale(-15) } : { right: scale(-15) }]}>
+                      <Image
+                        source={{ uri: design.image }}
+                        style={styles.gradeImageFull}
+                        resizeMode="cover"
                       />
-                      <View style={styles.cardTopRow}>
-                        <View style={styles.cardIconWrap}>
-                          <Icon size={moderateScale(24)} color="#fff" strokeWidth={1.9} />
-                        </View>
+                    </View>
+                  );
 
-                        <View style={styles.cardArrowWrap}>
-                          <ArrowRight size={moderateScale(18)} color="#fff" strokeWidth={2.5} />
-                        </View>
-                      </View>
-
-                      <Text
-                        style={styles.gradeName}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.85}>
-                        {grade.name}
+                  const ContentSection = (
+                    <View style={[
+                      styles.gradeCardBody,
+                      {
+                        alignItems: 'flex-start',
+                        paddingLeft: isEven ? '48%' : scale(10),
+                        paddingRight: !isEven ? '48%' : scale(8),
+                      }
+                    ]}>
+                      <Text style={[styles.gradeNameText, { color: design.accent }]}>
+                        {design.name}
                       </Text>
-                      <Text style={styles.gradeSubtitle}>{grade.subtitle}</Text>
-                      <Text style={styles.gradeDescription}>{grade.description}</Text>
 
-                      <View style={styles.cardBottomRow}>
-                        <View style={styles.subjectPill}>
-                          <Text style={styles.subjectPillText}>{grade.subjects} Subjects</Text>
-                        </View>
-                        <Text
-                          style={styles.gradeStatsLabel}
-                          numberOfLines={2}
-                          adjustsFontSizeToFit
-                          minimumFontScale={0.8}
-                          ellipsizeMode="tail">
-                          {grade.statsLabel}
+                      <View style={[styles.gradeBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                        <Text style={[styles.gradeBadgeText, { color: isDark ? '#fff' : design.accent }]}>
+                          {design.subtitle}
                         </Text>
                       </View>
 
-                      <View style={styles.decorCircle1} />
-                      <View style={styles.decorCircle2} />
+                      <Text style={[styles.gradeDescText, { color: subTextColor, textAlign: 'left' }]}>
+                        "{design.description}"
+                      </Text>
                     </View>
-                  </TouchableOpacity>
-                );
-              })}
+                  );
+
+                  return (
+                    <Animated.View
+                      key={grade._id}
+                      entering={isEven ? FadeInLeft.delay(index * 120).duration(600) : FadeInRight.delay(index * 120).duration(600)}
+                      layout={Layout.springify()}
+                    >
+                      <TouchableOpacity
+                        activeOpacity={0.92}
+                        onPress={() => handleGradePress(grade)}
+                        style={[
+                          styles.gradeCardWrap,
+                          {
+                            width: cardWidth,
+                            borderColor: borderCol,
+                            backgroundColor: isDark ? '#1a1a1a' : '#fff', // fallback
+                          },
+                        ]}>
+
+                        {/* 1. Underlying Image Layer */}
+                        {ImageSection}
+
+                        {/* 2. Unified Background & Mask Layer (Seamless) */}
+                        <LinearGradient
+                          colors={unifiedGradients as string[]}
+                          locations={unifiedLocations}
+                          start={{ x: 0, y: 0.5 }}
+                          end={{ x: 1, y: 0.5 }}
+                          style={StyleSheet.absoluteFill}
+                        />
+
+                        {/* 3. Text Layer */}
+                        <View style={styles.gradeCardInner}>
+                          {ContentSection}
+                        </View>
+                      </TouchableOpacity>
+                    </Animated.View>
+                  );
+                })
+              )}
             </View>
           </View>
         </View>
@@ -375,7 +506,7 @@ const styles = StyleSheet.create({
     shadowColor: '#2D176C',
     shadowOpacity: 0.08,
     shadowRadius: moderateScale(18),
-    shadowOffset: {width: 0, height: verticalScale(10)},
+    shadowOffset: { width: 0, height: verticalScale(10) },
   },
   featureCardCompact: {
     padding: moderateScale(16),
@@ -408,7 +539,7 @@ const styles = StyleSheet.create({
     shadowColor: '#6045E6',
     shadowOpacity: 0.2,
     shadowRadius: moderateScale(12),
-    shadowOffset: {width: 0, height: verticalScale(6)},
+    shadowOffset: { width: 0, height: verticalScale(6) },
   },
   featureLeadCopy: {
     flex: 1,
@@ -651,102 +782,65 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  cardTouchable: {
+  gradeCardWrap: {
+    borderRadius: moderateScale(24),
+    borderWidth: 1.5,
+    overflow: 'hidden',
     marginBottom: CARD_GAP,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
-  gradeCard: {
-    borderRadius: moderateScale(22),
-    padding: moderateScale(18),
-    minHeight: verticalScale(192),
+  gradeHeaderBar: {
+    height: verticalScale(0), // Removed top bar for cleaner look
+  },
+  gradeCardInner: {
+    minHeight: verticalScale(140),
+    justifyContent: 'center',
+    paddingVertical: moderateScale(16),
+  },
+  gradeImageSideWrap: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: '55%', // Increased to ensure overlap
     overflow: 'hidden',
   },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: verticalScale(16),
+  gradeImageFull: {
+    width: '100%',
+    height: '100%',
   },
-  cardIconWrap: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: moderateScale(16),
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+  gradeCardBody: {
+    flex: 1,
+    paddingHorizontal: scale(16),
   },
-  cardArrowWrap: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: moderateScale(18),
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gradeName: {
-    fontSize: moderateScale(24),
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: verticalScale(4),
-  },
-  gradeSubtitle: {
-    fontSize: moderateScale(12),
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.84)',
+  gradeNameText: {
+    fontSize: moderateScale(22),
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: -0.5,
+    marginBottom: verticalScale(6),
+  },
+  gradeBadge: {
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(10),
     marginBottom: verticalScale(10),
   },
-  gradeDescription: {
-    fontSize: moderateScale(12),
-    color: 'rgba(255,255,255,0.82)',
-    lineHeight: moderateScale(18),
-    maxWidth: '86%',
-  },
-  cardBottomRow: {
-    marginTop: verticalScale(18),
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: scale(10),
-  },
-  subjectPill: {
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(7),
-    borderRadius: moderateScale(999),
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  subjectPillText: {
-    color: '#fff',
+  gradeBadgeText: {
     fontSize: moderateScale(11),
     fontWeight: '800',
   },
-  gradeStatsLabel: {
-    flex: 1,
-    textAlign: 'right',
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: moderateScale(11),
-    fontWeight: '700',
+  gradeDescText: {
+    fontSize: moderateScale(12),
+    fontStyle: 'italic',
+    lineHeight: moderateScale(18),
   },
-  decorCircle1: {
-    position: 'absolute',
-    width: scale(84),
-    height: scale(84),
-    borderRadius: scale(42),
-    top: verticalScale(-24),
-    right: scale(-20),
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  decorCircle2: {
-    position: 'absolute',
-    width: scale(64),
-    height: scale(64),
-    borderRadius: scale(32),
-    bottom: verticalScale(-18),
-    right: scale(36),
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  loadingWrap: {
+    height: verticalScale(200),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
