@@ -1,6 +1,6 @@
 
 import React, {useEffect} from 'react';
-import {StyleSheet, View, Text, StatusBar, Dimensions} from 'react-native';
+import {StyleSheet, View, Text, StatusBar, Dimensions, Image} from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -17,10 +17,10 @@ import Animated, {
   Extrapolate,
 } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
-import {Sparkles, BookOpen, Music, Palette} from 'lucide-react-native';
+import {BookOpen, Music, Palette} from 'lucide-react-native';
 import ARIcon from '@/components/icons/ARIcon';
 import WebVRIcon from '@/components/icons/WebVRIcon';
-import {useTheme, Shadow} from '@/theme';
+import {useTheme} from '@/theme';
 import {APP_NAME} from '@/config/appInfo';
 import {scale, moderateScale, verticalScale} from 'react-native-size-matters';
 
@@ -161,9 +161,11 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
 
           {/* Core Logo */}
           <Animated.View style={[styles.logoContainer, animatedMainStyle]}>
-            <View style={[styles.logoCircle, Shadow.lg]}>
-              <Sparkles size={scale(56)} color={colors.primary} strokeWidth={2} />
-            </View>
+            <Image 
+              source={require('@/assets/images/logo/sanfort-splash-screen-logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </Animated.View>
         </View>
 
@@ -233,13 +235,9 @@ const styles = StyleSheet.create({
   logoContainer: {
     zIndex: 10,
   },
-  logoCircle: {
-    width: scale(130),
-    height: scale(130),
-    borderRadius: scale(65),
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
+  logoImage: {
+    width: scale(120),
+    height: scale(120),
   },
   ring: {
     position: 'absolute',

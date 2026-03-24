@@ -1137,6 +1137,11 @@ class ARActivity : AppCompatActivity() {
 
                     this.localScale = Vector3(0.3f, 0.3f, 0.3f)
                     this.localRotation = Quaternion.identity()
+
+                    // Shift the model down so its bottom face sits on the plane
+                    // instead of floating (anchor is at ground; model pivot is at center)
+                    val yOffset = (size.y * 0.3f) / 2f
+                    this.localPosition = Vector3(0f, yOffset, 0f)
                 }
 
         activeAnchorNode = anchorNode

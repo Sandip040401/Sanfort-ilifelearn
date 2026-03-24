@@ -334,7 +334,7 @@ export default function LoginScreen({ navigation }: Props) {
               entering={ZoomIn.delay(200).duration(600)}
               style={styles.logoBox} accessibilityRole="image" accessibilityLabel={`${APP_NAME} logo`}>
               <Image
-                source={require('@/assets/images/sanfort_logo.png')}
+                source={require('@/assets/images/logo/sanfort_logo.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />

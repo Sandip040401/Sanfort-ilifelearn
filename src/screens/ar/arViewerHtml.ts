@@ -172,8 +172,11 @@ export function buildARViewerHtml(modelFileUrl: string) {
       const maxDim = Math.max(size.x, size.y, size.z);
       const scale = 2.5 / maxDim;
       loadedModel.scale.setScalar(scale);
-      loadedModel.position.sub(center.multiplyScalar(scale));
-      loadedModel.position.y -= (box.min.y * scale);
+
+      // Center X/Z on origin, then set Y so the model's bottom sits on the grid (y = -1.4)
+      loadedModel.position.x = -center.x * scale;
+      loadedModel.position.z = -center.z * scale;
+      loadedModel.position.y = -1.4 - (box.min.y * scale);
 
       loadedModel.traverse((child) => {
         if (child.isMesh) {
