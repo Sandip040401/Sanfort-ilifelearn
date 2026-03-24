@@ -8,6 +8,7 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
+  Image,
   Text,
   TextInput,
   TouchableOpacity,
@@ -18,7 +19,7 @@ import DeviceInfo from 'react-native-device-info';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
-import {Eye, EyeOff, HelpCircle, Lock, LogIn, Mail, Phone, Sparkles} from 'lucide-react-native';
+import {Eye, EyeOff, HelpCircle, Lock, LogIn, Mail, Phone} from 'lucide-react-native';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import CustomAlert from '@/components/CustomAlert';
 import {useAuth, useModals} from '@/store';
@@ -319,7 +320,7 @@ export default function LoginScreen({navigation}: Props) {
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
-            {paddingTop: insets.top + 24, paddingBottom: 40},
+            {paddingTop: insets.top + 24, paddingBottom: 80},
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
@@ -332,7 +333,11 @@ export default function LoginScreen({navigation}: Props) {
             <Animated.View
               entering={ZoomIn.delay(200).duration(600)}
               style={styles.logoBox} accessibilityRole="image" accessibilityLabel={`${APP_NAME} logo`}>
-              <Sparkles size={30} color="#6C4CFF" strokeWidth={1.8} />
+              <Image 
+                source={require('@/assets/images/sanfort_logo.png')} 
+                style={styles.logo} 
+                resizeMode="contain" 
+              />
             </Animated.View>
             <Text style={styles.title}>Welcome Back!</Text>
             <Text style={styles.subtitle}>Sign in to continue your learning journey</Text>
@@ -648,11 +653,15 @@ const styles = StyleSheet.create({
 
   heroSection: {alignItems: 'center', marginBottom: verticalScale(20), paddingBottom: verticalScale(10)},
   logoBox: {
-    width: scale(76), height: scale(76), borderRadius: moderateScale(22),
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
-    marginBottom: verticalScale(16),
-    shadowColor: '#000', shadowOffset: {width: 0, height: verticalScale(8)},
-    shadowOpacity: 0.2, shadowRadius: moderateScale(16), elevation: 8,
+    width: scale(260),
+    height: scale(90),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: verticalScale(12),
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
   },
   title:    {fontSize: moderateScale(24), fontWeight: '800', color: '#fff', marginBottom: verticalScale(5)},
   subtitle: {fontSize: moderateScale(13), color: 'rgba(255,255,255,0.8)', textAlign: 'center'},
@@ -722,7 +731,7 @@ const styles = StyleSheet.create({
   },
   helpBtn: {
     position: 'absolute',
-    bottom: verticalScale(30),
+    bottom: verticalScale(20),
     right: scale(20),
     paddingHorizontal: scale(14),
     height: verticalScale(40),

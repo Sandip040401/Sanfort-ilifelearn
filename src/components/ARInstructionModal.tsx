@@ -17,7 +17,7 @@ import Animated, {
   withTiming,
   Easing,
   interpolate,
-  Extrapolate,
+  Extrapolation,
 } from 'react-native-reanimated';
 import {
   AlertTriangle,
@@ -259,19 +259,19 @@ export default function ARInstructionModal({
                   slideAnim.value,
                   [index - 1, index, index + 1],
                   [stepOffset, 0, -stepOffset],
-                  Extrapolate.CLAMP
+                  Extrapolation.CLAMP
                 );
                 const opacityVal = interpolate(
                   slideAnim.value,
                   [index - 0.5, index, index + 0.5],
                   [0, 1, 0],
-                  Extrapolate.CLAMP
+                  Extrapolation.CLAMP
                 );
                 const scaleVal = interpolate(
                   slideAnim.value,
                   [index - 0.5, index, index + 0.5],
                   [0.9, 1, 0.9],
-                  Extrapolate.CLAMP
+                  Extrapolation.CLAMP
                 );
                 return {
                   transform: [{translateX}, {scale: scaleVal}],
