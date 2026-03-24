@@ -74,6 +74,8 @@ import {
   getReferenceImageSource,
 } from './ar.reference';
 import ARIcon from '@/components/icons/ARIcon';
+import AnimationIcon from '@/components/icons/AnimationIcon';
+import Rotate360Icon from '@/components/icons/Rotate360Icon';
 
 type ARViewerRouteProp = RouteProp<MainStackParamList, 'ARViewer'>;
 type ARViewerNavigationProp = StackNavigationProp<MainStackParamList, 'ARViewer'>;
@@ -745,7 +747,7 @@ export default function ARViewerScreen() {
               styles.iconPill,
               autoRotate && styles.iconPillActive,
             ]}>
-            <Rotate3D size={moderateScale(15)} color="#fff" strokeWidth={2.1} />
+            <Rotate360Icon width={moderateScale(30)} height={moderateScale(30)} color="#fff" strokeWidth={2.1} />
           </TouchableOpacity>
         </View>
       </View>
@@ -992,7 +994,7 @@ export default function ARViewerScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.controlBarContent}>
           {[
-            { id: 'animation', label: 'Animation', icon: Sparkles },
+            { id: 'animation', label: 'Animation', icon: AnimationIcon },
             ...(paintingEnabled ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
             { id: 'audio', label: 'Audio', icon: Volume2 },
             { id: 'lighting', label: 'Lighting', icon: Lightbulb },
@@ -1704,7 +1706,7 @@ const styles = StyleSheet.create({
   iconPill: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: moderateScale(8),
-    padding: moderateScale(5),
+    padding: moderateScale(2),
   },
   iconPillActive: {
     backgroundColor: 'rgba(108,76,255,0.6)',
@@ -2085,10 +2087,11 @@ const styles = StyleSheet.create({
     gap: verticalScale(4),
   },
   paintSwitchTopLabel: {
-    fontSize: moderateScale(9),
+    fontSize: moderateScale(11),
     fontWeight: '800',
     color: 'rgba(255,255,255,0.6)',
-    textTransform: 'uppercase',
+    textTransform: 'capitalize',
+    textAlign: 'center',
     letterSpacing: 0.5,
   },
   paintSwitch: {

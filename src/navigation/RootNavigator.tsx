@@ -1,3 +1,4 @@
+
 import React, {useEffect, useMemo} from 'react';
 import {Platform, StatusBar} from 'react-native';
 import {
@@ -50,3 +51,5 @@ function RootNavigator() {
 
 export {RootNavigator};
 export default RootNavigator;
+
+

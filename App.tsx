@@ -1,15 +1,16 @@
 
-import React from 'react';
+import React, {useState} from 'react';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {enableScreens, enableFreeze} from 'react-native-screens';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {BottomSheetModalProvider} from '@gorhom/bottom-sheet';
 
-import {ThemeProvider, useTheme} from '@/theme';
+import {ThemeProvider} from '@/theme';
 import {AuthProvider, ModalProvider} from '@/store';
 import {ErrorBoundary} from '@/components/ui';
 import {NetworkProvider} from '@/components/NetworkProvider';
+import {SplashScreen} from '@/screens/SplashScreen';
 import RootNavigator from '@/navigation/RootNavigator';
 
 // Performance: pre-register native screens + freeze inactive screens
@@ -28,22 +29,28 @@ const queryClient = new QueryClient({
 
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   return (
     <SafeAreaProvider style={{flex: 1}}>
       <GestureHandlerRootView style={{flex: 1}}>
         <ErrorBoundary>
           <ThemeProvider>
-            <NetworkProvider>
-              <QueryClientProvider client={queryClient}>
-                <AuthProvider>
-                  <ModalProvider>
-                    <BottomSheetModalProvider>
-                      <RootNavigator />
-                    </BottomSheetModalProvider>
-                  </ModalProvider>
-                </AuthProvider>
-              </QueryClientProvider>
-            </NetworkProvider>
+            {showSplash ? (
+              <SplashScreen onFinish={() => setShowSplash(false)} />
+            ) : (
+              <NetworkProvider>
+                <QueryClientProvider client={queryClient}>
+                  <AuthProvider>
+                    <ModalProvider>
+                      <BottomSheetModalProvider>
+                        <RootNavigator />
+                      </BottomSheetModalProvider>
+                    </ModalProvider>
+                  </AuthProvider>
+                </QueryClientProvider>
+              </NetworkProvider>
+            )}
           </ThemeProvider>
         </ErrorBoundary>
       </GestureHandlerRootView>
@@ -54,3 +61,4 @@ function App() {
 
 
 export default App;
+

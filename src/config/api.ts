@@ -46,6 +46,8 @@ export const Endpoints = {
   readAloudDashboard: (studentId: string) => `/learn/user/student/${studentId}/read-aloud-student-dashboard`,
 
   // Books / Ebooks
+  allGrades:         '/home/all-grades',
+  gradeById:         (id: string) => `/home/grades/${id}`,
   concepts:          (grade: string, subject: string) => `/home/concepts/${grade}/${subject}`,
   ebooks:            (category: string, subject: string) => `/ebooks/${category}/${subject}`,
   conceptVideos:     '/explanatory-videos/concept-videos',

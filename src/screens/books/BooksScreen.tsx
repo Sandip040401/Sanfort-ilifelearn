@@ -10,7 +10,7 @@ import {
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
 import {
   ArrowRight,
@@ -24,6 +24,7 @@ import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
+import {BooksService} from '@/services/books.service';
 import {GRADE_OPTIONS} from './books.data';
 
 const H_PAD = scale(20);
@@ -69,6 +70,27 @@ function BooksScreenContent() {
       gradeColors: [...grade.colors],
     });
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('--- Books Tab Entered ---');
+      
+      const fetchGrades = async () => {
+        console.warn('🚀 FETCHING ALL-GRADES API...');
+        try {
+          const response = await BooksService.getAllGrades();
+          console.log('✅ API SUCCESS [all-grades]:', JSON.stringify(response.data, null, 2));
+        } catch (error: any) {
+          const url = error.config?.url || 'unknown';
+          const status = error.response?.status || 'no status';
+          console.warn(`❌ API FAILURE [all-grades]: ${status} @ ${url}`);
+          console.error('Full stack:', error.message);
+        }
+      };
+
+      fetchGrades();
+    }, [])
+  );
 
   return (
     <View style={[styles.root, rootBackgroundStyle]}>

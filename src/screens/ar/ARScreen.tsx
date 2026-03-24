@@ -35,13 +35,11 @@ import LinearGradient from 'react-native-linear-gradient';
 import {
   Box,
   ChevronLeft,
-  Cuboid,
-  Image as ImageIcon,
   RefreshCcw,
   TriangleAlert,
   Search,
-  Scan,
   X,
+  ChevronRight,
 } from 'lucide-react-native';
 import ARIcon from '@/components/icons/ARIcon';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
@@ -975,21 +973,24 @@ function ARModelOptionsSheet({
 
   const buttons = [
     {
-      label: '3D View',
-      sub: 'Spin & explore',
-      colors: ['#667eea', '#764ba2'] as [string, string],
+      label: '3D Color & Place',
+      sub: 'Color your character in 3D & place it in your real world',
+      gradient: ['#6486ee', '#7663d7', '#8153b5'] as string[],
+      locations: [0, 0.6, 1] as number[],
       onPress: onView3D,
     },
     {
-      label: 'Coloring Sheet',
-      sub: 'Color with crayons',
-      colors: ['#f093fb', '#f5576c'] as [string, string],
+      label: 'Color Sheet → 3D',
+      sub: 'Color on screen and turn it into a 3D character you can place',
+      gradient: ['#c66fe4', '#dd66cc', '#e660bf', '#f19769'] as string[],
+      locations: [0, 0.4, 0.7, 1] as number[],
       onPress: onViewSheet,
     },
     {
-      label: 'AR Scan',
-      sub: 'Bring to life!',
-      colors: ['#11998e', '#38ef7d'] as [string, string],
+      label: 'Scan Drawing → 3D',
+      sub: 'Color on paper, scan it and bring your character to life in 3D.',
+      gradient: ['#479bf2', '#47b2c6', '#47da91'] as string[],
+      locations: [0, 0.75, 0.9] as number[],
       onPress: onScan,
     },
   ];
@@ -1014,7 +1015,8 @@ function ARModelOptionsSheet({
               onPress={btn.onPress}
               style={sheetLandscapeStyles.btn}>
               <LinearGradient
-                colors={btn.colors}
+                colors={btn.gradient}
+                locations={btn.locations}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -1040,9 +1042,9 @@ function ARModelOptionsSheet({
         {buttons.map((btn) => (
           <TouchableOpacity key={btn.label} activeOpacity={0.85} onPress={btn.onPress} style={styles.sheetButtonWrap}>
             <LinearGradient
-              colors={btn.colors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              colors={btn.gradient}
+              locations={btn.locations}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               style={styles.sheetButtonGradient}
             />
             <View style={styles.sheetButtonTexts}>
@@ -1050,7 +1052,7 @@ function ARModelOptionsSheet({
               <Text style={styles.sheetButtonSub}>{btn.sub}</Text>
             </View>
             <View style={styles.sheetButtonArrow}>
-              <Text style={styles.sheetButtonArrowText}>›</Text>
+              <ChevronRight size={moderateScale(24)} color={colors.text} />
             </View>
           </TouchableOpacity>
         ))}
@@ -1668,7 +1670,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(20),
     color: '#fff',
     fontWeight: '700',
-    marginTop: -verticalScale(1),
+    marginTop: -verticalScale(2),
   },
   searchContainer: {
     flexDirection: 'row',
