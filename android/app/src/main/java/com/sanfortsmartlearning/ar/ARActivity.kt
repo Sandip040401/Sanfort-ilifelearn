@@ -109,8 +109,14 @@ class ARActivity : AppCompatActivity() {
             )
     private val LEVEL_ORDER = listOf("basic", "intermediate", "advance", "advanced")
 
-    private var activeModelAnimator: android.animation.ObjectAnimator? = null
     private var selectedAnimationName: String = "Select Animation"
+
+    // Custom Types handling
+    private var modelType: String? = null
+    private data class PartEntry(val id: String, val name: String, val url: String, val audioUrl: String?)
+    private var modelParts: List<PartEntry> = emptyList()
+    private var currentPartId: String? = null
+    private val activeAnimators = mutableListOf<android.animation.ObjectAnimator>()
 
     // Audio list from models
     private var allAnimations: List<AnimationEntry> = emptyList()
@@ -157,6 +163,26 @@ class ARActivity : AppCompatActivity() {
         modelPath = intent.getStringExtra("modelPath")
         originalModelPath = intent.getStringExtra("originalModelPath")
         modelName = intent.getStringExtra("modelName") ?: "3D Model"
+        modelType = intent.getStringExtra("modelType")
+
+        if (modelType == "multiple-glb" && !modelPath.isNullOrBlank()) {
+            try {
+                val arr = JSONArray(modelPath)
+                val list = mutableListOf<PartEntry>()
+                for(i in 0 until arr.length()){
+                    val obj = arr.getJSONObject(i)
+                    list.add(PartEntry(obj.optString("id"), obj.optString("name"), obj.optString("url"), obj.optString("audioUrl")))
+                }
+                modelParts = list
+                if (modelParts.isNotEmpty()) {
+                    currentPartId = modelParts[0].id
+                    modelPath = modelParts[0].url
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         // For exported custom models, start in kid-painted look and allow switching to real model.
         if (!originalModelPath.isNullOrBlank()) {
             showRealTexture = false
@@ -569,17 +595,19 @@ class ARActivity : AppCompatActivity() {
 
         bottomBar.addView(audioBtn)
 
-        if (landscape) {
-            bottomBar.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(1), dp(16)).apply {
-                    setMargins(dp(10), 0, dp(10), 0)
-                }
-                setBackgroundColor(Color.parseColor("#44FFFFFF"))
-            })
-        } else {
-            bottomBar.addView(Space(this).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(10), 0)
-            })
+        if (modelType != "multiple-glb" && modelType != "multiple-animation-execution") {
+            if (landscape) {
+                bottomBar.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(1), dp(16)).apply {
+                        setMargins(dp(10), 0, dp(10), 0)
+                    }
+                    setBackgroundColor(Color.parseColor("#44FFFFFF"))
+                })
+            } else {
+                bottomBar.addView(Space(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(10), 0)
+                })
+            }
         }
 
         val textureBtn = FrameLayout(this).apply {
@@ -1121,39 +1149,53 @@ class ARActivity : AppCompatActivity() {
             val scroll = ScrollView(this@ARActivity)
             val inner = LinearLayout(this@ARActivity).apply { orientation = LinearLayout.VERTICAL }
 
-            inner.addView(createToggleRow("Gesture Mode", isGestureEnabled) { enabled ->
-                isGestureEnabled = enabled
-                activeTransformNode?.let { node ->
-                    node.translationController.isEnabled = enabled
-                    node.rotationController.isEnabled = enabled
-                    node.scaleController.isEnabled = enabled
-                }
-            })
-
-            if (allAnimations.size > 1) {
-                inner.addView(createLabel("Change Animation"))
-                val animNames = allAnimations.map { it.name }
-                inner.addView(createSpinnerPill(animNames, selectedAnimationName) { name ->
-                    selectedAnimationName = name
-                    allAnimations.find { it.name == name }?.let { playAnimation(it) }
-                    showAnimationModal() // Refresh
+            if (modelType == "multiple-glb" && modelParts.isNotEmpty()) {
+                inner.addView(createLabel("Change Part"))
+                val partNames = modelParts.map { it.name }
+                val currentPartName = modelParts.find { it.id == currentPartId }?.name ?: partNames[0]
+                inner.addView(createSpinnerPill(partNames, currentPartName) { name ->
+                    val selectedPart = modelParts.find { it.name == name }
+                    if (selectedPart != null && selectedPart.id != currentPartId) {
+                        currentPartId = selectedPart.id
+                        modelPath = selectedPart.url
+                        reloadModelForPart()
+                    }
                 })
-            }
+            } else {
+                inner.addView(createToggleRow("Gesture Mode", isGestureEnabled) { enabled ->
+                    isGestureEnabled = enabled
+                    activeTransformNode?.let { node ->
+                        node.translationController.isEnabled = enabled
+                        node.rotationController.isEnabled = enabled
+                        node.scaleController.isEnabled = enabled
+                    }
+                })
 
-            val isPaused = activeModelAnimator?.isPaused == true
-            inner.addView(Button(this@ARActivity).apply {
-                text = if (isPaused) "Resume Animation" else "Pause Animation"
-                background = roundedRectDrawable(if (isPaused) "#00C096" else "#FF4B4B", dp(12))
-                setTextColor(Color.WHITE)
-                setOnClickListener {
-                    activeModelAnimator?.let {
-                        if (it.isPaused) it.resume() else it.pause()
+                if (allAnimations.size > 1 && modelType != "multiple-animation-execution") {
+                    inner.addView(createLabel("Change Animation"))
+                    val animNames = allAnimations.map { it.name }
+                    inner.addView(createSpinnerPill(animNames, selectedAnimationName) { name ->
+                        selectedAnimationName = name
+                        allAnimations.find { it.name == name }?.let { playAnimation(it) }
+                        showAnimationModal() // Refresh
+                    })
+                }
+
+                val isPaused = activeAnimators.isNotEmpty() && activeAnimators.all { it.isPaused }
+                inner.addView(Button(this@ARActivity).apply {
+                    text = if (isPaused) "Resume Animation" else "Pause Animation"
+                    background = roundedRectDrawable(if (isPaused) "#00C096" else "#FF4B4B", dp(12))
+                    setTextColor(Color.WHITE)
+                    setOnClickListener {
+                        activeAnimators.forEach {
+                            if (it.isPaused) it.resume() else it.pause()
+                        }
                         showAnimationModal()
                     }
-                }
-            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { 
-                setMargins(0, dp(16), 0, 0)
-            })
+                }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { 
+                    setMargins(0, dp(16), 0, 0)
+                })
+            }
 
             scroll.addView(inner)
             root.addView(scroll)
@@ -1394,6 +1436,52 @@ class ARActivity : AppCompatActivity() {
         }
     }
 
+    private fun reloadModelForPart() {
+        val path = modelPath ?: return
+        isModelLoading = true
+        ModelRenderable.builder()
+                .setSource(this, Uri.parse(path))
+                .setIsFilamentGltf(true)
+                .setAsyncLoadEnabled(true)
+                .build()
+                .thenAccept { renderable ->
+                    runOnUiThread {
+                        isModelLoading = false
+                        renderable.isShadowCaster = true
+                        renderable.isShadowReceiver = true
+                        for (i in 0 until renderable.submeshCount) {
+                            runCatching { renderable.getMaterial(i).setFloat("reflectance", 0.4f) }
+                        }
+                        
+                        activeTransformNode?.renderable = renderable
+                        currentRenderable = renderable
+                        currentInstance = activeTransformNode?.renderableInstance
+                        cacheMaterialSnapshot(renderable, currentInstance)
+
+                        if (!showRealTexture) applyFlatColorMaterials()
+                        
+                        val instance = activeTransformNode?.renderableInstance
+                        val count = instance?.animationCount ?: 0
+                        allAnimations = (0 until count).map { i ->
+                            val anim = instance!!.getAnimation(i)
+                            AnimationEntry(anim.name.takeIf { it.isNotBlank() } ?: "Anim ${i + 1}", anim.duration)
+                        }
+
+                        if (allAnimations.isNotEmpty()) playAnimation(allAnimations[0])
+                        reloadAudio()
+                        refreshBottomBarContent()
+                        animationDialog?.dismiss()
+                    }
+                }
+                .exceptionally { error ->
+                    runOnUiThread {
+                        isModelLoading = false
+                        android.widget.Toast.makeText(this@ARActivity, "Failed to load part", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    null
+                }
+    }
+
     private fun placeModel(hitResult: com.google.ar.core.HitResult, renderable: ModelRenderable) {
         // Hide AR surface scanning dots once placed for a cleaner view
         arFragment.arSceneView.planeRenderer.setVisible(false)
@@ -1495,13 +1583,29 @@ class ARActivity : AppCompatActivity() {
     fun playAnimation(anim: AnimationEntry) {
         selectedAnimationName = anim.name
         val instance = currentInstance ?: return
-        activeModelAnimator?.cancel()
-        val animator = ModelAnimator.ofAnimation(instance, anim.name)
-        animator.apply {
-            duration = (anim.duration * 1000f).toLong()
-            start()
+        
+        activeAnimators.forEach { it.cancel() }
+        activeAnimators.clear()
+
+        if (modelType == "multiple-animation-execution") {
+            allAnimations.forEach { a ->
+                val animator = ModelAnimator.ofAnimation(instance, a.name)
+                animator.apply {
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    duration = (a.duration * 1000f).toLong()
+                    start()
+                }
+                activeAnimators.add(animator)
+            }
+        } else {
+            val animator = ModelAnimator.ofAnimation(instance, anim.name)
+            animator.apply {
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                duration = (anim.duration * 1000f).toLong()
+                start()
+            }
+            activeAnimators.add(animator)
         }
-        activeModelAnimator = animator
     }
 
     private fun sendAnimationList(names: List<String>) {
@@ -1524,6 +1628,10 @@ class ARActivity : AppCompatActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun currentAudioUrl(): String? {
+        if (modelType == "multiple-glb") {
+            val part = modelParts.firstOrNull { it.id == currentPartId }
+            return part?.audioUrl?.ifBlank { null }
+        }
         val lang = selectedLanguage ?: return null
         val level = selectedLevel ?: return null
         val entry =
@@ -1551,6 +1659,9 @@ class ARActivity : AppCompatActivity() {
             mediaPlayer =
                     MediaPlayer().apply {
                         setDataSource(url)
+                        if (modelType == "multiple-animation-execution" || modelType == "multiple-glb") {
+                            isLooping = true
+                        }
                         prepareAsync()
                         setOnPreparedListener {
                             if (activeAnchorNode != null) {
@@ -1560,8 +1671,10 @@ class ARActivity : AppCompatActivity() {
                             }
                         }
                         setOnCompletionListener {
-                            isAudioPlaying = false
-                            refreshBottomBarContent()
+                            if (!isLooping) {
+                                isAudioPlaying = false
+                                refreshBottomBarContent()
+                            }
                         }
                     }
         } catch (e: Exception) {

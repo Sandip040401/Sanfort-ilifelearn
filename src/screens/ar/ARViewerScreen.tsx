@@ -147,15 +147,15 @@ const TARGET_ASSETS: Record<string, string> = {
 };
 
 
-function ModelPreviewImage({ 
-  thumbnailUri, 
-  previewUri, 
+function ModelPreviewImage({
+  thumbnailUri,
+  previewUri,
   fallbackIcon,
   style,
   resizeMode = 'cover'
-}: { 
-  thumbnailUri?: string | null; 
-  previewUri?: string | null; 
+}: {
+  thumbnailUri?: string | null;
+  previewUri?: string | null;
   fallbackIcon: string;
   style: any;
   resizeMode?: 'contain' | 'cover' | 'stretch' | 'center';
@@ -344,7 +344,9 @@ export default function ARViewerScreen() {
         const filename = p.file.split('/').pop();
         return {
           id: p.partId,
-          url: `${baseUrl}?part=${filename}`
+          name: p.name,
+          url: `${baseUrl}?part=${filename}`,
+          audioUrl: p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null
         };
       });
       return JSON.stringify(partsConfig);
@@ -652,7 +654,7 @@ export default function ARViewerScreen() {
   };
 
   const toggleAudio = () => {
-    if (!selectedAudio) {
+    if (!audioSource) {
       return;
     }
     setAudioPlaying(current => !current);
@@ -687,6 +689,7 @@ export default function ARViewerScreen() {
           level: audio.level,
         })),
         animations,
+        modelType: (currentModel as any)?.type,
       });
     } catch (error: any) {
       setViewerError(error?.message || 'Unable to export custom AR model');
@@ -718,6 +721,7 @@ export default function ARViewerScreen() {
         level: audio.level,
       })),
       animations,
+      modelType: (currentModel as any)?.type,
     });
   };
 
@@ -1052,7 +1056,7 @@ export default function ARViewerScreen() {
           contentContainerStyle={styles.controlBarContent}>
           {[
             { id: 'animation', label: 'Animation', icon: AnimationIcon },
-            ...(paintingEnabled ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
+            ...(paintingEnabled && !isSpecialType ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
             { id: 'audio', label: 'Audio', icon: Volume2 },
             { id: 'lighting', label: 'Lighting', icon: Lightbulb },
             ...(!isSpecialType ? [{ id: 'sheet', label: 'Coloring Sheet', icon: ImageIcon }] : []),
@@ -1081,7 +1085,7 @@ export default function ARViewerScreen() {
                   />
                 </View>
                 <Text style={[
-                  styles.controlLabel, 
+                  styles.controlLabel,
                   isTablet && { fontSize: moderateScale(10) },
                   compact && styles.controlLabelCompact,
                   (compact && isActive) && styles.controlLabelCompactActive
@@ -1157,7 +1161,7 @@ export default function ARViewerScreen() {
               {/* Common Play/Pause Toggle for special types */}
               {((currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb') && (
                 <View style={styles.playPauseControlRow}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.playPauseBtn, isPlaying && styles.playPauseBtnActive]}
                     onPress={() => {
                       const next = !isPlaying;
@@ -1635,7 +1639,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop:verticalScale(0),
+    paddingTop: verticalScale(0),
     paddingHorizontal: scale(10),
     paddingVertical: verticalScale(8),
     borderBottomWidth: 1,
@@ -1789,7 +1793,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     marginRight: scale(40)
-    
+
   },
   topBarTitleText: {
     fontSize: moderateScale(13),
@@ -1801,8 +1805,8 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(5),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    width:'auto',
-    alignSelf:'center'
+    width: 'auto',
+    alignSelf: 'center'
   },
 
   topBarActions: {
@@ -2276,7 +2280,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     paddingVertical: verticalScale(8),
     gap: scale(24),
-    marginHorizontal:'auto'
+    marginHorizontal: 'auto'
   },
   controlBarItem: {
     alignItems: 'center',
@@ -2409,7 +2413,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(14,165,164,0.3)',
     position: 'absolute',
-    
+
     right: scale(10),
     zIndex: 45,
   },

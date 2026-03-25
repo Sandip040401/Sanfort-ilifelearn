@@ -28,13 +28,15 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             modelPath: String,
             modelName: String?,
             audiosJson: String?,
-            animationsJson: String?
+            animationsJson: String?,
+            modelType: String?
     ) {
         val intent = Intent(reactContext, ARActivity::class.java)
         intent.putExtra("modelPath", modelPath)
         if (!modelName.isNullOrBlank()) intent.putExtra("modelName", modelName)
         if (!audiosJson.isNullOrBlank()) intent.putExtra("audiosJson", audiosJson)
         if (!animationsJson.isNullOrBlank()) intent.putExtra("animationsJson", animationsJson)
+        if (!modelType.isNullOrBlank()) intent.putExtra("modelType", modelType)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         reactContext.startActivity(intent)
     }
@@ -51,6 +53,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             originalModelPath: String?,
             audiosJson: String?,
             animationsJson: String?,
+            modelType: String?,
             promise: Promise
     ) {
         try {
@@ -64,6 +67,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             if (!modelName.isNullOrBlank()) intent.putExtra("modelName", modelName)
             if (!audiosJson.isNullOrBlank()) intent.putExtra("audiosJson", audiosJson)
             if (!animationsJson.isNullOrBlank()) intent.putExtra("animationsJson", animationsJson)
+            if (!modelType.isNullOrBlank()) intent.putExtra("modelType", modelType)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             reactContext.startActivity(intent)
             promise.resolve(output.absolutePath)
