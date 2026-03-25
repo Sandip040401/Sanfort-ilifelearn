@@ -9,7 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
+import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
 import { withTiming } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,7 +34,7 @@ import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import type { BottomTabParamList, MainStackParamList } from '@/types';
 
-const H_PAD    = scale(20);
+const H_PAD = scale(20);
 const CARD_GAP = scale(12);
 
 type TabNav = BottomTabNavigationProp<BottomTabParamList, 'Home'>;
@@ -68,7 +68,7 @@ export default function HomeScreen() {
   const outerHPad = isTablet && isLandscape ? scale(12) : H_PAD;
   const maxContentWidth = isTablet && !isLandscape ? width - 48 : undefined;
   const gridGap = isTablet ? 14 : CARD_GAP;
-  const containerStyle = [
+  const containerStyle: any = [
     styles.container,
     { paddingHorizontal: outerHPad },
     maxContentWidth ? { width: maxContentWidth, alignSelf: 'center' } : null,
@@ -133,17 +133,23 @@ export default function HomeScreen() {
                 <Text style={styles.greetSub}>Ready to explore today?</Text>
               </View>
               <View style={styles.headerBtns}>
-                <TouchableOpacity style={styles.iconBtn}>
-                  <Bell size={19} color="#fff" strokeWidth={2} />
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.iconBtn}>
+                  <Bell size={20} color="#fff" strokeWidth={1.2} />
+                  <View style={styles.notiBadge} />
                 </TouchableOpacity>
                 <TouchableOpacity
+                  activeOpacity={0.7}
                   style={styles.avatarBtn}
                   onPress={() => mainNav.navigate('Profile')}>
-                  <User size={19} color="#6C4CFF" strokeWidth={2} />
+                  <User size={20} color="#6C4CFF" strokeWidth={1.5} />
                 </TouchableOpacity>
               </View>
             </View>
 
+            {/* Commented out KPIs as requested */}
+            {/* 
             <View style={styles.statsBar}>
               {[{ v: '12+', l: 'Books' }, { v: '50+', l: 'AR Models' }, { v: '30+', l: 'Games' }].map((s, i) => (
                 <React.Fragment key={s.l}>
@@ -155,7 +161,12 @@ export default function HomeScreen() {
                 </React.Fragment>
               ))}
             </View>
+            */}
           </View>
+
+          {/* Decorative Elements for a more "premium" feel */}
+          <View style={styles.headerDecor1} />
+          <View style={styles.headerDecor2} />
 
           <View style={[styles.curve, { backgroundColor: colors.background }]} />
         </View>
@@ -165,7 +176,7 @@ export default function HomeScreen() {
           <View style={[containerStyle as any]}>
 
             {/* Featured — Books */}
-          <Text style={[styles.section, styles.sectionFirst, { color: colors.text }]}>Featured</Text>
+            <Text style={[styles.section, styles.sectionFirst, { color: colors.text }]}>Featured</Text>
             <TouchableOpacity onPress={() => tabNav.navigate('Books')} activeOpacity={0.88}>
               <View style={styles.heroCard}>
                 <LinearGradient
@@ -176,7 +187,7 @@ export default function HomeScreen() {
                 />
                 <View style={styles.heroInner}>
                   <View style={styles.heroIconWrap}>
-                    <BookOpen size={32} color="#fff" strokeWidth={1.8} />
+                    <BookOpen size={32} color="#fff" strokeWidth={1.2} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.heroTitle}>Grade Books</Text>
@@ -216,7 +227,7 @@ export default function HomeScreen() {
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={styles.wideIcon}>
-                  <FileText size={28} color="#fff" strokeWidth={1.8} />
+                  <FileText size={28} color="#fff" strokeWidth={1.2} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.wideTitle}>AR Sheets</Text>
@@ -237,18 +248,22 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
 
-  headerOuter: { paddingBottom: verticalScale(24), overflow: 'hidden' },
-  headerContent: {},
+  headerOuter: { paddingBottom: verticalScale(50), overflow: 'hidden' },
+  headerContent: { zIndex: 1 }, // Ensure content stays above decors
   container: { width: '100%' },
-  headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  greetCol:   { flex: 1, gap: verticalScale(2) },
-  greetLine:  { fontSize: moderateScale(12), color: 'rgba(255,255,255,0.75)' },
-  greetName:  { fontSize: moderateScale(22), fontWeight: '800', color: '#fff' },
-  greetSub:   { fontSize: moderateScale(12), color: 'rgba(255,255,255,0.65)' },
-  skeletonName: { height: verticalScale(26), width: scale(120), borderRadius: moderateScale(6), backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: verticalScale(2) },
-  headerBtns: { flexDirection: 'row', gap: scale(10), marginTop: verticalScale(4) },
-  iconBtn:    { width: scale(40), height: scale(40), borderRadius: moderateScale(12), backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-  avatarBtn:  { width: scale(40), height: scale(40), borderRadius: moderateScale(12), backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  greetCol: { flex: 1, gap: verticalScale(1) },
+  greetLine: { fontSize: moderateScale(13), color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
+  greetName: { fontSize: moderateScale(26), fontWeight: '900', color: '#fff', letterSpacing: -0.5, marginVertical: verticalScale(2) },
+  greetSub: { fontSize: moderateScale(13), color: 'rgba(255,255,255,0.65)', fontWeight: '500' },
+  skeletonName: { height: verticalScale(30), width: scale(140), borderRadius: moderateScale(8), backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: verticalScale(4) },
+  headerBtns: { flexDirection: 'row', gap: scale(12), marginTop: verticalScale(6) },
+  iconBtn: { width: scale(42), height: scale(42), borderRadius: moderateScale(13), backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  avatarBtn: { width: scale(42), height: scale(42), borderRadius: moderateScale(13), backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  notiBadge: { position: 'absolute', top: scale(10), right: scale(11), width: scale(8), height: scale(8), borderRadius: scale(4), backgroundColor: '#FF4B4B', borderWidth: 1.5, borderColor: '#3D2799' },
+
+  headerDecor1: { position: 'absolute', top: verticalScale(-30), left: scale(-50), width: scale(200), height: scale(200), borderRadius: scale(100), backgroundColor: 'rgba(255,255,255,0.06)' },
+  headerDecor2: { position: 'absolute', top: verticalScale(10), right: scale(-70), width: scale(160), height: scale(160), borderRadius: scale(80), backgroundColor: 'rgba(255,255,255,0.04)' },
 
   statsBar: {
     flexDirection: 'row',
@@ -259,15 +274,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
   statItem: { flex: 1, alignItems: 'center' },
-  statVal:  { fontSize: moderateScale(18), fontWeight: '800', color: '#fff' },
-  statLbl:  { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.7)', marginTop: verticalScale(2) },
-  statDiv:  { width: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginHorizontal: scale(8) },
+  statVal: { fontSize: moderateScale(18), fontWeight: '800', color: '#fff' },
+  statLbl: { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.7)', marginTop: verticalScale(2) },
+  statDiv: { width: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginHorizontal: scale(8) },
 
   curve: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    height: verticalScale(20),
-    borderTopLeftRadius: moderateScale(24),
-    borderTopRightRadius: moderateScale(24),
+    position: 'absolute', bottom: -1, left: 0, right: 0,
+    height: verticalScale(30),
+    borderTopLeftRadius: moderateScale(32),
+    borderTopRightRadius: moderateScale(32),
   },
 
   content: { paddingTop: verticalScale(2) },
@@ -277,28 +292,28 @@ const styles = StyleSheet.create({
   heroCard: {
     borderRadius: moderateScale(20), padding: moderateScale(22), marginBottom: verticalScale(8), overflow: 'hidden',
   },
-  heroInner:    { flexDirection: 'row', alignItems: 'center', gap: scale(16) },
+  heroInner: { flexDirection: 'row', alignItems: 'center', gap: scale(16) },
   heroIconWrap: { width: scale(60), height: scale(60), borderRadius: moderateScale(16), backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  heroTitle:    { fontSize: moderateScale(18), fontWeight: '800', color: '#fff', marginBottom: verticalScale(5) },
-  heroSub:      { fontSize: moderateScale(12), color: 'rgba(255,255,255,0.8)', lineHeight: moderateScale(17) },
-  decor1:       { position: 'absolute', top: verticalScale(-30), right: scale(-30), width: scale(100), height: scale(100), borderRadius: scale(50), backgroundColor: 'rgba(255,255,255,0.08)' },
-  decor2:       { position: 'absolute', bottom: verticalScale(-20), right: scale(50), width: scale(60), height: scale(60), borderRadius: scale(30), backgroundColor: 'rgba(255,255,255,0.06)' },
+  heroTitle: { fontSize: moderateScale(18), fontWeight: '800', color: '#fff', marginBottom: verticalScale(5) },
+  heroSub: { fontSize: moderateScale(12), color: 'rgba(255,255,255,0.8)', lineHeight: moderateScale(17) },
+  decor1: { position: 'absolute', top: verticalScale(-30), right: scale(-30), width: scale(100), height: scale(100), borderRadius: scale(50), backgroundColor: 'rgba(255,255,255,0.08)' },
+  decor2: { position: 'absolute', bottom: verticalScale(-20), right: scale(50), width: scale(60), height: scale(60), borderRadius: scale(30), backgroundColor: 'rgba(255,255,255,0.06)' },
 
-  gridRow:       { flexDirection: 'row', marginBottom: CARD_GAP },
+  gridRow: { flexDirection: 'row', marginBottom: CARD_GAP },
   gridTouchable: { flex: 1 },
-  gridCard:        { minHeight: verticalScale(125), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
-  gridCardTablet:  { minHeight: 170, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 16, borderRadius: 20 },
-  gridIcon:        { width: scale(54), height: scale(54), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  gridIconTablet:  { width: 62, height: 62, borderRadius: 18, marginBottom: 10 },
-  gridLabel:       { fontSize: moderateScale(13), fontWeight: '700', color: '#fff', marginBottom: verticalScale(2), lineHeight: moderateScale(18) },
+  gridCard: { minHeight: verticalScale(125), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
+  gridCardTablet: { minHeight: 170, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 16, borderRadius: 20 },
+  gridIcon: { width: scale(54), height: scale(54), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  gridIconTablet: { width: 62, height: 62, borderRadius: 18, marginBottom: 10 },
+  gridLabel: { fontSize: moderateScale(13), fontWeight: '700', color: '#fff', marginBottom: verticalScale(2), lineHeight: moderateScale(18) },
   gridLabelTablet: { fontSize: 16, lineHeight: 22 },
-  gridSub:         { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.75)', lineHeight: moderateScale(14) },
-  gridSubTablet:   { fontSize: 13, lineHeight: 18 },
-  gridDecor:       { position: 'absolute', bottom: verticalScale(-20), right: scale(-20), width: scale(70), height: scale(70), borderRadius: scale(35), backgroundColor: 'rgba(255,255,255,0.1)' },
+  gridSub: { fontSize: moderateScale(10), color: 'rgba(255,255,255,0.75)', lineHeight: moderateScale(14) },
+  gridSubTablet: { fontSize: 13, lineHeight: 18 },
+  gridDecor: { position: 'absolute', bottom: verticalScale(-20), right: scale(-20), width: scale(70), height: scale(70), borderRadius: scale(35), backgroundColor: 'rgba(255,255,255,0.1)' },
 
-  wideCard:  { flexDirection: 'row', alignItems: 'center', padding: moderateScale(18), borderRadius: moderateScale(18), overflow: 'hidden', gap: scale(14) },
-  wideIcon:  { width: scale(52), height: scale(52), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', flexShrink: 0 },
+  wideCard: { flexDirection: 'row', alignItems: 'center', padding: moderateScale(18), borderRadius: moderateScale(18), overflow: 'hidden', gap: scale(14) },
+  wideIcon: { width: scale(52), height: scale(52), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', flexShrink: 0 },
   wideTitle: { fontSize: moderateScale(15), fontWeight: '700', color: '#fff', marginBottom: verticalScale(3) },
-  wideSub:   { fontSize: moderateScale(11), color: 'rgba(255,255,255,0.8)', lineHeight: moderateScale(16) },
+  wideSub: { fontSize: moderateScale(11), color: 'rgba(255,255,255,0.8)', lineHeight: moderateScale(16) },
   wideDecor: { position: 'absolute', top: verticalScale(-20), right: scale(-20), width: scale(80), height: scale(80), borderRadius: scale(40), backgroundColor: 'rgba(255,255,255,0.08)' },
 });

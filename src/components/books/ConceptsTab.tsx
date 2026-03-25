@@ -1,4 +1,4 @@
-import React, {startTransition, useEffect, useMemo, useState} from 'react';
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
+import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import {
   BookOpen,
   ChevronRight,
@@ -16,11 +16,11 @@ import {
   Images,
   PlayCircle,
 } from 'lucide-react-native';
-import {useTheme} from '@/theme';
-import type {ConceptsResponse, FlatTopic} from '@/types';
-import {flattenTopics} from '@/screens/books/books.utils';
-import {withAlpha} from '@/screens/books/books.data';
-import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
+import { useTheme } from '@/theme';
+import type { ConceptsResponse, FlatTopic } from '@/types';
+import { flattenTopics } from '@/screens/books/books.utils';
+import { withAlpha } from '@/screens/books/books.data';
+import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
 
 const PAGE_SIZE = 10;
 
@@ -48,6 +48,26 @@ const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
   return contrastDark > contrastLight ? dark : light;
 };
 
+const getKeywordStyles = (keyword: string = '') => {
+  const k = keyword.trim();
+  switch (k) {
+    case 'English':
+      return { bg: '#DBEAFE', text: '#1D4ED8', border: '#BAE6FD' };
+    case 'Numeracy':
+      return { bg: '#D1FAE5', text: '#059669', border: '#A7F3D0' };
+    case 'Hindi':
+      return { bg: '#FFEDD5', text: '#C2410C', border: '#FED7AA' };
+    case 'EVS':
+      return { bg: '#DCFCE7', text: '#166534', border: '#BBF7D0' };
+    case 'Conceptual Learning':
+      return { bg: '#F3E8FF', text: '#7E22CE', border: '#E9D5FF' };
+    case 'Other Concepts':
+      return { bg: '#F1F5F9', text: '#475569', border: '#E2E8F0' };
+    default:
+      return { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' };
+  }
+};
+
 export default function ConceptsTab({
   data,
   subjectColor,
@@ -67,8 +87,8 @@ export default function ConceptsTab({
   onSelectTopic: (topic: FlatTopic) => void;
   filterPrefix?: string;
 }) {
-  const {colors, isDark} = useTheme();
-  const {onScroll} = useTabBarHideOnScroll();
+  const { colors, isDark } = useTheme();
+  const { onScroll } = useTabBarHideOnScroll();
   const [selectedVolume, setSelectedVolume] = useState<'all' | number>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const accentTextColor = useMemo(
@@ -76,11 +96,11 @@ export default function ConceptsTab({
     [subjectColor],
   );
   const activeFilterTextStyle = useMemo(
-    () => [styles.filterChipTextActive, {color: '#fff'}],
+    () => [styles.filterChipTextActive, { color: '#fff' }],
     [],
   );
   const inactiveFilterTextStyle = useMemo(
-    () => [styles.filterChipText, {color: colors.text}],
+    () => [styles.filterChipText, { color: colors.text }],
     [colors.text],
   );
 
@@ -152,17 +172,17 @@ export default function ConceptsTab({
       }
       contentContainerStyle={[
         styles.contentContainer,
-        {paddingBottom: bottomInset + verticalScale(24)},
+        { paddingBottom: bottomInset + verticalScale(24) },
       ]}
       ListHeaderComponent={
         <View style={styles.listHeader}>
           {headerContent}
           <View style={styles.sectionBlock}>
-            <Text style={[styles.sectionTitle, {color: colors.text}]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Concepts & Topics
             </Text>
-            <Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>
-              Open any topic to preview images, videos and linked worksheets.
+            <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+              Open any topic to preview concept sheets, videos and linked worksheets.
             </Text>
 
             <ScrollView
@@ -220,88 +240,66 @@ export default function ConceptsTab({
         </View>
       }
       ListEmptyComponent={
-        <View style={[styles.emptyState, {backgroundColor: colors.surface}]}>
-          <View style={[styles.emptyIconWrap, {backgroundColor: withAlpha(subjectColor, 0.10)}]}>
+        <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+          <View style={[styles.emptyIconWrap, { backgroundColor: withAlpha(subjectColor, 0.10) }]}>
             <BookOpen size={moderateScale(26)} color={subjectColor} strokeWidth={2} />
           </View>
-          <Text style={[styles.emptyTitle, {color: colors.text}]}>No topics yet</Text>
-          <Text style={[styles.emptySubtitle, {color: colors.textSecondary}]}>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No topics yet</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
             This subject does not have concept topics for the selected volume.
           </Text>
         </View>
       }
-      renderItem={({item, index}) => (
+      renderItem={({ item, index }) => (
         <Pressable
           onPress={() => onSelectTopic(item)}
-          style={({pressed}) => [
+          style={({ pressed }) => [
             styles.card,
             {
               backgroundColor: colors.surface,
-              borderColor: isDark ? colors.border : withAlpha(subjectColor, 0.14),
-              opacity: pressed ? 0.96 : 1,
+              borderColor: isDark ? colors.border : withAlpha(subjectColor, 0.2),
+              opacity: pressed ? 0.9 : 1,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
               marginHorizontal: scale(20),
             },
-        ]}>
-          <View style={styles.cardTopRow}>
+          ]}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.cardOverline, { color: subjectColor }]} numberOfLines={1}>
+              {item.conceptTitle}
+            </Text>
+            {!!item.keyword && (
+              <View style={[styles.keywordBadge, { backgroundColor: getKeywordStyles(item.keyword).bg, borderColor: getKeywordStyles(item.keyword).border }]}>
+                 <Text style={[styles.keywordBadgeText, { color: getKeywordStyles(item.keyword).text }]} numberOfLines={1}>
+                    {item.keyword}
+                 </Text>
+              </View>
+            )}
+          </View>
+          
+          <View style={styles.cardBody}>
             <View style={styles.cardTitleBlock}>
-              <Text style={[styles.cardOverline, {color: subjectColor}]}>
-                {item.conceptTitle} • {filterPrefix || 'Vol'} {item.volumeNumber}
-              </Text>
-              <Text style={[styles.cardTitle, {color: colors.text}]} numberOfLines={2}>
+              <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
                 {item.title}
               </Text>
-              <Text style={[styles.cardMeta, {color: colors.textSecondary}]}>
-                Topic {index + 1}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.metricsRow}>
-            <View
-              style={[
-                styles.metricPill,
-                styles.metricPillNeutral,
-                {borderColor: withAlpha(subjectColor, 0.16)},
-              ]}>
-              <Images size={moderateScale(14)} color={subjectColor} strokeWidth={2} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.metricText, {color: subjectColor}]}>
-                {item.images.length} images
-              </Text>
-            </View>
-
-            <View style={[styles.metricPill, styles.metricPillBlue]}>
-              <PlayCircle size={moderateScale(14)} color="#2563EB" strokeWidth={2} />
-              <Text allowFontScaling={false} numberOfLines={1} style={[styles.metricText, styles.metricTextBlue]}>
-                {item.videos.length} videos
-              </Text>
-            </View>
-
-            {/* Sheets metric removed */}
-          </View>
-
-          <View style={styles.cardFooter}>
-            <View style={styles.footerCopy}>
-              {item.keyword ? (
-                <Text style={[styles.keyword, {color: colors.textSecondary}]} numberOfLines={1}>
-                  Keyword:{' '}
-                  <Text style={[styles.keywordValue, {color: colors.text}]}>
-                    {item.keyword}
+              
+              <View style={styles.metricsRow}>
+                <View style={[styles.metricPill, { backgroundColor: withAlpha(subjectColor, 0.08), borderColor: withAlpha(subjectColor, 0.16) }]}>
+                  <Images size={moderateScale(12)} color={subjectColor} strokeWidth={2.2} />
+                  <Text allowFontScaling={false} style={[styles.metricText, { color: subjectColor }]}>
+                    {item.images.length} Concept Sheet{item.images.length > 1 ? 's' : ''}
                   </Text>
-                </Text>
-              ) : (
-                <Text style={[styles.resourceHint, {color: colors.textSecondary}]}>
-                  Ready to open this topic
-                </Text>
-              )}
+                </View>
+                <View style={styles.metricPillBlue}>
+                  <PlayCircle size={moderateScale(12)} color="#2563EB" strokeWidth={2.2} />
+                  <Text allowFontScaling={false} style={styles.metricTextBlue}>
+                    {item.videos.length} Videos
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            <View style={[styles.openButton, {backgroundColor: subjectColor}]}>
-              <Text
-                allowFontScaling={false}
-                style={[styles.openButtonText, {color: '#fff'}]}>
-                Open
-              </Text>
-              <ChevronRight size={moderateScale(16)} color="#fff" strokeWidth={2.4} />
+            <View style={[styles.openIconWrap, { backgroundColor: withAlpha(subjectColor, 0.1) }]}>
+              <ChevronRight size={moderateScale(20)} color={subjectColor} strokeWidth={2.5} />
             </View>
           </View>
         </Pressable>
@@ -339,7 +337,6 @@ const styles = StyleSheet.create({
   filterChip: {
     borderRadius: moderateScale(999),
     borderWidth: 1,
-    minHeight: verticalScale(46),
     paddingHorizontal: scale(16),
     paddingVertical: verticalScale(10),
     justifyContent: 'center',
@@ -354,109 +351,90 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   card: {
-    borderRadius: moderateScale(22),
+    borderRadius: moderateScale(18),
     borderWidth: 1,
-    padding: moderateScale(16),
-    marginBottom: verticalScale(12),
+    padding: moderateScale(14),
+    marginBottom: verticalScale(10),
   },
-  cardTopRow: {
+  cardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: verticalScale(8),
+    gap: scale(8),
+  },
+  cardOverline: {
+    flex: 1,
+    fontSize: moderateScale(10),
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  cardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(16),
   },
   cardTitleBlock: {
     flex: 1,
   },
-  cardOverline: {
-    fontSize: moderateScale(10),
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: verticalScale(4),
-  },
   cardTitle: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(15),
     fontWeight: '800',
-    marginBottom: verticalScale(4),
-  },
-  cardMeta: {
-    fontSize: moderateScale(11),
-    fontWeight: '600',
+    lineHeight: moderateScale(20),
+    marginBottom: verticalScale(10),
   },
   metricsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: scale(8),
-    marginTop: verticalScale(14),
   },
   metricPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(6),
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(8),
-    borderRadius: moderateScale(999),
+    gap: scale(4),
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(8),
     borderWidth: 1,
   },
-  metricPillNeutral: {
-    backgroundColor: 'rgba(0,0,0,0.03)',
-  },
   metricPillBlue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(4),
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(8),
+    borderWidth: 1,
     backgroundColor: 'rgba(37,99,235,0.08)',
     borderColor: 'rgba(37,99,235,0.18)',
-  },
-  metricPillAmber: {
-    backgroundColor: 'rgba(217,119,6,0.08)',
-    borderColor: 'rgba(217,119,6,0.18)',
   },
   metricText: {
     fontSize: moderateScale(11),
     fontWeight: '800',
   },
   metricTextBlue: {
-    color: '#2563EB',
-  },
-  metricTextAmber: {
-    color: '#D97706',
-  },
-  keyword: {
-    fontSize: moderateScale(12),
-    lineHeight: moderateScale(18),
-  },
-  keywordValue: {
-    fontWeight: '700',
-  },
-  resourceHint: {
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-  },
-  cardFooter: {
-    marginTop: verticalScale(14),
-    paddingTop: verticalScale(12),
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.14)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: scale(10),
-  },
-  footerCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  openButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(4),
-    borderRadius: moderateScale(999),
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    minWidth: scale(86),
-    justifyContent: 'center',
-  },
-  openButtonText: {
     fontSize: moderateScale(11),
     fontWeight: '800',
-    color: '#fff',
+    color: '#2563EB',
+  },
+  keywordBadge: {
+    borderRadius: moderateScale(6),
+    borderWidth: 1,
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+  },
+  keywordBadgeText: {
+    fontSize: moderateScale(9),
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  openIconWrap: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: moderateScale(18),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',

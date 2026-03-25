@@ -518,7 +518,7 @@ function ModelGallery({
         />
         <TouchableOpacity
           onPress={onBack}
-          style={styles.bannerIconWrap}
+          style={styles.backButtonIconWrap}
           activeOpacity={0.7}>
           <ChevronLeft size={moderateScale(24)} color="#fff" strokeWidth={2.4} />
         </TouchableOpacity>
@@ -534,23 +534,7 @@ function ModelGallery({
         <View style={[styles.curve, { backgroundColor: colors.background }]} />
       </View>
 
-      {!models.length ? (
-        <View style={styles.emptyState}>
-          <View style={[styles.emptyIconBubble, { backgroundColor: colors.card }]}>
-            <Box size={moderateScale(36)} color={colors.textTertiary} strokeWidth={2} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Models Available</Text>
-          <Text style={[styles.emptyCopy, { color: colors.textSecondary }]}>
-            No 3D models found for {environment.name || environment.folderName}.
-          </Text>
-          <TouchableOpacity onPress={onBack} activeOpacity={0.8} style={styles.backToWorldsButton}>
-            <ChevronLeft size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
-            <Text style={styles.backToWorldsText}>Back to Environments</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          <View style={[styles.searchContainer, {
+      <View style={[styles.searchContainer, {
             backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
             borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
           }]}>
@@ -569,12 +553,30 @@ function ModelGallery({
               </TouchableOpacity>
             )}
           </View>
+
+      {!models.length ? (
+        <View style={styles.emptyState}>
+          <View style={[styles.emptyIconBubble, { backgroundColor: colors.card }]}>
+            <Box size={moderateScale(36)} color={colors.textTertiary} strokeWidth={2} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Models Available</Text>
+          <Text style={[styles.emptyCopy, { color: colors.textSecondary }]}>
+            No 3D models found for {environment.name || environment.folderName}.
+          </Text>
+          <TouchableOpacity onPress={onBack} activeOpacity={0.8} style={styles.backToWorldsButton}>
+            <ChevronLeft size={moderateScale(16)} color="#fff" strokeWidth={2.2} />
+            <Text style={styles.backToWorldsText}>Back to Environments</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+      
+          
           <View style={styles.modelsGridHeader}>
             <Text style={[styles.modelsCountText, { color: colors.textSecondary }]}>
               <Text style={[styles.modelsCountStrong, { color: colors.text }]}>{models.length}</Text> models available
             </Text>
           </View>
-        </>
+     
       )}
     </>
   ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
@@ -620,9 +622,9 @@ function ModelGallery({
               <Text style={styles.modelName} numberOfLines={1}>
                 {item.name}
               </Text>
-              <View style={styles.modelStarsBadge}>
+              {/* <View style={styles.modelStarsBadge}>
                 <Text style={styles.modelStarsText}>{stars}</Text>
-              </View>
+              </View> */}
             </View>
           </View>
         </TouchableOpacity>
@@ -978,6 +980,7 @@ function ARModelOptionsSheet({
       gradient: ['#6486ee', '#7663d7', '#8153b5'] as string[],
       locations: [0, 0.6, 1] as number[],
       onPress: onView3D,
+      image: require('@/assets/images/ar_modes/3D.webp'),
     },
     {
       label: 'Color Sheet → 3D',
@@ -985,6 +988,7 @@ function ARModelOptionsSheet({
       gradient: ['#c66fe4', '#dd66cc', '#e660bf', '#f19769'] as string[],
       locations: [0, 0.4, 0.7, 1] as number[],
       onPress: onViewSheet,
+      image: require('@/assets/images/ar_modes/Color.webp'),
     },
     {
       label: 'Scan Drawing → 3D',
@@ -992,6 +996,7 @@ function ARModelOptionsSheet({
       gradient: ['#479bf2', '#47b2c6', '#47da91'] as string[],
       locations: [0, 0.75, 0.9] as number[],
       onPress: onScan,
+      image: require('@/assets/images/ar_modes/Scan.webp'),
     },
   ];
 
@@ -1021,6 +1026,9 @@ function ARModelOptionsSheet({
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
+              {btn.image && (
+                <Image source={btn.image} style={sheetLandscapeStyles.btnImage} resizeMode="contain" />
+              )}
               <Text style={sheetLandscapeStyles.btnTitle}>{btn.label}</Text>
               <Text style={sheetLandscapeStyles.btnSub} numberOfLines={1}>{btn.sub}</Text>
             </TouchableOpacity>
@@ -1047,6 +1055,11 @@ function ARModelOptionsSheet({
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               style={styles.sheetButtonGradient}
             />
+            {btn.image && (
+              <View style={styles.sheetButtonIconContainer}>
+                <Image source={btn.image} style={styles.sheetButtonImage} resizeMode="contain" />
+              </View>
+            )}
             <View style={styles.sheetButtonTexts}>
               <Text style={styles.sheetButtonTitle}>{btn.label}</Text>
               <Text style={styles.sheetButtonSub}>{btn.sub}</Text>
@@ -1111,6 +1124,11 @@ const sheetLandscapeStyles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     fontWeight: '500',
     textAlign: 'center',
+  },
+  btnImage: {
+    width: scale(60),
+    height: verticalScale(60),
+    marginBottom: verticalScale(1),
   },
 });
 
@@ -1234,6 +1252,17 @@ const styles = StyleSheet.create({
     width: scale(64),
     height: scale(64),
     borderRadius: moderateScale(16),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginRight: scale(8),
+  },
+  backButtonIconWrap: {
+    width: scale(44),
+    height: scale(44),
+    borderRadius: moderateScale(13),
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1494,6 +1523,7 @@ const styles = StyleSheet.create({
   modelName: {
     flex: 1,
     fontSize: moderateScale(12),
+    textAlign: 'center',
     fontWeight: '700',
     color: '#fff',
   },
@@ -1632,18 +1662,31 @@ const styles = StyleSheet.create({
     gap: verticalScale(12),
   },
   sheetButtonWrap: {
-    height: verticalScale(76),
+    height: verticalScale(88),
     borderRadius: moderateScale(18),
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: scale(20),
+    paddingRight: scale(16),
+  },
+  sheetButtonIconContainer: {
+    width: scale(90),
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingLeft: scale(8),
+    marginRight: scale(4),
+  },
+  sheetButtonImage: {
+    width: '100%',
+    height: '100%',
   },
   sheetButtonGradient: {
     ...StyleSheet.absoluteFillObject,
   },
   sheetButtonTexts: {
     flex: 1,
+    paddingLeft: scale(2),
   },
   sheetButtonTitle: {
     fontSize: moderateScale(17),
@@ -1664,7 +1707,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: scale(8),
   },
   sheetButtonArrowText: {
     fontSize: moderateScale(20),
@@ -1676,10 +1718,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: H_PAD,
-    marginTop: verticalScale(16),
+    marginTop: verticalScale(10),
     marginBottom: verticalScale(6),
     paddingHorizontal: scale(14),
-    height: verticalScale(48),
+    height: verticalScale(40),
     borderRadius: moderateScale(24),
     borderWidth: 1,
     gap: scale(10),

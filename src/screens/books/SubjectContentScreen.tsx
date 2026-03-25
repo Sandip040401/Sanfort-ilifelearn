@@ -98,22 +98,28 @@ function SubjectContentScreenContent() {
           videoVolumes: [],
           arSheets: []
         };
-        return normalizeConceptsPayload(payload, {
+        const result = normalizeConceptsPayload(payload, {
           gradeKey,
           gradeName,
           subjectKey,
           subjectName: book.subject || subjectName,
           subjectColor,
         });
+        console.log('--- Subject Content Data (Sanfort) ---');
+        console.log(JSON.stringify(result, null, 2));
+        return result;
       } else {
         const response = await BooksService.getConceptsForHome(gradeKey, subjectKey);
-        return normalizeConceptsPayload(response.data?.data ?? response.data, {
+        const result = normalizeConceptsPayload(response.data?.data ?? response.data, {
           gradeKey,
           gradeName,
           subjectKey,
           subjectName,
           subjectColor,
         });
+        console.log('--- Subject Content Data (Standard) ---');
+        console.log(JSON.stringify(result, null, 2));
+        return result;
       }
     },
   });
@@ -263,79 +269,13 @@ function SubjectContentScreenContent() {
               </View>
             </View>
 
-            <Text allowFontScaling={false} style={styles.heroEyebrow}>
-              {subjectMeta?.badge || 'Live subject library'}
-            </Text>
             <Text style={styles.heroTitle}>{subjectDisplayName}</Text>
-            <Text style={styles.heroSubtitle}>
-              Browse concepts, guided video lessons and ebooks from one focused learning space.
-            </Text>
-
-            {/* <View style={[styles.summaryRow, isTablet && styles.summaryRowTablet]}>
-              {tabs.map(tab => (
-                <View key={tab.key} style={styles.summaryCard}>
-                  <Text allowFontScaling={false} style={styles.summaryValue}>
-                    {tab.count}
-                  </Text>
-                  <Text allowFontScaling={false} style={styles.summaryLabel}>
-                    {tab.label}
-                  </Text>
-                </View>
-              ))}
-            </View> */}
+            
           </View>
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
         </View>
 
-        <View style={[styles.toolbarWrap, heroInnerWidthStyle]}>
-          <View style={[styles.tabsShell, tabsShellStyle]}>
-            {tabs.map(tab => {
-              const selected = activeTab === tab.key;
-
-              return (
-                <Pressable
-                  key={tab.key}
-                  onPress={() => handleTabPress(tab.key)}
-                  style={[
-                    styles.tabButton,
-                    selected ? activeTabButtonStyle : styles.tabButtonIdle,
-                  ]}>
-                  <View style={styles.tabButtonContent}>
-                    <View
-                      style={[
-                        styles.tabCount,
-                        selected ? activeCountStyle : inactiveCountStyle,
-                      ]}>
-                    <Text
-                      allowFontScaling={false}
-                      style={[
-                        styles.tabCountText,
-                        selected ? activeCountTextStyle : inactiveCountTextStyle,
-                      ]}>
-                      {tab.count}
-                    </Text>
-                  </View>
-                  <Text
-                    allowFontScaling={false}
-                    numberOfLines={1}
-                    style={[
-                      styles.tabText,
-                      selected
-                        ? {color: '#fff'}
-                        : inactiveTabTextStyle,
-                    ]}>
-                    {tab.label}
-                  </Text>
-                </View>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text allowFontScaling={false} style={[styles.toolbarHint, {color: colors.textSecondary}]}>
-            Pull to refresh inside the active tab
-          </Text>
-        </View>
+       
       </>
     ),
     [

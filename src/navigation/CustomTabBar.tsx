@@ -14,14 +14,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   Home,
-  Glasses,
-  Globe,
   Gamepad2,
   BookOpen,
 } from 'lucide-react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useTheme } from '@/theme';
 import { useTabBarScroll } from './TabBarScrollContext';
+import ARIcon from '@/components/icons/ARIcon';
+import WebVRIcon from '@/components/icons/WebVRIcon';
 
 export const TAB_BAR_HEIGHT = verticalScale(56);
 
@@ -29,13 +29,13 @@ export const TAB_BAR_HEIGHT = verticalScale(56);
 // ReadAloud & ARSheets stay registered in navigator so tabNav.navigate() works
 const VISIBLE_TABS = ['Home', 'AR', 'WebVR', 'Books'] as const;
 
-const TAB_ICONS = {
+const TAB_ICONS: Record<string, any> = {
   Home: Home,
-  AR: Glasses,
-  WebVR: Globe,
+  AR: ARIcon,
+  WebVR: WebVRIcon,
   Games: Gamepad2,
   Books: BookOpen,
-} as const;
+};
 
 const TAB_LABELS: Record<string, string> = {
   Home: 'Home',
@@ -132,11 +132,27 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
       <Animated.View style={[styles.iconWrap, iconStyle]}>
         {/* Active icon layer */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.iconLayer, activeIconOpacity]}>
-          {Icon && <Icon size={22} color={primaryColor} strokeWidth={2.2} />}
+          {Icon && (
+            <Icon
+              size={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              width={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              height={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              color={primaryColor}
+              strokeWidth={route.name === 'AR' ? 3.2 : 1.4}
+            />
+          )}
         </Animated.View>
         {/* Inactive icon layer */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.iconLayer, inactiveIconOpacity]}>
-          {Icon && <Icon size={22} color={inactiveColor} strokeWidth={1.8} />}
+          {Icon && (
+            <Icon
+              size={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              width={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              height={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              color={inactiveColor}
+              strokeWidth={route.name === 'AR' ? 2.5 : 1.2}
+            />
+          )}
         </Animated.View>
       </Animated.View>
 

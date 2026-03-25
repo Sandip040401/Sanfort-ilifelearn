@@ -228,10 +228,10 @@ function BooksScreenContent() {
               </View>
             </View> */}
 
-            <Text style={styles.headerTitle}>Explore Grade Books</Text>
-            <Text style={styles.headerSub}>
+            <Text style={styles.headerTitle}>Explore by Grade</Text>
+            {/* <Text style={styles.headerSub}>
               Structured reading journeys with concepts, videos and ebooks grouped by level.
-            </Text>
+            </Text> */}
 
             {/* <View style={styles.statsBar}>
               {[
@@ -256,13 +256,13 @@ function BooksScreenContent() {
         <View style={styles.content}>
           <View style={[styles.contentInner, { width: contentWidth - H_PAD * 2 }]}>
 
-
+{/* 
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Choose Grade
             </Text>
             <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
               Start with the right learning stage and open the matching subject library.
-            </Text>
+            </Text> */}
 
             <View style={[styles.gradeGrid, showTwoColumn && styles.gradeGridTablet]}>
               {loading ? (
@@ -434,8 +434,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#fff',
     lineHeight: moderateScale(34),
-    marginTop: verticalScale(18),
-    marginBottom: verticalScale(8),
+    marginTop: verticalScale(24),
+    marginBottom: verticalScale(15),
     maxWidth: '94%',
   },
   headerSub: {

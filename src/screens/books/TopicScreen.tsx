@@ -1,20 +1,22 @@
-import React, {useState} from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
+import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useNavigation, useRoute} from '@react-navigation/native';
-import type {RouteProp} from '@react-navigation/native';
-import type {StackNavigationProp} from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
 import {
   ArrowLeft,
   FileText,
@@ -23,14 +25,14 @@ import {
   Tag,
 } from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
-import MediaViewer, {type MediaViewerPayload} from '@/components/MediaViewer';
-import {useScreenReady} from '@/hooks/useScreenReady';
-import {useTheme} from '@/theme';
-import type {BooksStackParamList} from '@/types';
-import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
-import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
-import {withAlpha} from './books.data';
-import {getYouTubeThumbnailUrl, isYouTubeUrl} from '@/utils/video';
+import MediaViewer, { type MediaViewerPayload } from '@/components/MediaViewer';
+import { useScreenReady } from '@/hooks/useScreenReady';
+import { useTheme } from '@/theme';
+import type { BooksStackParamList } from '@/types';
+import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
+import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
+import { withAlpha } from './books.data';
+import { getYouTubeThumbnailUrl, isYouTubeUrl } from '@/utils/video';
 
 type TopicRouteProp = RouteProp<BooksStackParamList, 'TopicDetail'>;
 type TopicNavigationProp = StackNavigationProp<BooksStackParamList>;
@@ -53,13 +55,34 @@ const getFileLabelFromUrl = (url: string, fallback: string) => {
   }
 };
 
+const getKeywordStyles = (keyword: string = '') => {
+  const k = keyword.trim();
+  switch (k) {
+    case 'English':
+      return { bg: '#DBEAFE', text: '#1D4ED8', border: '#BAE6FD' };
+    case 'Numeracy':
+      return { bg: '#D1FAE5', text: '#059669', border: '#A7F3D0' };
+    case 'Hindi':
+      return { bg: '#FFEDD5', text: '#C2410C', border: '#FED7AA' };
+    case 'EVS':
+      return { bg: '#DCFCE7', text: '#166534', border: '#BBF7D0' };
+    case 'Conceptual Learning':
+      return { bg: '#F3E8FF', text: '#7E22CE', border: '#E9D5FF' };
+    case 'Other Concepts':
+      return { bg: '#F1F5F9', text: '#475569', border: '#E2E8F0' };
+    default:
+      return { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' };
+  }
+};
+
 function TopicScreenContent() {
-  const {colors, isDark} = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const {onScroll} = useTabBarHideOnScroll();
+  const { onScroll } = useTabBarHideOnScroll();
   const navigation = useNavigation<TopicNavigationProp>();
   const route = useRoute<TopicRouteProp>();
-  const {topic, subjectColor, subjectName, gradeName} = route.params;
+  const { topic, subjectColor, subjectName, gradeName } = route.params;
+  const { width: windowWidth } = useWindowDimensions();
   const [selectedMedia, setSelectedMedia] = useState<MediaViewerPayload | null>(null);
   const screenReady = useScreenReady();
   const safeAccent = subjectColor && subjectColor.startsWith('#')
@@ -93,21 +116,22 @@ function TopicScreenContent() {
       return null;
     }
 
+    const gridGap = scale(12);
+    // 2 columns: (total width - padding - gap) / 2
+    const columnWidth = (windowWidth - scale(40) - gridGap) / 2;
+
     return (
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, {color: colors.text}]}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
           {title} ({items.length})
         </Text>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.resourcesRow}>
+        <View style={styles.resourcesGrid}>
           {items.map((item, index) => {
             const thumbnailUrl = kind === 'video' ? getYouTubeThumbnailUrl(item) : null;
             const label =
               kind === 'image' || kind === 'video'
-                ? `${safeTopic.title} ${index + 1}`
+                ? `${safeTopic.title}`
                 : `Worksheet ${index + 1}`;
 
             return (
@@ -122,19 +146,20 @@ function TopicScreenContent() {
                   })
                 }
                 style={[
-                  styles.resourceCard,
+                  styles.resourceCardGrid,
                   {
+                    width: columnWidth,
                     backgroundColor: colors.surface,
-                    borderColor: isDark ? colors.border : withAlpha(safeAccent, 0.14),
+                    borderColor: isDark ? colors.border : withAlpha(safeAccent, 0.12),
                   },
                 ]}>
                 {kind === 'image' ? (
-                  <Image source={{uri: item}} resizeMode="cover" style={styles.resourceImage} />
+                  <Image source={{ uri: item }} resizeMode="cover" style={styles.resourceImageGrid} />
                 ) : kind === 'video' && thumbnailUrl ? (
                   <ImageBackground
-                    source={{uri: thumbnailUrl}}
+                    source={{ uri: thumbnailUrl }}
                     resizeMode="cover"
-                    style={styles.resourcePoster}
+                    style={styles.resourcePosterGrid}
                     imageStyle={styles.resourcePosterImage}>
                     <LinearGradient
                       colors={['rgba(15,23,42,0.08)', 'rgba(15,23,42,0.72)']}
@@ -145,16 +170,16 @@ function TopicScreenContent() {
                           {isYouTubeUrl(item) ? 'YouTube' : 'Video'}
                         </Text>
                       </View>
-                      <PlayCircle size={moderateScale(36)} color="#fff" strokeWidth={1.8} />
+                      <PlayCircle size={moderateScale(28)} color="#fff" strokeWidth={2.4} />
                     </LinearGradient>
                   </ImageBackground>
                 ) : (
                   <LinearGradient
-                    colors={[withAlpha(safeAccent, 0.18), withAlpha(safeAccent, 0.06)]}
+                    colors={[withAlpha(safeAccent, 0.14), withAlpha(safeAccent, 0.04)]}
                     locations={[0, 1]}
-                    style={styles.resourcePoster}>
+                    style={styles.resourcePosterGrid}>
                     {kind === 'video' ? (
-                      <PlayCircle size={moderateScale(36)} color={safeAccent} strokeWidth={1.8} />
+                      <PlayCircle size={moderateScale(28)} color={safeAccent} strokeWidth={2.4} />
                     ) : (
                       <FileText size={moderateScale(30)} color={safeAccent} strokeWidth={1.8} />
                     )}
@@ -163,25 +188,22 @@ function TopicScreenContent() {
 
                 <Text
                   allowFontScaling={false}
-                  numberOfLines={1}
+                  numberOfLines={2}
                   ellipsizeMode="tail"
-                  style={[styles.resourceLabel, {color: colors.text}]}>
+                  style={[styles.resourceLabelGrid, { color: colors.text }]}>
                   {label}
-                </Text>
-                <Text allowFontScaling={false} style={[styles.resourceMeta, {color: colors.textSecondary}]}>
-                  Tap to open
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
     );
   };
 
   return (
     <>
-      <View style={[styles.root, {backgroundColor: isDark ? colors.background : safeAccent}]}>
+      <View style={[styles.root, { backgroundColor: isDark ? colors.background : safeAccent }]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           onScroll={onScroll}
@@ -193,72 +215,77 @@ function TopicScreenContent() {
               paddingBottom: bottomContentInset,
             },
           ]}>
-          <View style={[styles.headerOuter, {paddingTop: insets.top + verticalScale(12)}]}>
+          <View style={[styles.headerOuter, { paddingTop: insets.top + verticalScale(12) }]}>
             <LinearGradient
-              colors={[safeAccent, withAlpha(safeAccent, 0.74)]}
+              colors={[safeAccent, withAlpha(safeAccent, 0.85)]}
               locations={[0, 1]}
-              start={{x: 0, y: 0}}
-              end={{x: 1, y: 1}}
+              start={{ x: 0, y: 0.2 }}
+              end={{ x: 1, y: 0.8 }}
               style={StyleSheet.absoluteFillObject}
             />
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.goBack()}
-              style={[
-                styles.backButton,
-                {backgroundColor: headerBadgeBg, borderColor: headerBadgeBorder},
-              ]}>
-              <ArrowLeft size={moderateScale(20)} color={headerTextColor} strokeWidth={2.2} />
-            </TouchableOpacity>
+            {/* Decorative background elements for a premium feel */}
+            <View style={styles.decorativeCircle1} />
+            <View style={styles.decorativeCircle2} />
 
-            <Text style={[styles.eyebrow, {color: quickStatLabelColor}]}>
-              {gradeName} • {subjectName}
-            </Text>
-            <Text style={[styles.headerTitle, {color: headerTextColor}]}>{safeTopic.title}</Text>
-            <Text style={[styles.headerSubtitle, {color: headerSubTextColor}]}>
-              {safeTopic.conceptTitle} 
-              {/* • Volume {safeTopic.volumeNumber} */}
-            </Text>
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroTopLeft}>
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  style={[
+                    styles.backButton,
+                    { backgroundColor: 'rgba(255, 255, 255, 0.15)', borderColor: 'rgba(255, 255, 255, 0.2)' },
+                  ]}>
+                  <ArrowLeft size={moderateScale(22)} color="#FFFFFF" strokeWidth={2.5} />
+                </Pressable>
 
-            {/* Quick stats removed as requested */}
-            <View style={[styles.curve, {backgroundColor: colors.background}]} />
+                <View style={[styles.breadcrumbBadge, { justifyContent: 'center' }]}>
+                  {!!gradeName && !!subjectName && (
+                    <Text style={[styles.breadcrumbBranding, { color: 'rgba(255, 255, 255, 0.7)' }]} numberOfLines={1}>
+                      {gradeName.toUpperCase()} • {subjectName.toUpperCase()}
+                    </Text>
+                  )}
+                  <Text style={[styles.headerSubtitle, { color: '#FFFFFF' }]} numberOfLines={1}>
+                    {safeTopic.conceptTitle}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.heroMain}>
+              {!!safeTopic.keyword && (
+                <View style={styles.keywordWrapper}>
+                  <Tag size={moderateScale(12)} color="rgba(255, 255, 255, 0.9)" strokeWidth={2.5} />
+                  <Text style={styles.keywordTextWhite}>
+                    {safeTopic.keyword}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={styles.headerTitlePro} numberOfLines={2}>
+                {safeTopic.title.match(/^\d+/)
+                  ? safeTopic.title
+                  : `${safeTopic.volumeNumber}. ${safeTopic.title}`}
+              </Text>
+            </View>
+
+            <View style={[styles.curvePro, { backgroundColor: colors.background }]} />
           </View>
 
           <View style={styles.content}>
             {!screenReady ? (
-              <View style={[styles.loadingCard, {backgroundColor: colors.surface}]}>
+              <View style={[styles.loadingCard, { backgroundColor: colors.surface }]}>
                 <ActivityIndicator size="small" color={safeAccent} />
-                <Text style={[styles.loadingCardTitle, {color: colors.text}]}>
+                <Text style={[styles.loadingCardTitle, { color: colors.text }]}>
                   Preparing topic preview…
                 </Text>
-                <Text style={[styles.loadingCardCopy, {color: colors.textSecondary}]}>
+                <Text style={[styles.loadingCardCopy, { color: colors.textSecondary }]}>
                   Images, videos and worksheets will appear once the transition completes.
                 </Text>
               </View>
             ) : (
               <>
-                {!!safeTopic.keyword && (
-                  <View
-                    style={[
-                      styles.keywordCard,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: isDark ? colors.border : withAlpha(safeAccent, 0.14),
-                      },
-                    ]}>
-                    <View style={[styles.keywordIconWrap, {backgroundColor: withAlpha(safeAccent, 0.10)}]}>
-                      <Tag size={moderateScale(18)} color={safeAccent} strokeWidth={2} />
-                    </View>
-                    <View style={styles.keywordContent}>
-                      <Text style={[styles.keywordLabel, {color: colors.textSecondary}]}>Keyword</Text>
-                      <Text style={[styles.keywordValue, {color: colors.text}]}>{safeTopic.keyword}</Text>
-                    </View>
-                  </View>
-                )}
-
-              
-
-                {renderResourceSection('Images', safeTopic.images, 'image')}
+                <View style={{ height: verticalScale(4) }} />
+                {renderResourceSection('Concept Sheets', safeTopic.images, 'image')}
                 {renderResourceSection('Videos', safeTopic.videos, 'video')}
               </>
             )}
@@ -292,6 +319,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(20),
     paddingBottom: verticalScale(28),
     overflow: 'hidden',
+    position: 'relative',
+  },
+  decorativeCircle1: {
+    position: 'absolute',
+    top: -scale(40),
+    right: -scale(20),
+    width: scale(150),
+    height: scale(150),
+    borderRadius: scale(75),
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorativeCircle2: {
+    position: 'absolute',
+    bottom: -scale(20),
+    left: -scale(40),
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: verticalScale(16),
+    marginTop: verticalScale(4),
+  },
+  heroTopLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(12),
+    flex: 1,
   },
   backButton: {
     width: scale(42),
@@ -299,65 +357,66 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(14),
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    marginBottom: verticalScale(18),
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
-  eyebrow: {
-    fontSize: moderateScale(11),
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.75)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: verticalScale(8),
+  breadcrumbBadge: {
+    gap: verticalScale(1),
+    flex: 1,
   },
-  headerTitle: {
-    fontSize: moderateScale(28),
+  breadcrumbBranding: {
+    fontSize: moderateScale(10),
     fontWeight: '800',
-    color: '#fff',
-    marginBottom: verticalScale(6),
+    letterSpacing: 0.8,
   },
   headerSubtitle: {
-    fontSize: moderateScale(13),
-    color: 'rgba(255,255,255,0.82)',
+    fontSize: moderateScale(14),
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
-  quickStats: {
+  heroMain: {
+    marginTop: verticalScale(4),
+  },
+  keywordWrapper: {
     flexDirection: 'row',
-    gap: scale(10),
-    marginTop: verticalScale(18),
-  },
-  quickStatCard: {
-    flex: 1,
-    borderRadius: moderateScale(18),
-    paddingVertical: verticalScale(14),
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(8),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: verticalScale(12),
+    gap: scale(6),
   },
-  quickStatValue: {
-    marginTop: verticalScale(8),
-    fontSize: moderateScale(17),
-    fontWeight: '800',
-    color: '#fff',
-  },
-  quickStatLabel: {
-    marginTop: verticalScale(3),
+  keywordTextWhite: {
     fontSize: moderateScale(10),
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  curve: {
+  headerTitlePro: {
+    fontSize: moderateScale(25),
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: moderateScale(31),
+    letterSpacing: -0.5,
+    paddingBottom: verticalScale(16),
+  },
+  curvePro: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -1,
     left: 0,
     right: 0,
-    height: verticalScale(18),
-    borderTopLeftRadius: moderateScale(24),
-    borderTopRightRadius: moderateScale(24),
+    height: verticalScale(24),
+    borderTopLeftRadius: moderateScale(28),
+    borderTopRightRadius: moderateScale(28),
   },
   content: {
     paddingHorizontal: scale(20),
-    paddingTop: verticalScale(18),
   },
   keywordCard: {
     borderRadius: moderateScale(22),
@@ -365,108 +424,116 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(12),
-    marginBottom: verticalScale(18),
+    gap: scale(14),
+    marginBottom: verticalScale(24),
   },
   keywordIconWrap: {
-    width: scale(46),
-    height: scale(46),
-    borderRadius: moderateScale(14),
+    width: scale(48),
+    height: scale(48),
+    borderRadius: moderateScale(16),
     alignItems: 'center',
     justifyContent: 'center',
   },
   keywordContent: {
     flex: 1,
+    gap: verticalScale(4),
   },
   keywordLabel: {
-    fontSize: moderateScale(11),
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: verticalScale(4),
-  },
-  keywordValue: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(10),
     fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  keywordBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: moderateScale(999),
+    borderWidth: 1,
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(4),
+  },
+  keywordBadgeText: {
+    fontSize: moderateScale(13),
+    fontWeight: '900',
   },
   section: {
-    marginBottom: verticalScale(18),
+    marginBottom: verticalScale(24),
   },
   sectionTitle: {
-    fontSize: moderateScale(17),
-    fontWeight: '800',
-    marginBottom: verticalScale(12),
+    fontSize: moderateScale(19),
+    fontWeight: '900',
+    marginBottom: verticalScale(14),
+    letterSpacing: -0.2,
   },
-  resourcesRow: {
+  resourcesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: scale(12),
   },
-  resourceCard: {
-    width: scale(168),
-    borderRadius: moderateScale(20),
-    borderWidth: 1,
-    padding: moderateScale(12),
+  resourceCardGrid: {
+    borderRadius: moderateScale(24),
+    borderWidth: 1.5,
+    padding: moderateScale(10),
+    marginBottom: verticalScale(6),
   },
-  resourceImage: {
+  resourceImageGrid: {
     width: '100%',
-    height: verticalScale(120),
-    borderRadius: moderateScale(16),
-    marginBottom: verticalScale(12),
-    backgroundColor: '#E5E7EB',
+    height: verticalScale(110),
+    borderRadius: moderateScale(18),
+    marginBottom: verticalScale(10),
+    backgroundColor: '#F3F4F6',
   },
-  resourcePoster: {
+  resourcePosterGrid: {
     width: '100%',
-    height: verticalScale(120),
-    borderRadius: moderateScale(16),
-    marginBottom: verticalScale(12),
+    height: verticalScale(110),
+    borderRadius: moderateScale(18),
+    marginBottom: verticalScale(10),
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   resourcePosterImage: {
-    borderRadius: moderateScale(16),
+    borderRadius: moderateScale(18),
   },
   resourcePosterOverlay: {
     flex: 1,
-    borderRadius: moderateScale(16),
-    padding: moderateScale(10),
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: moderateScale(8),
   },
   resourcePosterBadge: {
     position: 'absolute',
-    top: verticalScale(10),
-    left: scale(10),
-    minHeight: verticalScale(24),
+    top: verticalScale(8),
+    left: scale(8),
     paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
     borderRadius: moderateScale(999),
-    backgroundColor: 'rgba(15,23,42,0.82)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   resourcePosterBadgeText: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(8),
     fontWeight: '800',
     color: '#fff',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  resourceLabel: {
-    fontSize: moderateScale(14),
-    fontWeight: '800',
-    marginBottom: verticalScale(4),
+  resourceLabelGrid: {
+    fontSize: moderateScale(13),
+    fontWeight: '900',
+    lineHeight: moderateScale(18),
+    marginBottom: verticalScale(2),
   },
-  resourceMeta: {
+  resourceMetaGrid: {
     fontSize: moderateScale(11),
-    fontWeight: '600',
+    fontWeight: '700',
+    opacity: 0.6,
   },
   loadingCard: {
     borderRadius: moderateScale(22),
-    paddingHorizontal: scale(18),
-    paddingVertical: verticalScale(20),
+    padding: verticalScale(32),
     alignItems: 'center',
-    gap: verticalScale(8),
+    gap: verticalScale(12),
   },
   loadingCardTitle: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(17),
     fontWeight: '800',
   },
   loadingCardCopy: {

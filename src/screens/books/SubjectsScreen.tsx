@@ -37,7 +37,8 @@ function SubjectsScreenContent() {
   const route = useRoute<SubjectsRouteProp>();
   const [refreshing, setRefreshing] = React.useState(false);
   const {gradeKey, gradeName, gradeColors, books = []} = route.params as any;
-  const {width} = useWindowDimensions();
+  const {width, height} = useWindowDimensions();
+  const isLandscape = width > height;
   const cardText = colors.text;
   const cardSubText = colors.textSecondary;
   const cardMetaText = colors.textSecondary;
@@ -52,9 +53,11 @@ function SubjectsScreenContent() {
     : contentWidth - H_PAD * 2;
   const isNarrowCard = cardWidth < scale(320);
   const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
-  const cardHeight = isTablet
-    ? Math.max(verticalScale(240), Math.min(verticalScale(300), cardWidth * 1.1))
-    : undefined;
+  const cardHeight = isLandscape
+    ? Math.max(verticalScale(110), Math.min(verticalScale(140), cardWidth * 0.45))
+    : (isTablet
+        ? Math.max(verticalScale(170), Math.min(verticalScale(210), cardWidth * 0.95))
+        : undefined);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -107,16 +110,16 @@ function SubjectsScreenContent() {
 
               <View style={styles.headerBadge}>
                 <Layers3 size={moderateScale(16)} color="#fff" strokeWidth={2} />
-                <Text style={styles.headerBadgeText}>Books Library</Text>
+                <Text style={styles.headerBadgeText}>Themes Library</Text>
               </View>
             </View>
 
-            <Text style={styles.headerEyebrow}>
+            {/* <Text style={styles.headerEyebrow}>
               {gradeMeta?.subtitle ?? 'Learning stage'}
-            </Text>
+            </Text> */}
             <Text style={styles.headerTitle}>{gradeName}</Text>
             <Text style={styles.headerSubtitle}>
-              Open a subject library with live concepts, lesson videos and ebook resources for this stage.
+              Choose your Theme
             </Text>
 
             {/* <View style={styles.headerStats}>
@@ -142,17 +145,7 @@ function SubjectsScreenContent() {
 
         <View style={styles.content}>
           <View style={[styles.contentInner, {width: contentWidth - H_PAD * 2}]}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionCopy}>
-                <Text style={styles.sectionEyebrow}>Learning Streams</Text>
-                <Text style={[styles.sectionTitle, {color: colors.text}]}>
-                  Choose your book
-                </Text>
-                <Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>
-                  Select a book to access live concepts, videos and ebooks.
-                </Text>
-              </View>
-            </View>
+ 
 
             <View style={[styles.grid, isTablet && styles.gridTablet]}>
               {books.length === 0 ? (
@@ -162,6 +155,7 @@ function SubjectsScreenContent() {
               ) : (
                 books.map((book: any, idx: number) => {
                   const subjectColor = book.design?.accent || headerColors[0];
+                  console.log(book);
                   return (
                     <TouchableOpacity
                       key={book._id || idx}
@@ -194,7 +188,8 @@ function SubjectsScreenContent() {
                         style={StyleSheet.absoluteFill}
                       />
                       <View style={styles.subjectTopRow}>
-                        <LinearGradient
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: moderateScale(12)}}>
+                          <LinearGradient
                           colors={[subjectColor, subjectColor]}
                           locations={[0, 1]}
                           start={{x: 0, y: 0}}
@@ -202,6 +197,13 @@ function SubjectsScreenContent() {
                           style={styles.subjectIconWrap}>
                           <Layers3 size={moderateScale(18)} color="#fff" strokeWidth={2} />
                         </LinearGradient>
+                        <Text
+                        style={[styles.subjectName, {color: cardText}]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail">
+                        {book.subject}
+                      </Text>
+                        </View>
 
                         <View
                           style={[
@@ -212,21 +214,8 @@ function SubjectsScreenContent() {
                         </View>
                       </View>
 
-                      <Text style={[styles.subjectEyebrow, {color: subjectColor}]}>
-                        {book.category}
-                      </Text>
-                      <Text
-                        style={[styles.subjectName, {color: cardText}]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail">
-                        {book.subject}
-                      </Text>
-                      <Text
-                        style={[styles.subjectDescription, {color: cardSubText}]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail">
-                        Tap to explore concepts
-                      </Text>
+                
+                      
 
                       <View
                         style={[
@@ -241,7 +230,7 @@ function SubjectsScreenContent() {
                             isNarrowCard && styles.subjectBadgeCompact,
                           ]}>
                           <Text style={[styles.subjectBadgeText, {color: subjectColor}]}>
-                            {book.weeks?.length ? `${book.weeks.length} Weeks` : 'Open Book'}
+                            {book.weeks?.length ? `${book.weeks.length} Weeks` : 'Explore Theme'}
                           </Text>
                         </View>
                       </View>
@@ -333,7 +322,7 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(4),
   },
   headerSubtitle: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(14),
     lineHeight: moderateScale(18),
     color: 'rgba(255,255,255,0.82)',
     maxWidth: '92%',
@@ -425,7 +414,7 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'column',
-    paddingTop: verticalScale(4),
+
   },
   gridTablet: {
     flexDirection: 'row',
@@ -436,7 +425,7 @@ const styles = StyleSheet.create({
     marginBottom: CARD_GAP,
   },
   subjectCard: {
-    minHeight: verticalScale(160),
+    minHeight: verticalScale(110),
     borderRadius: moderateScale(20),
     padding: moderateScale(16),
     borderWidth: 1,
@@ -448,12 +437,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: verticalScale(10),
+    marginBottom: verticalScale(6),
   },
   subjectIconWrap: {
-    width: scale(44),
-    height: scale(44),
-    borderRadius: moderateScale(14),
+    width: scale(38),
+    height: scale(38),
+    borderRadius: moderateScale(11),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -474,7 +463,7 @@ const styles = StyleSheet.create({
   subjectName: {
     fontSize: moderateScale(19),
     fontWeight: '800',
-    marginBottom: verticalScale(4),
+
   },
   subjectDescription: {
     fontSize: moderateScale(11),
@@ -482,7 +471,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   subjectFooter: {
-    marginTop: verticalScale(12),
+    marginTop: verticalScale(8),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

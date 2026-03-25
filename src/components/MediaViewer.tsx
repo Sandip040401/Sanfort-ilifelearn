@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
@@ -13,6 +14,12 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import Video from 'react-native-video';
 import {WebView} from 'react-native-webview';
 import {FileText, X} from 'lucide-react-native';
+import {Gesture, GestureDetector, GestureHandlerRootView} from 'react-native-gesture-handler';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import {getYouTubeEmbedUrl} from '@/utils/video';
 
 export type MediaViewerPayload = {
@@ -65,6 +72,113 @@ function getYouTubeEmbedHtml(embedUrl: string): string {
 </html>`;
 }
 
+const PinchZoomImage = ({url}: {url: string}) => {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  const focalX = useSharedValue(0);
+  const focalY = useSharedValue(0);
+
+  const displayWidth = useSharedValue(0);
+  const displayHeight = useSharedValue(0);
+
+  const {width: screenWidth, height: screenHeight} = useWindowDimensions();
+
+  const handleImageLayout = () => {
+    Image.getSize(url, (w, h) => {
+      const imgAspectRatio = w / h;
+      const screenAspectRatio = screenWidth / screenHeight;
+
+      if (imgAspectRatio > screenAspectRatio) {
+        displayWidth.value = screenWidth;
+        displayHeight.value = screenWidth / imgAspectRatio;
+      } else {
+        displayHeight.value = screenHeight;
+        displayWidth.value = screenHeight * imgAspectRatio;
+      }
+    });
+  };
+
+  const MAX_ZOOM = 5;
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate(e => {
+      const targetScale = savedScale.value * e.scale;
+      // Clamp scale to [0.8, MAX_ZOOM] for feedback, will timing back on end
+      scale.value = Math.min(Math.max(targetScale, 0.8), MAX_ZOOM);
+      focalX.value = e.focalX;
+      focalY.value = e.focalY;
+    })
+    .onEnd(() => {
+      if (scale.value < 1) {
+        scale.value = withTiming(1);
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedScale.value = 1;
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      } else {
+        savedScale.value = scale.value;
+      }
+    });
+
+  const panGesture = Gesture.Pan()
+    .minDistance(1)
+    .onUpdate(e => {
+      if (scale.value > 1) {
+        // Use the actual displayed image dimensions for clamping
+        const maxTranslateX = (displayWidth.value * (scale.value - 1)) / 2;
+        const maxTranslateY = (displayHeight.value * (scale.value - 1)) / 2;
+
+        const nextX = savedTranslateX.value + e.translationX;
+        const nextY = savedTranslateY.value + e.translationY;
+
+        translateX.value = Math.min(Math.max(nextX, -maxTranslateX), maxTranslateX);
+        translateY.value = Math.min(Math.max(nextY, -maxTranslateY), maxTranslateY);
+      }
+    })
+    .onEnd(() => {
+      if (scale.value > 1) {
+        savedTranslateX.value = translateX.value;
+        savedTranslateY.value = translateY.value;
+      } else {
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        {translateX: translateX.value},
+        {translateY: translateY.value},
+        {scale: scale.value},
+      ],
+    };
+  });
+
+  const composed = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  return (
+    <View style={styles.imageContainer}>
+      <GestureDetector gesture={composed}>
+        <Animated.Image
+          source={{uri: url}}
+          onLoad={handleImageLayout}
+          resizeMode="contain"
+          style={[styles.image, animatedStyle]}
+        />
+      </GestureDetector>
+    </View>
+  );
+};
+
 export default function MediaViewer({
   media,
   onClose,
@@ -88,7 +202,8 @@ export default function MediaViewer({
       presentationStyle="overFullScreen"
       visible={!!media}
       onRequestClose={onClose}>
-      <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
+      <GestureHandlerRootView style={{flex: 1}}>
+        <SafeAreaView edges={['top', 'bottom']} style={styles.modalRoot}>
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.headerLabel}>
@@ -108,7 +223,7 @@ export default function MediaViewer({
 
         <View style={styles.content}>
           {media.type === 'image' && (
-            <Image source={{uri: media.url}} resizeMode="contain" style={styles.image} />
+            <PinchZoomImage url={media.url} />
           )}
 
           {media.type === 'video' && (
@@ -183,6 +298,7 @@ export default function MediaViewer({
           </View>
         )}
       </SafeAreaView>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -231,6 +347,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: scale(16),
     paddingBottom: verticalScale(16),
+  },
+  imageContainer: {
+    flex: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   image: {
     flex: 1,

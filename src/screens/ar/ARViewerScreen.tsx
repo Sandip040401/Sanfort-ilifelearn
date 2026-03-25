@@ -721,9 +721,11 @@ export default function ARViewerScreen() {
           <Text style={styles.backPillText}>Back</Text>
         </TouchableOpacity>
 
-        <Text numberOfLines={1} style={styles.topBarTitle}>
-          {currentModel.name || '3D Model'}
-        </Text>
+        <View style={styles.topBarTitle}>
+          <Text numberOfLines={1} style={styles.topBarTitleText}>
+            {currentModel.name || '3D Model'}
+          </Text>
+        </View>
 
         <View style={styles.topBarActions}>
           {/* <TouchableOpacity
@@ -1671,11 +1673,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(20,20,40,0.85)',
-    borderRadius: moderateScale(16),
     paddingHorizontal: scale(10),
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
   backPill: {
     backgroundColor: '#6C4CFF',
@@ -1694,11 +1692,23 @@ const styles = StyleSheet.create({
   topBarTitle: {
     flex: 1,
     textAlign: 'center',
-    marginRight: scale(40),
+    marginRight: scale(40)
+    
+  },
+  topBarTitleText: {
     fontSize: moderateScale(13),
     fontWeight: '700',
     color: '#fff',
+    backgroundColor: 'rgba(20,20,40,0.85)',
+    borderRadius: moderateScale(10),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    width:'auto',
+    alignSelf:'center'
   },
+
   topBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
