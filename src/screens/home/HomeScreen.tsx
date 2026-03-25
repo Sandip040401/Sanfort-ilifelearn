@@ -206,7 +206,7 @@ export default function HomeScreen() {
                   <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
                     <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
                     <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}>
-                      <Icon width={isTablet ? 42 : 34} height={isTablet ? 42 : 34} color="#fff" strokeWidth={2} />
+                      <Icon width={isTablet ? 42 : (key === 'AR' ? 42 : 34)} height={isTablet ? 42 : (key === 'AR' ? 42 : 34)} color="#fff" strokeWidth={label ==='Augmented\nReality' ? 2.6 : 0.8} />
                     </View>
                     <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{label}</Text>
                     <Text style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{sub}</Text>
