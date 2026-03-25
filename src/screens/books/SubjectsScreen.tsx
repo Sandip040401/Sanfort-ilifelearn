@@ -119,7 +119,7 @@ function SubjectsScreenContent() {
             </Text> */}
             <Text style={styles.headerTitle}>{gradeName}</Text>
             <Text style={styles.headerSubtitle}>
-              Choose your Theme
+              Choose Your Theme
             </Text>
 
             {/* <View style={styles.headerStats}>
