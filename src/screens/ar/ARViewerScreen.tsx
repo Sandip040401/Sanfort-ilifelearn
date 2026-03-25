@@ -257,6 +257,7 @@ export default function ARViewerScreen() {
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const [isEraser, setIsEraser] = useState(false);
   const [sheetBrushSize, setSheetBrushSize] = useState(5);
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
@@ -333,6 +334,23 @@ export default function ARViewerScreen() {
     () => models.find(model => getModelStableId(model) === modelId) || null,
     [modelId, models],
   );
+
+  const modelUrl = useMemo(() => {
+    if (!currentModel) return '';
+    const m = currentModel as any;
+    if (m.type === 'multiple-glb' && m.parts && m.parts.length > 0) {
+      const baseUrl = ARService.getModelFileUrl(getModelStableId(currentModel));
+      const partsConfig = m.parts.map((p: any) => {
+        const filename = p.file.split('/').pop();
+        return {
+          id: p.partId,
+          url: `${baseUrl}?part=${filename}`
+        };
+      });
+      return JSON.stringify(partsConfig);
+    }
+    return ARService.getModelFileUrl(getModelStableId(currentModel));
+  }, [currentModel]);
 
   const currentEnvironment = useMemo<AREnvironmentView | null>(() => {
     const byId = environments.find(env => env._id === environmentId);
@@ -423,8 +441,30 @@ export default function ARViewerScreen() {
     setIsExporting(false);
     setExportStatusText('');
     setActiveControlCategory(null);
+    setSelectedPartId(null);
     bottomSheetModalRef.current?.dismiss();
   }, [modelId]);
+
+  useEffect(() => {
+    if (loadingModel) return;
+    const isSpecialType = (currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb';
+    if (isSpecialType) {
+      setAutoRotate(false);
+      setAudioPlaying(true);
+      sendToWebView({ type: 'toggleRotate', value: false });
+      if ((currentModel as any)?.type === 'multiple-animation-execution') {
+        sendToWebView({ type: 'playAllAnimations', value: isPlaying });
+      } else if ((currentModel as any)?.type === 'multiple-glb' && !selectedPartId) {
+        const parts = (currentModel as any).parts || [];
+        if (parts.length > 0) {
+          setSelectedPartId(parts[0].partId);
+        }
+      }
+    } else {
+      setAutoRotate(true);
+      sendToWebView({ type: 'toggleRotate', value: true });
+    }
+  }, [loadingModel, currentModel, selectedPartId]);
 
   useEffect(() => {
     if (!openPainter) {
@@ -460,11 +500,6 @@ export default function ARViewerScreen() {
     }
   }, [loadingModel, paintingEnabled, targetTextureDataUrl, textureDisplayMode]);
 
-  const modelUrl = useMemo(
-    () => (currentModel ? ARService.getModelFileUrl(getModelStableId(currentModel)) : ''),
-    [currentModel],
-  );
-
   const viewerHtml = useMemo(
     () => (modelUrl ? buildARViewerHtml(modelUrl) : ''),
     [modelUrl],
@@ -495,17 +530,27 @@ export default function ARViewerScreen() {
   );
 
   const audioSource = useMemo(() => {
+    const isMultiGlb = (currentModel as any)?.type === 'multiple-glb';
+    if (isMultiGlb && selectedPartId) {
+      const parts = (currentModel as any)?.parts || [];
+      const part = parts.find((p: any) => p.partId === selectedPartId);
+      if (part?.audio?.gridfsId) {
+        const uri = ARService.getAudioStreamUrlById(part.audio.gridfsId);
+        return uri ? { uri } : undefined;
+      }
+    }
     if (!selectedAudio?.gridfsId) {
       return undefined;
     }
     const uri = ARService.getAudioStreamUrlById(selectedAudio.gridfsId) || '';
     return uri ? { uri } : undefined;
-  }, [selectedAudio?.gridfsId]);
+  }, [currentModel, selectedPartId, selectedAudio?.gridfsId]);
 
   const currentLighting =
     LIGHTING_OPTIONS.find(item => item.name === environment) || LIGHTING_OPTIONS[0];
 
   const viewerLoading = modelsQuery.isPending || foldersQuery.isPending || !currentModel;
+  const isSpecialType = (currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb';
   const topBarTop = insets.top + verticalScale(4);
   const topBarHeight = verticalScale(44);
   const webViewTop = topBarTop + topBarHeight;
@@ -538,6 +583,13 @@ export default function ARViewerScreen() {
   const sendToSheetWebView = (payload: object) => {
     sheetWebViewRef.current?.postMessage(JSON.stringify(payload));
   };
+
+  useEffect(() => {
+    if (!loadingModel && selectedPartId) {
+      sendToWebView({ type: 'switchPart', id: selectedPartId });
+      setAudioPlaying(true);
+    }
+  }, [selectedPartId, loadingModel]);
 
   useEffect(() => {
     sendToWebView({ type: 'setBrushColor', value: brushColor });
@@ -958,31 +1010,33 @@ export default function ARViewerScreen() {
         </View>
       )}
 
-      <View style={[styles.paintSwitchContainer, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }]}>
-        <Text style={styles.paintSwitchTopLabel}>Real Texture</Text>
-        <TouchableOpacity
-          onPress={() => {
-            const next = textureDisplayMode !== 'original';
-            if (next) {
-              setTextureDisplayMode('original');
-              setPaintingEnabled(false);
-              sendToWebView({ type: 'enablePaint', value: false });
-              sendToWebView({ type: 'showOriginalTexture' });
-            } else {
-              setTextureDisplayMode('model-paint');
-              setPaintingEnabled(true);
-              sendToWebView({ type: 'enablePaint', value: true });
-              sendToWebView({ type: 'showPaintTexture' });
-            }
-          }}
-          activeOpacity={0.8}
-          style={[styles.paintSwitch, textureDisplayMode === 'original' && styles.paintSwitchActiveHighlight]}>
-          <View style={[styles.paintSwitchThumb, textureDisplayMode === 'original' && styles.paintSwitchThumbActive]} />
-          <Text style={styles.paintSwitchLabel}>
-            {textureDisplayMode === 'original' ? 'ON' : 'OFF'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {!isSpecialType && (
+        <View style={[styles.paintSwitchContainer, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }]}>
+          <Text style={styles.paintSwitchTopLabel}>Real Texture</Text>
+          <TouchableOpacity
+            onPress={() => {
+              const next = textureDisplayMode !== 'original';
+              if (next) {
+                setTextureDisplayMode('original');
+                setPaintingEnabled(false);
+                sendToWebView({ type: 'enablePaint', value: false });
+                sendToWebView({ type: 'showOriginalTexture' });
+              } else {
+                setTextureDisplayMode('model-paint');
+                setPaintingEnabled(true);
+                sendToWebView({ type: 'enablePaint', value: true });
+                sendToWebView({ type: 'showPaintTexture' });
+              }
+            }}
+            activeOpacity={0.8}
+            style={[styles.paintSwitch, textureDisplayMode === 'original' && styles.paintSwitchActiveHighlight]}>
+            <View style={[styles.paintSwitchThumb, textureDisplayMode === 'original' && styles.paintSwitchThumbActive]} />
+            <Text style={styles.paintSwitchLabel}>
+              {textureDisplayMode === 'original' ? 'ON' : 'OFF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity
         onPress={handleOpenAR}
@@ -1001,7 +1055,7 @@ export default function ARViewerScreen() {
             ...(paintingEnabled ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
             { id: 'audio', label: 'Audio', icon: Volume2 },
             { id: 'lighting', label: 'Lighting', icon: Lightbulb },
-            { id: 'sheet', label: 'Coloring Sheet', icon: ImageIcon },
+            ...(!isSpecialType ? [{ id: 'sheet', label: 'Coloring Sheet', icon: ImageIcon }] : []),
           ].map(cat => {
             const isTabActive = activeControlCategory === cat.id;
             const isStatusActive = (cat.id === 'audio' && audioPlaying) || (cat.id === 'paint' && paintingEnabled);
@@ -1056,24 +1110,66 @@ export default function ARViewerScreen() {
           keyboardShouldPersistTaps="handled">
           {activeControlCategory === 'animation' && (
             <View style={styles.sheetInner}>
-              <Text style={styles.sheetTitle}>Animations</Text>
-              <View style={[styles.chipRow, styles.sheetRow]}>
-                {animations.map((animation, idx) => (
-                  <TouchableOpacity
-                    key={animation}
+              <Text style={styles.sheetTitle}>
+                {(currentModel as any)?.type === 'multiple-glb' ? 'Explore Parts' : 'Animations'}
+              </Text>
+
+              {/* Multiple GLB: Part Selection */}
+              {(currentModel as any)?.type === 'multiple-glb' && (
+                <View style={[styles.chipRow, styles.sheetRow, { paddingBottom: verticalScale(16) }]}>
+                  {((currentModel as any).parts || []).map((part: any) => (
+                    <TouchableOpacity
+                      key={part.partId}
+                      onPress={() => {
+                        setSelectedPartId(part.partId);
+                      }}
+                      style={[
+                        styles.choiceChip,
+                        (selectedPartId === part.partId || (!selectedPartId && part.partId === (currentModel as any).parts[0]?.partId)) && styles.choiceChipTeal,
+                      ]}>
+                      <Text style={styles.choiceChipText}>{part.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Standard List/Multiple Animation List */}
+              {(currentModel as any)?.type !== 'multiple-animation-execution' && (currentModel as any)?.type !== 'multiple-glb' && (
+                <View style={[styles.chipRow, styles.sheetRow]}>
+                  {animations.map((animation, idx) => (
+                    <TouchableOpacity
+                      key={animation}
+                      onPress={() => {
+                        setSelectedAnimation(animation);
+                        sendToWebView({ type: 'setAnimation', value: animation });
+                        NativeModules.ARNativeModule?.setAnimation?.(idx);
+                      }}
+                      style={[
+                        styles.choiceChip,
+                        selectedAnimation === animation && styles.choiceChipTeal,
+                      ]}>
+                      <Text style={styles.choiceChipText}>{animation}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Common Play/Pause Toggle for special types */}
+              {((currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb') && (
+                <View style={styles.playPauseControlRow}>
+                  <TouchableOpacity 
+                    style={[styles.playPauseBtn, isPlaying && styles.playPauseBtnActive]}
                     onPress={() => {
-                      setSelectedAnimation(animation);
-                      sendToWebView({ type: 'setAnimation', value: animation });
-                      NativeModules.ARNativeModule?.setAnimation?.(idx);
+                      const next = !isPlaying;
+                      setIsPlaying(next);
+                      sendToWebView({ type: 'togglePlay', value: next });
                     }}
-                    style={[
-                      styles.choiceChip,
-                      selectedAnimation === animation && styles.choiceChipTeal,
-                    ]}>
-                    <Text style={styles.choiceChipText}>{animation}</Text>
+                  >
+                    {isPlaying ? <Pause size={moderateScale(28)} color="#fff" /> : <Play size={moderateScale(28)} color="#fff" />}
+                    <Text style={styles.playPauseBtnText}>{isPlaying ? 'Pause' : 'Play'}</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -2554,16 +2650,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(24),
   },
   exportTitle: {
-    marginTop: verticalScale(12),
-    fontSize: moderateScale(16),
-    fontWeight: '700',
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(18),
+    fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
   },
   exportCopy: {
     marginTop: verticalScale(8),
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(13),
     color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
+  },
+  playPauseControlRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: verticalScale(20),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    marginTop: verticalScale(10),
+  },
+  playPauseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(10),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: scale(30),
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(16),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    minWidth: scale(150),
+  },
+  playPauseBtnActive: {
+    backgroundColor: '#6C4CFF',
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  playPauseBtnText: {
+    fontSize: moderateScale(16),
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
 });

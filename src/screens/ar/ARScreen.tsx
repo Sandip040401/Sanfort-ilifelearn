@@ -1484,6 +1484,7 @@ const styles = StyleSheet.create({
     gap: scale(12),
   },
   modelCardWrap: {
+    marginBottom: CARD_MARGIN_BOTTOM,
     borderRadius: moderateScale(16),
     overflow: 'hidden',
     ...(isAndroid
