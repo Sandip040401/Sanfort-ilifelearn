@@ -628,6 +628,7 @@ export default function ARViewerScreen() {
       await openModelInARFromBase64({
         modelBase64: base64,
         modelName: currentModel.name,
+        originalModelUrl: modelUrl,
         audios: availableAudios.map(audio => ({
           gridfsId: audio.gridfsId,
           language: audio.language,

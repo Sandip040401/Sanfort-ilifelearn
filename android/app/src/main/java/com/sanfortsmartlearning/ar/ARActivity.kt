@@ -1,6 +1,7 @@
 package com.sanfortsmartlearning.ar
 
 import android.app.Dialog
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -38,8 +39,11 @@ import com.google.ar.sceneform.math.Quaternion
 import com.google.ar.sceneform.math.Vector3
 import com.google.ar.sceneform.rendering.Color as SfColor
 import com.google.ar.sceneform.rendering.Light
+import com.google.ar.sceneform.rendering.Material
+import com.google.ar.sceneform.rendering.MaterialFactory
 import com.google.ar.sceneform.rendering.ModelRenderable
 import com.google.ar.sceneform.rendering.RenderableInstance
+import com.google.ar.sceneform.rendering.Texture
 import com.google.ar.sceneform.ux.*
 import org.json.JSONArray
 
@@ -59,6 +63,7 @@ class ARActivity : AppCompatActivity() {
 
     private lateinit var arFragment: ArFragment
     private var modelPath: String? = null
+    private var originalModelPath: String? = null
     private var modelName: String? = null
 
     // Audio list passed from RN
@@ -76,6 +81,14 @@ class ARActivity : AppCompatActivity() {
     private var currentRenderable: ModelRenderable? = null
     private var currentInstance: RenderableInstance? = null
     private var currentAnimIndex = 0
+    private var showRealTexture = true
+    private var flatColorMaterial: Material? = null
+    private var flatColorTexture: Texture? = null
+    private var flatTextureBuildInFlight = false
+    private var materialSnapshot: MaterialSnapshot? = null
+    private var paintedRenderableTemplate: ModelRenderable? = null
+    private var realRenderableTemplate: ModelRenderable? = null
+    private var renderableSwapInFlight = false
 
     // Ordering constants (matching ModelViewer.tsx)
     private val LANGUAGE_ORDER =
@@ -126,6 +139,12 @@ class ARActivity : AppCompatActivity() {
     private lateinit var audioPill: FrameLayout
     private var safeAreaTop = 0
 
+    private data class MaterialSnapshot(
+            val instanceMaterials: List<Material?>,
+            val submeshMaterials: List<Material?>,
+            val rootMaterial: Material?
+    )
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -136,7 +155,12 @@ class ARActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         modelPath = intent.getStringExtra("modelPath")
+        originalModelPath = intent.getStringExtra("originalModelPath")
         modelName = intent.getStringExtra("modelName") ?: "3D Model"
+        // For exported custom models, start in kid-painted look and allow switching to real model.
+        if (!originalModelPath.isNullOrBlank()) {
+            showRealTexture = false
+        }
 
         // Parse audio list from JSON
         intent.getStringExtra("audiosJson")?.let { json ->
@@ -544,6 +568,275 @@ class ARActivity : AppCompatActivity() {
         }
 
         bottomBar.addView(audioBtn)
+
+        if (landscape) {
+            bottomBar.addView(View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(1), dp(16)).apply {
+                    setMargins(dp(10), 0, dp(10), 0)
+                }
+                setBackgroundColor(Color.parseColor("#44FFFFFF"))
+            })
+        } else {
+            bottomBar.addView(Space(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(10), 0)
+            })
+        }
+
+        val textureBtn = FrameLayout(this).apply {
+            val p = if (landscape) dp(8) else dp(10)
+            setPadding(p, p, p, p)
+            background = pillDrawable(if (showRealTexture) "#0EA5A4" else "#6C4CFF")
+            setOnClickListener { toggleTextureMode() }
+            contentDescription = if (showRealTexture) "Switch to color mode" else "Switch to real texture"
+
+            addView(LinearLayout(this@ARActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(this@ARActivity).apply {
+                    text = if (landscape) {
+                        if (showRealTexture) "Color Fun" else "Real Look"
+                    } else {
+                        if (showRealTexture) "Color" else "Real"
+                    }
+                    setTextColor(Color.WHITE)
+                    setTypeface(null, Typeface.BOLD)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, if (landscape) labelSize else 11f)
+                })
+            })
+        }
+        bottomBar.addView(textureBtn)
+    }
+
+    private fun toggleTextureMode() {
+        if (activeTransformNode == null || currentRenderable == null) {
+            Toast.makeText(this, "Tap on surface to place model first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        setRealTextureEnabled(!showRealTexture)
+    }
+
+    private fun setRealTextureEnabled(enabled: Boolean) {
+        showRealTexture = enabled
+        if (!originalModelPath.isNullOrBlank()) {
+            swapRenderableForMode(enabled)
+            refreshBottomBarContent()
+            return
+        }
+        if (enabled) {
+            applyRealTextureMaterials()
+        } else {
+            applyFlatColorMaterials()
+        }
+        refreshBottomBarContent()
+    }
+
+    private fun swapRenderableForMode(showReal: Boolean) {
+        val node = activeTransformNode ?: return
+        val cachedTemplate = if (showReal) realRenderableTemplate else paintedRenderableTemplate
+        if (cachedTemplate != null) {
+            applyRenderableTemplate(node, cachedTemplate)
+            return
+        }
+
+        val targetPath = if (showReal) originalModelPath else modelPath
+        if (targetPath.isNullOrBlank() || renderableSwapInFlight) {
+            return
+        }
+
+        renderableSwapInFlight = true
+        ModelRenderable.builder()
+                .setSource(this, Uri.parse(targetPath))
+                .setIsFilamentGltf(true)
+                .setAsyncLoadEnabled(true)
+                .build()
+                .thenAccept { loaded ->
+                    runOnUiThread {
+                        renderableSwapInFlight = false
+                        for (i in 0 until loaded.submeshCount) {
+                            runCatching { loaded.getMaterial(i).setFloat("reflectance", 0.4f) }
+                        }
+                        if (showReal) {
+                            realRenderableTemplate = runCatching { loaded.makeCopy() }.getOrNull() ?: loaded
+                        } else {
+                            paintedRenderableTemplate = runCatching { loaded.makeCopy() }.getOrNull() ?: loaded
+                        }
+                        if (showRealTexture != showReal) {
+                            return@runOnUiThread
+                        }
+                        applyRenderableTemplate(node, loaded)
+                    }
+                }
+                .exceptionally {
+                    runOnUiThread {
+                        renderableSwapInFlight = false
+                        Toast.makeText(this, "Could not switch look. Try again.", Toast.LENGTH_SHORT).show()
+                    }
+                    null
+                }
+    }
+
+    private fun applyRenderableTemplate(node: TransformableNode, sourceRenderable: ModelRenderable) {
+        val renderable = runCatching { sourceRenderable.makeCopy() }.getOrNull() ?: sourceRenderable
+        runCatching { node.renderable = renderable }
+        currentRenderable = renderable
+        currentInstance = node.renderableInstance
+        cacheMaterialSnapshot(renderable, currentInstance)
+    }
+
+    private fun cacheMaterialSnapshot(renderable: ModelRenderable, instance: RenderableInstance?) {
+        val instanceCount = instance?.materialsCount ?: 0
+        val instanceMaterials = MutableList<Material?>(instanceCount) { null }
+        for (i in 0 until instanceCount) {
+            instanceMaterials[i] = runCatching { instance?.getMaterial(i)?.makeCopy() }.getOrNull()
+        }
+
+        val submeshCount = renderable.submeshCount
+        val submeshMaterials = MutableList<Material?>(submeshCount) { null }
+        for (i in 0 until submeshCount) {
+            submeshMaterials[i] = runCatching { renderable.getMaterial(i).makeCopy() }.getOrNull()
+        }
+
+        val rootMaterial = runCatching { renderable.material.makeCopy() }.getOrNull()
+        materialSnapshot = MaterialSnapshot(
+                instanceMaterials = instanceMaterials,
+                submeshMaterials = submeshMaterials,
+                rootMaterial = rootMaterial
+        )
+    }
+
+    private fun applyRealTextureMaterials() {
+        val node = activeTransformNode ?: return
+
+        val templateCopy = runCatching { paintedRenderableTemplate?.makeCopy() }.getOrNull()
+        if (templateCopy != null) {
+            runCatching { node.renderable = templateCopy }
+            currentRenderable = templateCopy
+            currentInstance = node.renderableInstance
+            cacheMaterialSnapshot(templateCopy, currentInstance)
+            return
+        }
+
+        val renderable = currentRenderable ?: return
+        val instance = currentInstance
+        val snapshot = materialSnapshot ?: return
+
+        val instanceCount = instance?.materialsCount ?: 0
+        for (i in 0 until instanceCount) {
+            val original = snapshot.instanceMaterials.getOrNull(i) ?: continue
+            runCatching { instance?.setMaterial(i, original.makeCopy()) }
+        }
+
+        val submeshCount = renderable.submeshCount
+        for (i in 0 until submeshCount) {
+            val original = snapshot.submeshMaterials.getOrNull(i) ?: continue
+            runCatching { renderable.setMaterial(i, original.makeCopy()) }
+        }
+
+        snapshot.rootMaterial?.let { root ->
+            runCatching { renderable.material = root.makeCopy() }
+        }
+        runCatching { node.renderable = renderable }
+        currentInstance = node.renderableInstance
+    }
+
+    private fun applyFlatColorMaterials() {
+        val renderable = currentRenderable ?: return
+        val instance = currentInstance
+
+        val baseMaterial = flatColorMaterial
+        val solidTexture = flatColorTexture
+        if (baseMaterial != null && solidTexture != null) {
+            val applyWith = { targetMaterial: Material ->
+                val submeshCount = renderable.submeshCount
+                for (i in 0 until submeshCount) {
+                    val mat = targetMaterial.makeCopy()
+                    configureFlatMaterial(mat, solidTexture)
+                    runCatching { renderable.setMaterial(i, mat) }
+                }
+
+                val instanceCount = instance?.materialsCount ?: 0
+                for (i in 0 until instanceCount) {
+                    val mat = targetMaterial.makeCopy()
+                    configureFlatMaterial(mat, solidTexture)
+                    runCatching { instance?.setMaterial(i, mat) }
+                }
+
+                runCatching { renderable.material = targetMaterial.makeCopy() }
+                runCatching { activeTransformNode?.renderable = renderable }
+                currentInstance = activeTransformNode?.renderableInstance ?: currentInstance
+            }
+            applyWith(baseMaterial)
+            return
+        }
+
+        if (flatColorMaterial == null) {
+            MaterialFactory.makeOpaqueWithColor(this, SfColor(0.96f, 0.95f, 1f))
+                    .thenAccept { generated ->
+                        runOnUiThread {
+                            flatColorMaterial = generated
+                            if (!showRealTexture) {
+                                applyFlatColorMaterials()
+                            }
+                        }
+                    }
+                    .exceptionally { null }
+        }
+
+        if (flatColorTexture == null) {
+            buildFlatTextureAsync()
+        }
+    }
+
+    private fun buildFlatTextureAsync() {
+        if (flatTextureBuildInFlight) return
+        flatTextureBuildInFlight = true
+
+        val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.parseColor("#FFF4F4F6"))
+        }
+
+        Texture.builder()
+                .setSource(bitmap)
+                .build()
+                .thenAccept { texture ->
+                    runOnUiThread {
+                        flatTextureBuildInFlight = false
+                        flatColorTexture = texture
+                        if (!showRealTexture) {
+                            applyFlatColorMaterials()
+                        }
+                    }
+                }
+                .exceptionally {
+                    runOnUiThread { flatTextureBuildInFlight = false }
+                    null
+                }
+    }
+
+    private fun configureFlatMaterial(material: Material, texture: Texture) {
+        runCatching { applyTextureToMaterialCompat(material, texture) }
+        runCatching { material.setFloat4(MaterialFactory.MATERIAL_COLOR, 1f, 1f, 1f, 1f) }
+        runCatching { material.setFloat4("baseColorTint", 1f, 1f, 1f, 1f) }
+        runCatching { material.setFloat4("baseColorFactor", 1f, 1f, 1f, 1f) }
+        runCatching { material.setFloat("reflectance", 0.05f) }
+        runCatching { material.setFloat(MaterialFactory.MATERIAL_METALLIC, 0f) }
+        runCatching { material.setFloat(MaterialFactory.MATERIAL_ROUGHNESS, 0.95f) }
+    }
+
+    private fun applyTextureToMaterialCompat(material: Material, texture: Texture): Boolean {
+        val attempts = listOf<() -> Unit>(
+                { material.setBaseColorTexture(texture) },
+                { material.setTexture(MaterialFactory.MATERIAL_TEXTURE, texture) },
+                { material.setTexture("baseColorMap", texture) },
+                { material.setTexture("baseColorTexture", texture) },
+                { material.setTexture("albedo", texture) }
+        )
+        attempts.forEach { apply ->
+            if (runCatching { apply(); true }.getOrDefault(false)) {
+                return true
+            }
+        }
+        return false
     }
 
 
@@ -599,7 +892,8 @@ class ARActivity : AppCompatActivity() {
                 "1. Move phone to find a flat surface.",
                 "2. Tap on white dots to place the model.",
                 "3. One finger to move, two to rotate/scale.",
-                "4. Use bottom bar for Audio and Animations."
+                "4. Use bottom bar for Audio and Animations.",
+                "5. Toggle Real Texture / Color from bottom controls."
             )
             
             steps.forEach { step ->
@@ -1146,7 +1440,16 @@ class ARActivity : AppCompatActivity() {
 
         activeAnchorNode = anchorNode
         activeTransformNode = node
+        currentRenderable = renderable
+        paintedRenderableTemplate = runCatching { renderable.makeCopy() }.getOrNull() ?: renderable
+        if (originalModelPath.isNullOrBlank()) {
+            realRenderableTemplate = runCatching { renderable.makeCopy() }.getOrNull() ?: renderable
+        }
         currentInstance = node.renderableInstance
+        cacheMaterialSnapshot(renderable, currentInstance)
+        if (!showRealTexture) {
+            applyFlatColorMaterials()
+        }
 
         // Collect animations
         val instance = node.renderableInstance

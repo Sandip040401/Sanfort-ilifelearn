@@ -114,10 +114,12 @@ export function buildARViewerHtml(modelFileUrl: string) {
   let brushColor = '#ff0000';
   let brushSize = 12;
   let pointerDown = false;
+  let paintPointerId = null;
   let isPlaying = true;
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const lastPoints = new Map();
+  const activePointers = new Set();
   const PAINT_TEX_SIZE = 1024;
 
   function getMeshMaterials(mesh) {
@@ -177,6 +179,12 @@ export function buildARViewerHtml(modelFileUrl: string) {
       loadedModel.position.x = -center.x * scale;
       loadedModel.position.z = -center.z * scale;
       loadedModel.position.y = -1.4 - (box.min.y * scale);
+
+      // Orbit around the actual model center for reliable 360 access (including lower areas).
+      const worldBox = new THREE.Box3().setFromObject(loadedModel);
+      const worldCenter = worldBox.getCenter(new THREE.Vector3());
+      controls.target.copy(worldCenter);
+      controls.update();
 
       loadedModel.traverse((child) => {
         if (child.isMesh) {
@@ -258,6 +266,17 @@ export function buildARViewerHtml(modelFileUrl: string) {
     p.tex.needsUpdate = true;
   }
 
+  function findPaintHit(hits) {
+    if (!Array.isArray(hits) || hits.length === 0) return null;
+    for (let i = 0; i < hits.length; i += 1) {
+      const hit = hits[i];
+      if (hit && hit.object && hit.object.userData && hit.object.userData.paint) {
+        return hit;
+      }
+    }
+    return null;
+  }
+
   function getPointer(e) {
     const rect = renderer.domElement.getBoundingClientRect();
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -268,23 +287,65 @@ export function buildARViewerHtml(modelFileUrl: string) {
 
   renderer.domElement.addEventListener('pointerdown', (e) => {
     if (!paintingEnabled) return;
-    pointerDown = true;
+    activePointers.add(e.pointerId);
+
+    // Multi-touch is reserved for camera navigation (rotate/zoom/pan) in paint mode.
+    if (activePointers.size > 1) {
+      pointerDown = false;
+      paintPointerId = null;
+      lastPoints.clear();
+      controls.enabled = true;
+      return;
+    }
+
     getPointer(e);
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObject(scene, true);
-    if (hits.length > 0) paintAt(hits[0]);
+    const paintHit = findPaintHit(hits);
+    if (paintHit) {
+      pointerDown = true;
+      paintPointerId = e.pointerId;
+      // While actively painting, lock camera controls to avoid accidental camera drift.
+      controls.enabled = false;
+      e.preventDefault();
+      paintAt(paintHit);
+      return;
+    }
+    // Touch started outside paintable mesh: allow one-finger orbit for quick repositioning.
+    pointerDown = false;
+    paintPointerId = null;
+    controls.enabled = true;
   });
   renderer.domElement.addEventListener('pointermove', (e) => {
-    if (!paintingEnabled || !pointerDown) return;
+    if (!paintingEnabled) return;
+    if (activePointers.size > 1) {
+      controls.enabled = true;
+      return;
+    }
+    if (!pointerDown || paintPointerId !== e.pointerId) return;
     getPointer(e);
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObject(scene, true);
-    if (hits.length > 0) paintAt(hits[0]);
-  });
-  window.addEventListener('pointerup', () => {
-    pointerDown = false;
+    const paintHit = findPaintHit(hits);
+    if (paintHit) {
+      e.preventDefault();
+      paintAt(paintHit);
+      return;
+    }
     lastPoints.clear();
   });
+  const endPointerInteraction = (e) => {
+    activePointers.delete(e.pointerId);
+    if (paintPointerId === e.pointerId) {
+      pointerDown = false;
+      paintPointerId = null;
+      lastPoints.clear();
+    }
+    // Keep camera navigation available after each stroke for seamless rotate-paint workflow.
+    controls.enabled = true;
+  };
+  window.addEventListener('pointerup', endPointerInteraction);
+  window.addEventListener('pointercancel', endPointerInteraction);
 
   function handleMessage(event) {
     try {
@@ -315,7 +376,17 @@ export function buildARViewerHtml(modelFileUrl: string) {
       }
       if (data.type === 'enablePaint') {
         paintingEnabled = data.value;
-        controls.enabled = !data.value;
+        // Keep orbit controls available in paint mode; runtime pointer logic switches
+        // between painting (single finger on model) and navigation (outside/2-finger).
+        controls.enabled = true;
+        controls.enableRotate = true;
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        pointerDown = false;
+        paintPointerId = null;
+        activePointers.clear();
+        lastPoints.clear();
+        paintIndicator.textContent = data.value ? '1 finger paint · 2 fingers rotate/zoom' : 'Paint Mode';
         paintIndicator.classList.toggle('visible', data.value);
       }
       if (data.type === 'setBrushColor') brushColor = data.value;

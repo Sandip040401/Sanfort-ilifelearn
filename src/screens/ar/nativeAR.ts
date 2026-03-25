@@ -55,15 +55,17 @@ export async function openModelInAR(params: {
 export async function openModelInARFromBase64(params: {
   modelBase64: string;
   modelName: string;
+  originalModelUrl?: string;
   audios?: Array<{gridfsId: string; language: string; level: string}>;
   animations?: string[];
 }) {
-  const {modelBase64, modelName, audios, animations} = params;
+  const {modelBase64, modelName, originalModelUrl, audios, animations} = params;
 
   if (Platform.OS === 'android' && NativeModules.ARNativeModule?.openARFromBase64) {
     await NativeModules.ARNativeModule.openARFromBase64(
       modelBase64,
       modelName,
+      originalModelUrl || null,
       buildAudiosJson(audios),
       animations?.length ? JSON.stringify(animations) : null,
     );

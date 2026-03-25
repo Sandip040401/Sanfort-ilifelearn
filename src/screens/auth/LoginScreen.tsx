@@ -98,7 +98,7 @@ export default function LoginScreen({ navigation }: Props) {
     : Math.max(260, screenHeight * 0.38) + insets.top;
 
   // ── Mode ──
-  const [mode, setMode] = useState<LoginMode>('email');
+  const [mode, setMode] = useState<LoginMode>('phone');
 
   // ── Email login state ──
   const [email, setEmail] = useState('');
@@ -351,17 +351,6 @@ export default function LoginScreen({ navigation }: Props) {
             {/* ── Mode Tabs ── */}
             <View style={[styles.tabRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <TouchableOpacity
-                style={[styles.tab, mode === 'email' && { backgroundColor: colors.primary }]}
-                onPress={() => switchMode('email')}
-                activeOpacity={0.8}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: mode === 'email' }}>
-                <Mail size={14} color={mode === 'email' ? '#fff' : colors.textSecondary} strokeWidth={2} />
-                <Text style={[styles.tabText, { color: mode === 'email' ? '#fff' : colors.textSecondary }]}>
-                  Email
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={[styles.tab, mode === 'phone' && { backgroundColor: colors.primary }]}
                 onPress={() => switchMode('phone')}
                 activeOpacity={0.8}
@@ -370,6 +359,17 @@ export default function LoginScreen({ navigation }: Props) {
                 <Phone size={14} color={mode === 'phone' ? '#fff' : colors.textSecondary} strokeWidth={2} />
                 <Text style={[styles.tabText, { color: mode === 'phone' ? '#fff' : colors.textSecondary }]}>
                   Phone
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, mode === 'email' && { backgroundColor: colors.primary }]}
+                onPress={() => switchMode('email')}
+                activeOpacity={0.8}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === 'email' }}>
+                <Mail size={14} color={mode === 'email' ? '#fff' : colors.textSecondary} strokeWidth={2} />
+                <Text style={[styles.tabText, { color: mode === 'email' ? '#fff' : colors.textSecondary }]}>
+                  Email
                 </Text>
               </TouchableOpacity>
             </View>

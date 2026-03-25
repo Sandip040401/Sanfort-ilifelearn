@@ -140,6 +140,8 @@ class ARScannerActivity : AppCompatActivity() {
   private lateinit var liveColoringLabel: TextView
   private lateinit var liveColoringStatus: TextView
   private lateinit var liveColoringContainer: LinearLayout
+  private lateinit var toggleColoursContainer: LinearLayout
+  private lateinit var toggleModeLabel: TextView
   private lateinit var switchToggleColours: Switch
   private lateinit var loadingOverlay: View
   private lateinit var loadingText: TextView
@@ -234,6 +236,8 @@ class ARScannerActivity : AppCompatActivity() {
     liveColoringLabel = findViewById(R.id.liveColoringLabel)
     liveColoringStatus = findViewById(R.id.liveColoringStatus)
     liveColoringContainer = findViewById(R.id.liveColoringContainer)
+    toggleColoursContainer = findViewById(R.id.toggleColoursContainer)
+    toggleModeLabel = findViewById(R.id.toggleModeLabel)
     switchToggleColours = findViewById(R.id.switchToggleColours)
     loadingOverlay = findViewById(R.id.loadingOverlay)
     loadingText = findViewById(R.id.loadingText)
@@ -418,9 +422,7 @@ class ARScannerActivity : AppCompatActivity() {
     audioContainer.setOnClickListener { showAudioSettingsSheet() }
 
     // ── Toggle container — compact gradient card ──
-    val toggleContainer = findViewById<LinearLayout>(R.id.toggleColoursContainer)
-    toggleContainer.background = createGradientPillDrawable("#6C5CE7", "#A55EEA", 12f)
-    toggleContainer.elevation = 4f * density
+    toggleColoursContainer.elevation = 4f * density
 
     // ── Toggle switch styling ──
     switchToggleColours.thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#00E5FF"))
@@ -434,12 +436,7 @@ class ARScannerActivity : AppCompatActivity() {
 
     // Sync UI with initial state
     showOriginalColors = !isLiveColoringEnabled
-    switchToggleColours.jumpDrawablesToCurrentState()
-    switchToggleColours.isChecked = isLiveColoringEnabled
-    liveColoringStatus.text = if (isLiveColoringEnabled) "ON" else "OFF"
-    liveColoringStatus.setTextColor(
-        if (isLiveColoringEnabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252")
-    )
+    updateLiveColoringToggleUi(isLiveColoringEnabled)
 
     // ── Draw crisp vector icons ──
     drawBackArrowIcon(btnBack)
@@ -476,13 +473,7 @@ class ARScannerActivity : AppCompatActivity() {
   private fun setLiveColoringEnabled(enabled: Boolean) {
     if (isLiveColoringEnabled == enabled) {
       // Still keep UI in sync
-      if (switchToggleColours.isChecked != enabled) {
-        switchToggleColours.isChecked = enabled
-      }
-      liveColoringStatus.text = if (enabled) "ON" else "OFF"
-      liveColoringStatus.setTextColor(
-          if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252")
-      )
+      updateLiveColoringToggleUi(enabled)
       return
     }
 
@@ -495,40 +486,37 @@ class ARScannerActivity : AppCompatActivity() {
     if (!enabled) {
       hasDetectedUserColoring = false
     }
-    if (switchToggleColours.isChecked != enabled) {
-      switchToggleColours.isChecked = enabled
-    }
-    // Skip Switch slide animation — snap instantly
-    switchToggleColours.jumpDrawablesToCurrentState()
-    liveColoringStatus.text = if (enabled) "ON" else "OFF"
-    liveColoringStatus.setTextColor(
-        if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252")
-    )
-    // Update the glowing dot color
-    val dot = findViewById<View>(R.id.liveColoringDot)
-    val dotBg = dot?.background
-    if (dotBg is GradientDrawable) {
-      dotBg.setColor(if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
-    }
+    updateLiveColoringToggleUi(enabled)
 
     // ── INSTANT TOGGLE: synchronous, no async calls, bulletproof ──
     trackedNodes.values.forEach { trackedNode ->
       trackedNode.modelNode.isEnabled = true
       if (!enabled) {
-        // OFF → assign a FRESH copy of the shared renderable (guaranteed original GLB materials)
-        val freshRenderable = sharedRenderable?.makeCopy()
-        if (freshRenderable != null) {
-          trackedNode.modelNode.renderable = freshRenderable
-          trackedNode.renderable = freshRenderable
+        // OFF → force true original look from per-node snapshots captured at first placement.
+        restoreOriginalMaterials(trackedNode)
+        val hasOriginalSnapshot =
+            trackedNode.originalMaterials.isNotEmpty() ||
+                trackedNode.originalSubmeshMaterials.isNotEmpty() ||
+                trackedNode.originalRenderableMaterial != null
+
+        // Safety fallback for devices/assets where snapshots were unavailable.
+        if (!hasOriginalSnapshot) {
+          val freshRenderable = sharedRenderable?.makeCopy()
+          if (freshRenderable != null) {
+            trackedNode.modelNode.renderable = freshRenderable
+            trackedNode.renderable = freshRenderable
+            trackedNode.renderableInstance = trackedNode.modelNode.renderableInstance
+            trackedNode.originalMaterials = captureOriginalMaterials(trackedNode.renderableInstance)
+            trackedNode.originalSubmeshMaterials = captureRenderableMaterials(freshRenderable)
+            trackedNode.originalRenderableMaterial =
+                runCatching { freshRenderable.material.makeCopy() }.getOrNull()
+          }
+        } else {
           trackedNode.renderableInstance = trackedNode.modelNode.renderableInstance
-          // Re-capture true originals from this fresh copy
-          trackedNode.originalMaterials = captureOriginalMaterials(trackedNode.renderableInstance)
-          trackedNode.originalSubmeshMaterials = captureRenderableMaterials(freshRenderable)
-          trackedNode.originalRenderableMaterial =
-              runCatching { freshRenderable.material.makeCopy() }.getOrNull()
         }
         trackedNode.usesTintMaterial = false
         trackedNode.tintApplied = false
+        trackedNode.lastSolidTintColor = null
         hasAppliedPageTexture = false
       } else {
         // ON → apply cached texture instantly + replay celebration
@@ -586,7 +574,53 @@ class ARScannerActivity : AppCompatActivity() {
         spawnMagicCelebration(trackedNode.anchorNode, trackedNode.baseScale)
         hapticFeedback("medium")
       }
+
+      // Keep skeletal animation alive after every mode switch.
+      restartTrackedNodeAnimation(trackedNode)
     }
+  }
+
+  private fun updateLiveColoringToggleUi(enabled: Boolean) {
+    if (switchToggleColours.isChecked != enabled) {
+      switchToggleColours.isChecked = enabled
+    }
+    switchToggleColours.jumpDrawablesToCurrentState()
+
+    liveColoringLabel.text = "Look"
+    liveColoringStatus.text = if (enabled) "Color" else "Real"
+    liveColoringStatus.setTextColor(
+        if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252")
+    )
+
+    // Button shows the action users can take next.
+    toggleModeLabel.text = if (enabled) "Real Look" else "Color Fun"
+    toggleModeLabel.contentDescription =
+        if (enabled) "Switch to real look" else "Switch to color mode"
+    toggleColoursContainer.background =
+        if (enabled) {
+          createGradientPillDrawable("#00B894", "#00CEC9", 12f)
+        } else {
+          createGradientPillDrawable("#6C5CE7", "#A55EEA", 12f)
+        }
+
+    // Update the glowing dot color
+    val dotBg = findViewById<View>(R.id.liveColoringDot)?.background
+    if (dotBg is GradientDrawable) {
+      dotBg.setColor(if (enabled) Color.parseColor("#00E676") else Color.parseColor("#FF5252"))
+    }
+  }
+
+  private fun restartTrackedNodeAnimation(trackedNode: TrackedImageNode) {
+    if (!ENABLE_MODEL_ANIMATION) {
+      return
+    }
+    // Renderable/material swaps can invalidate animator target instance.
+    trackedNode.animator?.cancel()
+    trackedNode.animator = null
+    trackedNode.animationPaused = false
+    trackedNode.renderableInstance =
+        trackedNode.modelNode.renderableInstance ?: trackedNode.renderableInstance
+    ensureTrackedNodeAnimation(trackedNode)
   }
 
   private fun createCircleButtonDrawable(colorString: String): GradientDrawable {

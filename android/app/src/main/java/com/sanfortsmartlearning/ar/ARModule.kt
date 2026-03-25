@@ -48,6 +48,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
     fun openARFromBase64(
             modelBase64: String,
             modelName: String?,
+            originalModelPath: String?,
             audiosJson: String?,
             animationsJson: String?,
             promise: Promise
@@ -59,6 +60,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
 
             val intent = Intent(reactContext, ARActivity::class.java)
             intent.putExtra("modelPath", Uri.fromFile(output).toString())
+            if (!originalModelPath.isNullOrBlank()) intent.putExtra("originalModelPath", originalModelPath)
             if (!modelName.isNullOrBlank()) intent.putExtra("modelName", modelName)
             if (!audiosJson.isNullOrBlank()) intent.putExtra("audiosJson", audiosJson)
             if (!animationsJson.isNullOrBlank()) intent.putExtra("animationsJson", animationsJson)
