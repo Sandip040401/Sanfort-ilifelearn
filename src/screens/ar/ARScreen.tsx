@@ -69,6 +69,7 @@ import {
   getReferenceImageSource,
 } from './ar.reference';
 import { useTheme } from '@/theme';
+import { normalizeEnvName } from '@/utils/normalize';
 
 function useResponsiveLayout() {
   const { width, height } = useWindowDimensions();
@@ -937,6 +938,7 @@ function ARScreenContent() {
           {selectedModelForOptions && (
             <ARModelOptionsSheet
               model={selectedModelForOptions}
+              environmentName={selectedEnvironment?.name || selectedEnvironment?.folderName}
               onView3D={() => handleOpenModel(selectedModelForOptions)}
               onViewSheet={() => handleOpenModel(selectedModelForOptions, { openPainter: true, initialPaintMode: 'target' })}
               onScan={() => handleScanModel(selectedModelForOptions)}
@@ -961,20 +963,25 @@ function ARScreenContent() {
 
 function ARModelOptionsSheet({
   model,
+  environmentName,
   onView3D,
   onViewSheet,
   onScan,
 }: {
   model: ARModel;
+  environmentName?: string;
   onView3D: () => void;
   onViewSheet: () => void;
   onScan: () => void;
 }) {
   const { colors } = useTheme();
   const { isLandscape } = useResponsiveLayout();
+  const normalizedEnvironment = normalizeEnvName(environmentName || '').toLowerCase();
+  const isLimitedModeEnvironment = normalizedEnvironment === 'numbers' || normalizedEnvironment === 'my body';
 
   const buttons = [
     {
+      id: 'place',
       label: '3D Color & Place',
       sub: 'Color your character in 3D & place it in your real world',
       gradient: ['#6486ee', '#7663d7', '#8153b5'] as string[],
@@ -983,6 +990,7 @@ function ARModelOptionsSheet({
       image: require('@/assets/images/ar_modes/3D.webp'),
     },
     {
+      id: 'sheet',
       label: 'Color Sheet → 3D',
       sub: 'Color on screen and turn it into a 3D character you can place',
       gradient: ['#c66fe4', '#dd66cc', '#e660bf', '#f19769'] as string[],
@@ -991,6 +999,7 @@ function ARModelOptionsSheet({
       image: require('@/assets/images/ar_modes/Color.webp'),
     },
     {
+      id: 'scan',
       label: 'Scan Drawing → 3D',
       sub: 'Color on paper, scan it and bring your character to life in 3D.',
       gradient: ['#479bf2', '#47b2c6', '#47da91'] as string[],
@@ -998,7 +1007,7 @@ function ARModelOptionsSheet({
       onPress: onScan,
       image: require('@/assets/images/ar_modes/Scan.webp'),
     },
-  ];
+  ].filter(button => !isLimitedModeEnvironment || button.id === 'place');
 
   if (isLandscape) {
     // ── Landscape: compact horizontal 3-column layout ──
