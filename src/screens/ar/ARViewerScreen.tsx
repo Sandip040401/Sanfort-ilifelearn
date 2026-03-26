@@ -384,7 +384,7 @@ export default function ARViewerScreen() {
     const raw = `${currentEnvironment?.name || ''} ${currentEnvironment?.folderName || ''}`
       .trim()
       .toLowerCase();
-    return raw.includes('body');
+    return raw.includes('body') || raw.includes('number');
   }, [currentEnvironment]);
 
   const environmentsWithAssets = useMemo(
