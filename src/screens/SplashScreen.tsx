@@ -1,6 +1,7 @@
 
 import React, {useEffect} from 'react';
-import {StyleSheet, View, Text, StatusBar, Dimensions, Image} from 'react-native';
+import {StyleSheet, View, Text, StatusBar, Dimensions} from 'react-native';
+import FastImage from 'react-native-fast-image';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -161,10 +162,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
 
           {/* Core Logo */}
           <Animated.View style={[styles.logoContainer, animatedMainStyle]}>
-            <Image 
+            <FastImage 
               source={require('@/assets/images/logo/sanfort-splash-screen-logo.png')}
               style={styles.logoImage}
-              resizeMode="contain"
+              resizeMode={FastImage.resizeMode.contain}
             />
           </Animated.View>
         </View>

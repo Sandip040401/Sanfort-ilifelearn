@@ -14,8 +14,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import {
   ActivityIndicator,
-  Image,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import Animated, {
   FadeInLeft,
   FadeInRight,
@@ -289,10 +289,10 @@ function BooksScreenContent() {
 
                   const ImageSection = (
                     <View style={[styles.gradeImageSideWrap, isEven ? { left: scale(-15) } : { right: scale(-15) }]}>
-                      <Image
+                      <FastImage
                         source={{ uri: design.image }}
                         style={styles.gradeImageFull}
-                        resizeMode="cover"
+                        resizeMode={FastImage.resizeMode.cover}
                       />
                     </View>
                   );

@@ -163,6 +163,16 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
   const audioRef = useRef<VideoRef>(null);
   const resumeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const videoPositionRef = useRef(0);
+  const modeRef = useRef(mode);
+  const hasAudioRef = useRef(hasAudio);
+
+  // Keep refs in sync with state for stable callbacks
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+  useEffect(() => {
+    hasAudioRef.current = hasAudio;
+  }, [hasAudio]);
 
   // ── Reanimated ──
   const drawerProgress = useSharedValue(0);
@@ -239,8 +249,27 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
 
   // ── Force resume (Android Modal + orientation change can pause players) ──
   const forceResumePlayers = useCallback(() => {
-    try { videoRef.current?.resume(); } catch { /* ok */ }
-    try { audioRef.current?.resume(); } catch { /* ok */ }
+    try {
+      videoRef.current?.resume();
+    } catch {
+      /* ok */
+    }
+    // Only resume audio if we are in audio mode and have audio files
+    // Use refs to avoid dependency-induced re-renders/closures
+    if (hasAudioRef.current && modeRef.current === 'audio') {
+      try {
+        audioRef.current?.resume();
+      } catch {
+        /* ok */
+      }
+    } else {
+      // Ensure audio is paused if we are not in audio mode
+      try {
+        audioRef.current?.pause();
+      } catch {
+        /* ok */
+      }
+    }
   }, []);
 
   const scheduleResume = useCallback((...delays: number[]) => {
@@ -291,7 +320,6 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
     assetSessionKey,
     hasAudio,
     drawerProgress,
-    scheduleResume,
     clearResumeTimers,
     pausePlayers,
   ]);
@@ -395,7 +423,10 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
     if (newMode === mode) return;
     if (newMode === 'video') {
       videoRef.current?.seek(0);
-      audioRef.current?.seek(0);
+      try {
+        audioRef.current?.pause();
+        audioRef.current?.seek(0);
+      } catch { /* ok */ }
     } else {
       syncAudioToVideo();
     }

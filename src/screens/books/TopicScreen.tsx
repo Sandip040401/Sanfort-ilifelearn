@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
-  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -154,13 +153,14 @@ function TopicScreenContent() {
                   },
                 ]}>
                 {kind === 'image' ? (
-                  <Image source={{ uri: item }} resizeMode="cover" style={styles.resourceImageGrid} />
+                  <FastImage source={{ uri: item }} resizeMode={FastImage.resizeMode.cover} style={styles.resourceImageGrid} />
                 ) : kind === 'video' && thumbnailUrl ? (
-                  <ImageBackground
-                    source={{ uri: thumbnailUrl }}
-                    resizeMode="cover"
-                    style={styles.resourcePosterGrid}
-                    imageStyle={styles.resourcePosterImage}>
+                  <View style={styles.resourcePosterGrid}>
+                    <FastImage
+                      source={{ uri: thumbnailUrl }}
+                      resizeMode={FastImage.resizeMode.cover}
+                      style={[StyleSheet.absoluteFill, styles.resourcePosterImage]}
+                    />
                     <LinearGradient
                       colors={['rgba(15,23,42,0.08)', 'rgba(15,23,42,0.72)']}
                       locations={[0, 1]}
@@ -172,7 +172,7 @@ function TopicScreenContent() {
                       </View>
                       <PlayCircle size={moderateScale(28)} color="#fff" strokeWidth={2.4} />
                     </LinearGradient>
-                  </ImageBackground>
+                  </View>
                 ) : (
                   <LinearGradient
                     colors={[withAlpha(safeAccent, 0.14), withAlpha(safeAccent, 0.04)]}

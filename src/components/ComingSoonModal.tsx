@@ -7,8 +7,8 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Image,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -83,7 +83,7 @@ export default function ComingSoonModal({
                 style={styles.headerGradient}
               />
               <View style={styles.iconContainer}>
-                <Image source={EduGamesImg} style={styles.heroImage} resizeMode="contain" />
+                <FastImage source={EduGamesImg} style={styles.heroImage} resizeMode={FastImage.resizeMode.contain} />
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
                 <X size={moderateScale(20)} color="rgba(255,255,255,0.8)" />

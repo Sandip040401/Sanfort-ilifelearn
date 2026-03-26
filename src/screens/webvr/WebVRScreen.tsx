@@ -2,7 +2,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   FlatList,
-  Image,
   InteractionManager,
   Platform,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
   useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -156,10 +156,10 @@ const FolderCard = React.memo(function FolderCard({
         style={[styles.card, { width: cardWidth }]}
         onPress={handlePress}>
         <View style={styles.cardContainer}>
-            <Image
+            <FastImage
               source={item.image}
               style={styles.cardImage}
-              resizeMode="cover"
+              resizeMode={FastImage.resizeMode.cover}
             />
           <View style={styles.cardContent}>
             <LinearGradient

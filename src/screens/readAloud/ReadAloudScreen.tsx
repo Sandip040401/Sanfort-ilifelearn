@@ -3,7 +3,6 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image as RNImage,
   Modal,
   NativeModules,
   PermissionsAndroid,
@@ -17,6 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
@@ -659,7 +659,7 @@ function ReadAloudContent() {
     if (isImageItem(currentItem)) {
       return (
         <View style={styles.promptVisualWrap}>
-          <RNImage source={{uri: currentItem.imageUrl}} style={styles.promptImage} resizeMode="cover" />
+          <FastImage source={{uri: currentItem.imageUrl}} style={styles.promptImage} resizeMode={FastImage.resizeMode.cover} />
           <View style={styles.promptFooterRow}>
             {(currentItem.badges || []).slice(0, 3).map(badge => (
               <View key={badge} style={styles.promptBadge}>

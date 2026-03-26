@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -13,6 +12,7 @@ import {
   ViewStyle,
   useWindowDimensions,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
 import { withTiming } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
@@ -216,7 +216,7 @@ export default function HomeScreen() {
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={styles.heroInner}>
-                  <Image source={LearningThemesImg} style={styles.heroImageOnly} resizeMode="contain" />
+                  <FastImage source={LearningThemesImg} style={styles.heroImageOnly} resizeMode={FastImage.resizeMode.contain} />
                   <View style={styles.flexOne}>
                     <Text style={styles.heroTitle}>Learning Themes</Text>
                     <Text style={styles.heroSub}>Thematic curriculum for all grades</Text>
@@ -233,7 +233,7 @@ export default function HomeScreen() {
                 <TouchableOpacity key={item.key} onPress={() => tabNav.navigate(item.key)} activeOpacity={0.88} style={styles.gridTouchable}>
                   <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
                     <LinearGradient colors={item.colors as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                    <Image source={item.image} style={[styles.gridImageOnly, isTablet && styles.gridImageOnlyTablet]} resizeMode="contain" />
+                    <FastImage source={item.image} style={[styles.gridImageOnly, isTablet && styles.gridImageOnlyTablet]} resizeMode={FastImage.resizeMode.contain} />
                     <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{item.label}</Text>
                     <Text android_hyphenationFrequency="full" style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{item.sub}</Text>
                     <View style={styles.gridDecor} />
@@ -277,7 +277,7 @@ export default function HomeScreen() {
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
-                <Image source={EduGamesImg} style={styles.wideImageOnly} resizeMode="contain" />
+                <FastImage source={EduGamesImg} style={styles.wideImageOnly} resizeMode={FastImage.resizeMode.contain} />
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text style={styles.wideTitle}>Educational Games</Text>
