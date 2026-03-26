@@ -270,7 +270,49 @@ function SubjectContentScreenContent() {
             </View>
 
             <Text style={styles.heroTitle}>{subjectDisplayName}</Text>
-            
+            {tabs.filter(t => t.count > 0).length > 1 && (
+              <View style={styles.toolbarWrap}>
+                <View style={[styles.tabsShell, tabsShellStyle]}>
+                  {tabs.filter(tab => tab.count > 0).map((tab) => {
+                    const isTabActive = activeTab === tab.key;
+                    return (
+                      <Pressable
+                        key={tab.key}
+                        onPress={() => handleTabPress(tab.key)}
+                        style={[
+                          styles.tabButton,
+                          isTabActive ? activeTabButtonStyle : styles.tabButtonIdle,
+                        ]}>
+                        <View style={styles.tabButtonContent}>
+                          <Text
+                            style={[
+                              styles.tabText,
+                              isTabActive ? {color: '#fff'} : inactiveTabTextStyle,
+                            ]}>
+                            {tab.label}
+                          </Text>
+                          <View
+                            style={[
+                              styles.tabCount,
+                              isTabActive ? activeCountStyle : inactiveCountStyle,
+                            ]}>
+                            <Text
+                              style={[
+                                styles.tabCountText,
+                                isTabActive
+                                  ? activeCountTextStyle
+                                  : inactiveCountTextStyle,
+                              ]}>
+                              {tab.count}
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
           </View>
           <View style={[styles.curve, {backgroundColor: colors.background}]} />
         </View>

@@ -241,7 +241,7 @@ export type BottomTabParamList = {
   WebVR:     undefined;
   Games:     undefined;
   ReadAloud: undefined;
-  Books:     undefined;
+  Themes:    undefined;
   ARSheets:  undefined;
 };
 
