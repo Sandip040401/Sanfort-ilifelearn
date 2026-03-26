@@ -57,7 +57,11 @@ data class AudioEntry(
         val audioUrl: String
 )
 
-data class AnimationEntry(val name: String, val duration: Float)
+data class AnimationEntry(
+    val index: Int,
+    val name: String,
+    val duration: Float,
+)
 
 class ARActivity : AppCompatActivity() {
 
@@ -82,6 +86,7 @@ class ARActivity : AppCompatActivity() {
     private var currentInstance: RenderableInstance? = null
     private var currentAnimIndex = 0
     private var showRealTexture = true
+    private var hideColorMode = false
     private var flatColorMaterial: Material? = null
     private var flatColorTexture: Texture? = null
     private var flatTextureBuildInFlight = false
@@ -164,6 +169,7 @@ class ARActivity : AppCompatActivity() {
         originalModelPath = intent.getStringExtra("originalModelPath")
         modelName = intent.getStringExtra("modelName") ?: "3D Model"
         modelType = intent.getStringExtra("modelType")
+        hideColorMode = intent.getBooleanExtra("hideColorMode", false)
 
         if (modelType == "multiple-glb" && !modelPath.isNullOrBlank()) {
             try {
@@ -186,6 +192,9 @@ class ARActivity : AppCompatActivity() {
         // For exported custom models, start in kid-painted look and allow switching to real model.
         if (!originalModelPath.isNullOrBlank()) {
             showRealTexture = false
+        }
+        if (hideColorMode) {
+            showRealTexture = true
         }
 
         // Parse audio list from JSON
@@ -610,29 +619,31 @@ class ARActivity : AppCompatActivity() {
             }
         }
 
-        val textureBtn = FrameLayout(this).apply {
-            val p = if (landscape) dp(8) else dp(10)
-            setPadding(p, p, p, p)
-            background = pillDrawable(if (showRealTexture) "#0EA5A4" else "#6C4CFF")
-            setOnClickListener { toggleTextureMode() }
-            contentDescription = if (showRealTexture) "Switch to color mode" else "Switch to real texture"
+        if (!hideColorMode) {
+            val textureBtn = FrameLayout(this).apply {
+                val p = if (landscape) dp(8) else dp(10)
+                setPadding(p, p, p, p)
+                background = pillDrawable(if (showRealTexture) "#0EA5A4" else "#6C4CFF")
+                setOnClickListener { toggleTextureMode() }
+                contentDescription = if (showRealTexture) "Switch to color mode" else "Switch to real texture"
 
-            addView(LinearLayout(this@ARActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(TextView(this@ARActivity).apply {
-                    text = if (landscape) {
-                        if (showRealTexture) "Color Fun" else "Real Look"
-                    } else {
-                        if (showRealTexture) "Color" else "Real"
-                    }
-                    setTextColor(Color.WHITE)
-                    setTypeface(null, Typeface.BOLD)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, if (landscape) labelSize else 11f)
+                addView(LinearLayout(this@ARActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@ARActivity).apply {
+                        text = if (landscape) {
+                            if (showRealTexture) "Color Fun" else "Real Look"
+                        } else {
+                            if (showRealTexture) "Color" else "Real"
+                        }
+                        setTextColor(Color.WHITE)
+                        setTypeface(null, Typeface.BOLD)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, if (landscape) labelSize else 11f)
+                    })
                 })
-            })
+            }
+            bottomBar.addView(textureBtn)
         }
-        bottomBar.addView(textureBtn)
     }
 
     private fun toggleTextureMode() {
@@ -916,13 +927,22 @@ class ARActivity : AppCompatActivity() {
                 setPadding(0, 0, 0, dp(16))
             })
             
-            val steps = listOf(
-                "1. Move phone to find a flat surface.",
-                "2. Tap on white dots to place the model.",
-                "3. One finger to move, two to rotate/scale.",
-                "4. Use bottom bar for Audio and Animations.",
-                "5. Toggle Real Texture / Color from bottom controls."
-            )
+            val steps = if (hideColorMode) {
+                listOf(
+                    "1. Move phone to find a flat surface.",
+                    "2. Tap on white dots to place the model.",
+                    "3. One finger to move, two to rotate/scale.",
+                    "4. Use bottom bar for Audio and Animations."
+                )
+            } else {
+                listOf(
+                    "1. Move phone to find a flat surface.",
+                    "2. Tap on white dots to place the model.",
+                    "3. One finger to move, two to rotate/scale.",
+                    "4. Use bottom bar for Audio and Animations.",
+                    "5. Toggle Real Texture / Color from bottom controls."
+                )
+            }
             
             steps.forEach { step ->
                 addView(TextView(this@ARActivity).apply {
@@ -1175,9 +1195,12 @@ class ARActivity : AppCompatActivity() {
                     inner.addView(createLabel("Change Animation"))
                     val animNames = allAnimations.map { it.name }
                     inner.addView(createSpinnerPill(animNames, selectedAnimationName) { name ->
-                        selectedAnimationName = name
-                        allAnimations.find { it.name == name }?.let { playAnimation(it) }
-                        showAnimationModal() // Refresh
+                        allAnimations
+                            .firstOrNull { it.name == name }
+                            ?.let { selected ->
+                                selectedAnimationName = selected.name
+                                playAnimation(selected)
+                            }
                     })
                 }
 
@@ -1464,7 +1487,11 @@ class ARActivity : AppCompatActivity() {
                         val count = instance?.animationCount ?: 0
                         allAnimations = (0 until count).map { i ->
                             val anim = instance!!.getAnimation(i)
-                            AnimationEntry(anim.name.takeIf { it.isNotBlank() } ?: "Anim ${i + 1}", anim.duration)
+                            AnimationEntry(
+                                i,
+                                anim.name.takeIf { it.isNotBlank() } ?: "Anim ${i + 1}",
+                                anim.duration
+                            )
                         }
 
                         if (allAnimations.isNotEmpty()) playAnimation(allAnimations[0])
@@ -1546,6 +1573,7 @@ class ARActivity : AppCompatActivity() {
                 (0 until count).map { i ->
                     val anim = instance!!.getAnimation(i)
                     AnimationEntry(
+                            i,
                             anim.name.takeIf { it.isNotBlank() } ?: "Anim ${i + 1}",
                             anim.duration
                     )
@@ -1589,19 +1617,21 @@ class ARActivity : AppCompatActivity() {
 
         if (modelType == "multiple-animation-execution") {
             allAnimations.forEach { a ->
-                val animator = ModelAnimator.ofAnimation(instance, a.name)
+                val animator = ModelAnimator.ofAnimation(instance, a.index)
                 animator.apply {
                     repeatCount = android.animation.ValueAnimator.INFINITE
                     duration = (a.duration * 1000f).toLong()
+                    startDelay = 0L
                     start()
                 }
                 activeAnimators.add(animator)
             }
         } else {
-            val animator = ModelAnimator.ofAnimation(instance, anim.name)
+            val animator = ModelAnimator.ofAnimation(instance, anim.index)
             animator.apply {
                 repeatCount = android.animation.ValueAnimator.INFINITE
                 duration = (anim.duration * 1000f).toLong()
+                startDelay = 0L
                 start()
             }
             activeAnimators.add(animator)

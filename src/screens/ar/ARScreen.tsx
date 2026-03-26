@@ -1008,7 +1008,7 @@ function ARModelOptionsSheet({
   const { colors } = useTheme();
   const { isLandscape } = useResponsiveLayout();
   const normalizedEnvironment = normalizeEnvName(environmentName || '').toLowerCase();
-  const isLimitedModeEnvironment = normalizedEnvironment === 'numbers' || normalizedEnvironment === 'my body';
+  const isMyBodyEnvironment = normalizedEnvironment === 'my body';
 
   const buttons = [
     {
@@ -1038,7 +1038,7 @@ function ARModelOptionsSheet({
       onPress: onScan,
       image: require('@/assets/images/ar_modes/Scan.webp'),
     },
-  ].filter(button => !isLimitedModeEnvironment || button.id === 'place');
+  ].filter(button => !isMyBodyEnvironment || button.id === 'place');
 
   if (isLandscape) {
     // ── Landscape: compact horizontal 3-column layout ──

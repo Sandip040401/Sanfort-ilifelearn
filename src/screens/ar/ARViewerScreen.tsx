@@ -380,6 +380,12 @@ export default function ARViewerScreen() {
     }
     return environments.find(env => getModelsForEnvironment(env, [currentModel]).length > 0) || null;
   }, [currentModel, environmentId, environments]);
+  const hideColorMode = useMemo(() => {
+    const raw = `${currentEnvironment?.name || ''} ${currentEnvironment?.folderName || ''}`
+      .trim()
+      .toLowerCase();
+    return raw.includes('body');
+  }, [currentEnvironment]);
 
   const environmentsWithAssets = useMemo(
     () => environments.filter(env => getModelsForEnvironment(env, models).length > 0),
@@ -778,6 +784,7 @@ export default function ARViewerScreen() {
         })),
         animations,
         modelType: (currentModel as any)?.type,
+        hideColorMode,
       });
     } catch (error: any) {
       setViewerError(error?.message || 'Unable to export custom AR model');
@@ -810,6 +817,7 @@ export default function ARViewerScreen() {
       })),
       animations,
       modelType: (currentModel as any)?.type,
+      hideColorMode,
     });
   };
 

@@ -2463,6 +2463,44 @@ class ARScannerActivity : AppCompatActivity() {
     trackedNode.tintApplied = false
   }
 
+  private fun choosePreferredAnimationIndex(renderableInstance: RenderableInstance): Int {
+    val count = renderableInstance.animationCount
+    if (count <= 0) {
+      return 0
+    }
+
+    val animations =
+        (0 until count).map { index ->
+          val animation = runCatching { renderableInstance.getAnimation(index) }.getOrNull()
+          val name = animation?.name.orEmpty()
+          val duration = runCatching { animation?.duration ?: 0f }.getOrDefault(0f)
+          Triple(index, name, duration)
+        }
+
+    // 1) Prefer known “alive” animation names.
+    for (hint in PREFERRED_ANIMATION_NAME_HINTS) {
+      val matched =
+          animations.firstOrNull { (_, name, duration) ->
+            duration > MIN_ANIMATION_DURATION_SEC && name.contains(hint, ignoreCase = true)
+          }
+      if (matched != null) {
+        return matched.first
+      }
+    }
+
+    // 2) Fallback to the longest valid clip (helps for models with generic names).
+    val longestPlayable =
+        animations
+            .filter { (_, _, duration) -> duration > MIN_ANIMATION_DURATION_SEC }
+            .maxByOrNull { (_, _, duration) -> duration }
+    if (longestPlayable != null) {
+      return longestPlayable.first
+    }
+
+    // 3) Last resort: first animation entry.
+    return 0
+  }
+
   private fun startPreferredAnimation(renderableInstance: RenderableInstance?): ObjectAnimator? {
     if (!ENABLE_MODEL_ANIMATION) {
       return null
@@ -2476,13 +2514,7 @@ class ARScannerActivity : AppCompatActivity() {
           renderableInstance.getAnimation(index).name
         }
 
-    val preferredIndex =
-        PREFERRED_ANIMATION_NAME_HINTS
-            .firstNotNullOfOrNull { animationHint ->
-              (0 until renderableInstance.animationCount).firstOrNull { index ->
-                renderableInstance.getAnimation(index).name.contains(animationHint, ignoreCase = true)
-              }
-            } ?: 0
+    val preferredIndex = choosePreferredAnimationIndex(renderableInstance)
 
     android.util.Log.i(
         "ARScannerActivity",
@@ -2775,15 +2807,7 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun pickBestAnimationIndex(ri: RenderableInstance): Int {
-    val count = ri.animationCount
-    if (count <= 0) return 0
-    for (hint in PREFERRED_ANIMATION_NAME_HINTS) {
-      for (i in 0 until count) {
-        val animName = runCatching { ri.getAnimation(i).name?.lowercase() ?: "" }.getOrDefault("")
-        if (animName.contains(hint)) return i
-      }
-    }
-    return 0
+    return choosePreferredAnimationIndex(ri)
   }
 
   private var textureResetGeneration = 0
@@ -5575,7 +5599,20 @@ class ARScannerActivity : AppCompatActivity() {
     const val EXTRA_MODEL_FILE_PATH = "modelFilePath"
     const val EXTRA_REFERENCE_IMAGE_FILE_PATH = "referenceImageFilePath"
     private const val DEFAULT_MODEL_ASSET = "bear.glb"
-    private val PREFERRED_ANIMATION_NAME_HINTS = listOf("idle", "walk", "eat", "run")
+    private val PREFERRED_ANIMATION_NAME_HINTS =
+        listOf(
+            "idle",
+            "walk",
+            "run",
+            "breath",
+            "breathe",
+            "loop",
+            "anim",
+            "action",
+            "take",
+            "mixamo",
+        )
+    private const val MIN_ANIMATION_DURATION_SEC = 0.08f
     private const val FRAME_PROCESS_INTERVAL_MS = 50L           // ~20fps texture processing, rendering stays at 60fps
     private const val COLOR_REFRESH_INTERVAL_MS = 55L           // was 80 → faster live color response
     private const val TEXTURE_REFRESH_INTERVAL_MS = 55L         // was 80 → faster texture updates
