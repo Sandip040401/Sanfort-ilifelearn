@@ -14,7 +14,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- ==================== TOP HEADER (compact landscape) ==================== -->
+    <!-- ==================== TOP HEADER ==================== -->
 
     <View
         android:id="@+id/topGradient"
@@ -25,7 +25,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Back Button — small round -->
+    <!-- Back Button -->
     <ImageButton
         android:id="@+id/btnBack"
         android:layout_width="32dp"
@@ -39,7 +39,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Model Name Badge — compact pill -->
+    <!-- Model Name Badge -->
     <TextView
         android:id="@+id/modelNameText"
         android:layout_width="wrap_content"
@@ -57,7 +57,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Close Button — small round -->
+    <!-- Close Button -->
     <ImageButton
         android:id="@+id/btnClose"
         android:layout_width="32dp"
@@ -71,7 +71,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Live Coloring Status — compact badge -->
+    <!-- Live Coloring Status -->
     <LinearLayout
         android:id="@+id/liveColoringContainer"
         android:layout_width="wrap_content"
@@ -125,8 +125,9 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
 
-    <!-- ==================== BOTTOM PANEL — right-aligned compact for landscape ==================== -->
+    <!-- ==================== GAME-STYLE BOTTOM UI — buttons on sides ==================== -->
 
+    <!-- Transparent background strip at bottom (minimal) -->
     <View
         android:id="@+id/bottomPanelBg"
         android:layout_width="0dp"
@@ -140,93 +141,93 @@
         android:id="@+id/bottomPanelContent"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingTop="5dp"
+        android:orientation="horizontal"
+        android:paddingTop="4dp"
         android:paddingBottom="6dp"
         android:paddingHorizontal="12dp"
-        android:gravity="center_horizontal"
+        android:gravity="center_vertical"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Row: Audio + Toggle — compact, centered -->
+        <!-- LEFT: Audio Button — game-style round pill -->
         <LinearLayout
+            android:id="@+id/audioButtonContainer"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp">
 
-            <!-- Audio Button — small pill -->
-            <LinearLayout
-                android:id="@+id/audioButtonContainer"
+            <ImageButton
+                android:id="@+id/btnAudio"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="Play Audio"
+                android:scaleType="centerInside"
+                android:background="@android:color/transparent" />
+
+            <TextView
+                android:id="@+id/audioLabel"
                 android:layout_width="wrap_content"
-                android:layout_height="30dp"
-                android:layout_marginEnd="8dp"
-                android:gravity="center"
-                android:orientation="horizontal"
-                android:paddingHorizontal="10dp">
-
-                <ImageButton
-                    android:id="@+id/btnAudio"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:contentDescription="Play Audio"
-                    android:scaleType="centerInside"
-                    android:background="@android:color/transparent" />
-
-                <TextView
-                    android:id="@+id/audioLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:text="Let's Spell"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-
-            </LinearLayout>
-
-            <!-- Toggle Colours — small pill -->
-            <LinearLayout
-                android:id="@+id/toggleColoursContainer"
-                android:layout_width="wrap_content"
-                android:layout_height="30dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingHorizontal="10dp">
-
-                <TextView
-                    android:id="@+id/toggleModeLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="5dp"
-                    android:text="Color Fun"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-
-                <Switch
-                    android:id="@+id/switchToggleColours"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="true"
-                    android:thumbTint="#00E5FF"
-                    android:trackTint="#4DFFFFFF" />
-
-            </LinearLayout>
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="Let's Spell"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
         </LinearLayout>
 
-        <!-- Instruction Text -->
-        <TextView
-            android:id="@+id/instructionText"
-            android:layout_width="wrap_content"
+        <!-- CENTER: spacer + instruction text -->
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_weight="1"
             android:gravity="center"
-            android:text="Point camera at the coloring page"
-            android:textColor="#B3FFFFFF"
-            android:textSize="9sp" />
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/instructionText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="Point camera at the coloring page"
+                android:textColor="#B3FFFFFF"
+                android:textSize="9sp"
+                android:maxLines="2"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- RIGHT: Color Toggle — game-style round pill -->
+        <LinearLayout
+            android:id="@+id/toggleColoursContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp">
+
+            <TextView
+                android:id="@+id/toggleModeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="Real Look"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Switch
+                android:id="@+id/switchToggleColours"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:thumbTint="#00E5FF"
+                android:trackTint="#4DFFFFFF" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

@@ -92,6 +92,8 @@ class ARScannerActivity : AppCompatActivity() {
   private var lastTintDebugLogTimeMs: Long = 0L
   private var lastSampleMissLogTimeMs: Long = 0L
   private var lastTextureApplyTimeMs: Long = 0L
+  private var lastTextureSampleAttemptTimeMs: Long = 0L
+  private var lastHighQualityTextureApplyTimeMs: Long = 0L
   private var lastTextureSignature: Int? = null
   private var lastTextureStats: TextureStats? = null
   private var pendingTextureSignature: Int? = null
@@ -129,6 +131,7 @@ class ARScannerActivity : AppCompatActivity() {
   private val trackedNodes = mutableMapOf<Int, TrackedImageNode>()
   private var lastTrackingActiveTimeMs: Long = 0L
   private var modelEverCreated = false
+  private var consecutiveTrackingLossUpdates = 0
 
   // ── Phase 1: UI Controls ──
   private lateinit var btnBack: ImageButton
@@ -201,6 +204,7 @@ class ARScannerActivity : AppCompatActivity() {
   private var fallbackBgNode: Node? = null
   private var fallbackModelNode: Node? = null
   private var fallbackRotationAnimator: ValueAnimator? = null
+  private var fallbackModelAnimator: ObjectAnimator? = null
   private var fallbackRotationDegrees: Float = 0f
   private var fallbackUserYaw: Float = 0f       // user drag rotation (Y axis)
   private var fallbackUserPitch: Float = 0f     // user drag rotation (X axis)
@@ -208,10 +212,14 @@ class ARScannerActivity : AppCompatActivity() {
   private var fallbackLastTouchX: Float = 0f
   private var fallbackLastTouchY: Float = 0f
   private var fallbackIsDragging: Boolean = false
+  // Prevent immediate fallback re-entry after tracking briefly recovers (anti-flicker hysteresis).
+  private var fallbackReentryAllowedAtMs: Long = 0L
   // Fixed camera snapshot — locks position so model doesn't jitter
   private var fallbackCameraPos: Vector3? = null
   private var fallbackCameraForward: Vector3? = null
   private var fallbackCameraRotation: Quaternion? = null
+  // Cache original materials before tracked nodes are removed, so fallback can show original textures
+  private var cachedOriginalMaterials: MutableList<Material>? = null
 
   private val onUpdateListener = Scene.OnUpdateListener {
     onARFrameUpdate()
@@ -405,12 +413,12 @@ class ARScannerActivity : AppCompatActivity() {
     }
     liveColoringDot.background = dotDrawable
 
-    // ── Bottom panel — compact frosted glass gradient ──
+    // ── Bottom panel — subtle semi-transparent gradient (doesn't block AR view) ──
     val bottomPanelBg = findViewById<View>(R.id.bottomPanelBg)
     bottomPanelBg.background = GradientDrawable(
         GradientDrawable.Orientation.BOTTOM_TOP,
-        intArrayOf(Color.parseColor("#E6111111"), Color.parseColor("#CC1A1A2E"))
-    ).apply { cornerRadii = floatArrayOf(16f * density, 16f * density, 16f * density, 16f * density, 0f, 0f, 0f, 0f) }
+        intArrayOf(Color.parseColor("#99000000"), Color.parseColor("#00000000"))
+    ).apply { cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f) }
 
     // ── Audio button container — compact gradient card ──
     val audioContainer = findViewById<LinearLayout>(R.id.audioButtonContainer)
@@ -421,7 +429,8 @@ class ARScannerActivity : AppCompatActivity() {
     btnAudio.background = createGradientCircleDrawable("#FFEAA7", "#FDCB6E")
     audioContainer.setOnClickListener { showAudioSettingsSheet() }
 
-    // ── Toggle container — compact gradient card ──
+    // ── Toggle container — game-style gradient pill ──
+    toggleColoursContainer.background = createGradientPillDrawable("#6C5CE7", "#A29BFE", 18f)
     toggleColoursContainer.elevation = 4f * density
 
     // ── Toggle switch styling ──
@@ -566,6 +575,8 @@ class ARScannerActivity : AppCompatActivity() {
           // Truly nothing cached — let live pipeline pick it up
           hasAppliedPageTexture = false
           lastTextureApplyTimeMs = 0L
+          lastTextureSampleAttemptTimeMs = 0L
+          lastHighQualityTextureApplyTimeMs = 0L
           trackedNode.usesTintMaterial = false
           trackedNode.tintApplied = false
         }
@@ -1208,6 +1219,21 @@ class ARScannerActivity : AppCompatActivity() {
     }
     // Apply post-processing (FXAA, Bloom, MSAA) once scene is ready
     applyPostProcessing()
+
+    // Hide ALL scan/instruction overlays (hand motion, scan square, focus ring)
+    runCatching {
+      arFragment.view?.let { fragView ->
+        if (fragView is android.view.ViewGroup) {
+          for (i in 0 until fragView.childCount) {
+            val child = fragView.getChildAt(i)
+            // Hide everything except the ArSceneView itself
+            if (child !is com.google.ar.sceneform.ArSceneView) {
+              child.visibility = View.GONE
+            }
+          }
+        }
+      }
+    }
   }
 
   private fun isARCoreSupported(): Boolean {
@@ -1236,46 +1262,46 @@ class ARScannerActivity : AppCompatActivity() {
       PerformanceTier.LOW ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 80L,    // was 120
-              textureRefreshIntervalMs = 120L,  // was 180
-              minTextureApplyIntervalMs = 140L, // was 200
-              textureSampleSizePx = 224,        // was 192 → sharper colors
+              colorRefreshIntervalMs = 300L,
+              textureRefreshIntervalMs = 900L,
+              minTextureApplyIntervalMs = 220L,
+              textureSampleSizePx = 160,
           )
       PerformanceTier.MEDIUM ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 55L,    // was 80
-              textureRefreshIntervalMs = 80L,  // was 120
-              minTextureApplyIntervalMs = 90L, // was 140
-              textureSampleSizePx = 320,       // was 256 → noticeably sharper
+              colorRefreshIntervalMs = 220L,
+              textureRefreshIntervalMs = 650L,
+              minTextureApplyIntervalMs = 170L,
+              textureSampleSizePx = 224,
           )
       PerformanceTier.HIGH ->
           PerformanceProfile(
               tier = tier,
-              colorRefreshIntervalMs = 40L,    // was 60
-              textureRefreshIntervalMs = 55L,  // was 80
-              minTextureApplyIntervalMs = 65L, // was 100
-              textureSampleSizePx = 448,       // was 384 → high quality colors
+              colorRefreshIntervalMs = 160L,
+              textureRefreshIntervalMs = 500L,
+              minTextureApplyIntervalMs = 120L,
+              textureSampleSizePx = 288,
           )
     }
   }
 
   private fun colorRefreshIntervalMs(): Long {
     return when (performanceProfile.tier) {
-      PerformanceTier.LOW -> 200L    // aggressive throttle for smooth rendering
-      PerformanceTier.MEDIUM -> 140L
-      PerformanceTier.HIGH -> 100L
+      PerformanceTier.LOW -> 340L
+      PerformanceTier.MEDIUM -> 260L
+      PerformanceTier.HIGH -> 190L
     }
   }
 
   private fun textureRefreshIntervalMs(inPerformanceRelief: Boolean): Long {
     val baseInterval = when (performanceProfile.tier) {
-      PerformanceTier.LOW -> 350L    // very conservative — rendering takes priority
-      PerformanceTier.MEDIUM -> 220L
-      PerformanceTier.HIGH -> 150L
+      PerformanceTier.LOW -> 900L
+      PerformanceTier.MEDIUM -> 650L
+      PerformanceTier.HIGH -> 500L
     }
     return if (inPerformanceRelief) {
-      (baseInterval * 2L).coerceAtMost(700L)
+      (baseInterval * 2L).coerceAtMost(1600L)
     } else {
       baseInterval
     }
@@ -1290,18 +1316,41 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun textureSampleSizePx(inPerformanceRelief: Boolean): Int {
-    // Small textures = fast CPU processing. Colors are clean from background rejection, not size.
-    // LINEAR_MIPMAP_LINEAR smooths them on the 3D model.
+    // Balanced quality/performance for CPU path: sharp enough without AR frame drops.
     val baseSize = when (performanceProfile.tier) {
-      PerformanceTier.LOW -> 72
-      PerformanceTier.MEDIUM -> 88
-      PerformanceTier.HIGH -> 104
+      PerformanceTier.LOW -> 160
+      PerformanceTier.MEDIUM -> 224
+      PerformanceTier.HIGH -> 288
     }
     return if (inPerformanceRelief) {
-      (baseSize * 2 / 3).coerceAtLeast(56)
+      (baseSize * 2 / 3).coerceAtLeast(128)
     } else {
       baseSize
     }
+  }
+
+  private fun highQualityTextureSampleSizePx(): Int {
+    return when (performanceProfile.tier) {
+      PerformanceTier.LOW -> 320
+      PerformanceTier.MEDIUM -> 448
+      PerformanceTier.HIGH -> 512
+    }
+  }
+
+  private fun shouldRequestHighQualityTexture(nowMs: Long, inPerformanceRelief: Boolean): Boolean {
+    if (inPerformanceRelief) return false
+    if (!hasDetectedUserColoring) return false
+    if (stablePageQuadStreak < HIGH_QUALITY_TEXTURE_MIN_STABLE_STREAK) return false
+    return (nowMs - lastHighQualityTextureApplyTimeMs) >= HIGH_QUALITY_TEXTURE_REFRESH_INTERVAL_MS
+  }
+
+  private fun isTextureSamplingDue(nowMs: Long, inPerformanceRelief: Boolean): Boolean {
+    val sampleIntervalMs = textureRefreshIntervalMs(inPerformanceRelief)
+    if ((nowMs - lastTextureSampleAttemptTimeMs) < sampleIntervalMs) {
+      return false
+    }
+    lastTextureSampleAttemptTimeMs = nowMs
+    return true
   }
 
   private fun gpuCpuParityRefreshIntervalMs(inPerformanceRelief: Boolean): Long {
@@ -1475,6 +1524,7 @@ class ARScannerActivity : AppCompatActivity() {
       frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
         if (image.trackingState == TrackingState.TRACKING && isImageFullyTracked(image)) {
           lastTrackingActiveTimeMs = now
+          consecutiveTrackingLossUpdates = 0
           exitFallbackMode()
           if (!trackedNodes.containsKey(image.index)) {
             trackedNodes[image.index] = createTrackedNode(image, renderable, scene)
@@ -1489,7 +1539,9 @@ class ARScannerActivity : AppCompatActivity() {
     }
 
     var anyTracking = false
+    var sawTrackableUpdate = false
     frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
+      sawTrackableUpdate = true
       when (image.trackingState) {
         TrackingState.TRACKING -> {
           // CRITICAL: Check if image is ACTUALLY visible in camera (FULL_TRACKING)
@@ -1500,6 +1552,7 @@ class ARScannerActivity : AppCompatActivity() {
           if (isFullyVisible) {
             anyTracking = true
             lastTrackingActiveTimeMs = now
+            consecutiveTrackingLossUpdates = 0
 
             if (isInFallbackMode) {
               exitFallbackMode()
@@ -1547,13 +1600,18 @@ class ARScannerActivity : AppCompatActivity() {
           } else {
             // TRACKING but LAST_KNOWN_POSE — image NOT visible in camera
             // Treat same as PAUSED: after grace period, enter fallback
+            consecutiveTrackingLossUpdates += 1
             val timeSinceLastTracking = now - lastTrackingActiveTimeMs
-            if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS && trackedNodes.containsKey(image.index)) {
+            if (consecutiveTrackingLossUpdates >= MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK &&
+                timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS &&
+                trackedNodes.containsKey(image.index)
+            ) {
               android.util.Log.i("ARScannerActivity", "Image LAST_KNOWN_POSE for ${timeSinceLastTracking}ms — entering fallback")
               removeTrackedNode(image.index)
-              if (!isInFallbackMode && modelEverCreated) {
+              if (!isInFallbackMode && modelEverCreated && now >= fallbackReentryAllowedAtMs) {
                 enterFallbackMode()
               }
+              consecutiveTrackingLossUpdates = 0
             } else {
               anyTracking = trackedNodes.containsKey(image.index)
             }
@@ -1561,24 +1619,33 @@ class ARScannerActivity : AppCompatActivity() {
         }
 
         TrackingState.STOPPED -> {
+          consecutiveTrackingLossUpdates += 1
           val trackedNode = trackedNodes[image.index]
           if (trackedNode != null) {
             val timeSinceLastTracking = now - lastTrackingActiveTimeMs
-            if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS) {
+            if (consecutiveTrackingLossUpdates >= MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK &&
+                timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS
+            ) {
               removeTrackedNode(image.index)
-              if (!isInFallbackMode && modelEverCreated) {
+              if (!isInFallbackMode && modelEverCreated && now >= fallbackReentryAllowedAtMs) {
                 enterFallbackMode()
               }
+              consecutiveTrackingLossUpdates = 0
             }
           }
         }
         TrackingState.PAUSED -> {
+          consecutiveTrackingLossUpdates += 1
           val timeSinceLastTracking = now - lastTrackingActiveTimeMs
-          if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS && trackedNodes.containsKey(image.index)) {
+          if (consecutiveTrackingLossUpdates >= MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK &&
+              timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS &&
+              trackedNodes.containsKey(image.index)
+          ) {
             removeTrackedNode(image.index)
-            if (!isInFallbackMode && modelEverCreated) {
+            if (!isInFallbackMode && modelEverCreated && now >= fallbackReentryAllowedAtMs) {
               enterFallbackMode()
             }
+            consecutiveTrackingLossUpdates = 0
           } else {
             anyTracking = trackedNodes.containsKey(image.index)
           }
@@ -1586,14 +1653,19 @@ class ARScannerActivity : AppCompatActivity() {
       }
     }
 
-    // Batch cleanup: nodes exist but none actively tracking
-    if (trackedNodes.isNotEmpty() && !anyTracking) {
+    // Batch cleanup: only when we actually got fresh ARCore tracking updates this frame.
+    // Prevents false fallback when ARCore keeps state stable and returns no updated trackables.
+    if (trackedNodes.isNotEmpty() && sawTrackableUpdate && !anyTracking) {
       val timeSinceLastTracking = now - lastTrackingActiveTimeMs
-      if (timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS && lastTrackingActiveTimeMs > 0L) {
+      if (consecutiveTrackingLossUpdates >= MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK &&
+          timeSinceLastTracking > FALLBACK_GRACE_PERIOD_MS &&
+          lastTrackingActiveTimeMs > 0L
+      ) {
         trackedNodes.keys.toList().forEach { removeTrackedNode(it) }
-        if (!isInFallbackMode && modelEverCreated) {
+        if (!isInFallbackMode && modelEverCreated && now >= fallbackReentryAllowedAtMs) {
           enterFallbackMode()
         }
+        consecutiveTrackingLossUpdates = 0
       }
     }
 
@@ -1642,6 +1714,8 @@ class ARScannerActivity : AppCompatActivity() {
       textureMaterialBuildInFlight = false
       lastTextureSignature = null
       lastTextureApplyTimeMs = 0L
+      lastTextureSampleAttemptTimeMs = 0L
+      lastHighQualityTextureApplyTimeMs = 0L
       firstTrackDetectedTimeMs = 0L
       lastAcceptedTextureBitmap = null
       lastBuiltTexture = null
@@ -1652,6 +1726,7 @@ class ARScannerActivity : AppCompatActivity() {
       fullPageSubjectMaskBySize.clear()
       fullPageReferencePixelsBySize.clear()
       hasDetectedUserColoring = false
+      consecutiveTrackingLossUpdates = 0
     }
 
     lastFrameWorkDurationMs = (SystemClock.elapsedRealtime() - frameWorkStartMs).coerceAtLeast(0L)
@@ -2539,7 +2614,13 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun ensureTrackedNodeAnimation(trackedNode: TrackedImageNode) {
-    if (!ENABLE_MODEL_ANIMATION) {
+    if (!ENABLE_MODEL_ANIMATION || performanceProfile.tier != PerformanceTier.HIGH) {
+      trackedNode.animator?.cancel()
+      trackedNode.animator = null
+      trackedNode.animationPaused = false
+      trackedNode.floatAnimator?.cancel()
+      trackedNode.floatAnimator = null
+      trackedNode.floatAnimatorPaused = false
       return
     }
     trackedNode.renderableInstance = trackedNode.modelNode.renderableInstance ?: trackedNode.renderableInstance
@@ -2552,11 +2633,10 @@ class ARScannerActivity : AppCompatActivity() {
       }
     }
 
-    // Always start float/bob animation alongside GLB animation for a lively floating effect.
-    if (trackedNode.floatAnimator == null) {
-      trackedNode.floatAnimator = startFloatAnimation(trackedNode)
-      trackedNode.floatAnimatorPaused = false
-    }
+    // Float/bob animation is disabled to keep AR tracking and color updates smooth.
+    trackedNode.floatAnimator?.cancel()
+    trackedNode.floatAnimator = null
+    trackedNode.floatAnimatorPaused = false
   }
 
   private fun startFloatAnimation(trackedNode: TrackedImageNode): ValueAnimator {
@@ -2578,28 +2658,41 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun applyAnimationPerformanceRelief(nowMs: Long) {
-    // Animations should NEVER be paused — they are lightweight and keep the model
-    // looking alive. Only texture/color sampling is throttled during performance relief.
-    // This method now only ensures animations are running if they were somehow stopped.
+    // During relief windows, pause animations to prioritize tracking + texture processing smoothness.
     if (!ENABLE_MODEL_ANIMATION || trackedNodes.isEmpty()) {
       return
     }
+    val pauseAnimations = nowMs < performanceReliefUntilMs
     trackedNodes.values.forEach { trackedNode ->
       val animator = trackedNode.animator
-      if (animator != null && trackedNode.animationPaused) {
-        runCatching { animator.resume() }
-        trackedNode.animationPaused = false
+      if (animator != null) {
+        if (pauseAnimations && !trackedNode.animationPaused) {
+          runCatching { animator.pause() }
+          trackedNode.animationPaused = true
+        } else if (!pauseAnimations && trackedNode.animationPaused) {
+          runCatching { animator.resume() }
+          trackedNode.animationPaused = false
+        }
       }
       val floatAnim = trackedNode.floatAnimator
-      if (floatAnim != null && trackedNode.floatAnimatorPaused) {
-        runCatching { floatAnim.resume() }
-        trackedNode.floatAnimatorPaused = false
+      if (floatAnim != null) {
+        if (pauseAnimations && !trackedNode.floatAnimatorPaused) {
+          runCatching { floatAnim.pause() }
+          trackedNode.floatAnimatorPaused = true
+        } else if (!pauseAnimations && trackedNode.floatAnimatorPaused) {
+          runCatching { floatAnim.resume() }
+          trackedNode.floatAnimatorPaused = false
+        }
       }
     }
   }
 
   private fun removeTrackedNode(index: Int) {
     trackedNodes.remove(index)?.let { trackedNode ->
+      // Cache original materials before removal so fallback mode can restore original textures
+      if (trackedNode.originalMaterials.isNotEmpty()) {
+        cachedOriginalMaterials = trackedNode.originalMaterials.toMutableList()
+      }
       trackedNode.animator?.cancel()
       trackedNode.floatAnimator?.cancel()
       trackedNode.anchorNode.anchor?.detach()
@@ -2657,9 +2750,9 @@ class ARScannerActivity : AppCompatActivity() {
       modelNameText.visibility = if (!modelName.isNullOrBlank()) View.VISIBLE else View.GONE
     }
 
-    // Blue background plane (covers camera feed)
+    // Dark neutral background plane (covers camera feed)
     MaterialFactory.makeOpaqueWithColor(this,
-        com.google.ar.sceneform.rendering.Color(Color.parseColor("#1B2559"))
+        com.google.ar.sceneform.rendering.Color(Color.parseColor("#171717"))
     ).thenAccept { bgMat ->
       if (!isInFallbackMode) return@thenAccept
       val bgRenderable = ShapeFactory.makeCube(Vector3(200f, 200f, 0.001f), Vector3.zero(), bgMat)
@@ -2682,7 +2775,7 @@ class ARScannerActivity : AppCompatActivity() {
 
     // Pivot node: model child offset by -center so rotation is around visual center
     fallbackModelNode = Node().apply { setParent(scene) }
-    Node().apply {
+    val modelChildNode = Node().apply {
       setParent(fallbackModelNode)
       this.renderable = nodeRenderable
       localScale = Vector3(fitScale, fitScale, fitScale)
@@ -2693,17 +2786,95 @@ class ARScannerActivity : AppCompatActivity() {
       )
     }
 
+    // ── Add strong fill lights so model is well-lit in Non-AR fallback mode ──
+    // Key light (front-top) — main illumination
+    val keyLight = Light.builder(Light.Type.POINT)
+        .setColor(com.google.ar.sceneform.rendering.Color(android.graphics.Color.WHITE))
+        .setIntensity(FALLBACK_KEY_LIGHT_INTENSITY)
+        .setFalloffRadius(FALLBACK_LIGHT_RADIUS)
+        .build()
+    Node().apply {
+      setParent(fallbackModelNode)
+      localPosition = Vector3(0f, 0.30f, 0.20f)
+      light = keyLight
+    }
+    // Fill light (back) — reduce dark backside
+    val backLight = Light.builder(Light.Type.POINT)
+        .setColor(com.google.ar.sceneform.rendering.Color(android.graphics.Color.WHITE))
+        .setIntensity(FALLBACK_BACK_LIGHT_INTENSITY)
+        .setFalloffRadius(FALLBACK_LIGHT_RADIUS)
+        .build()
+    Node().apply {
+      setParent(fallbackModelNode)
+      localPosition = Vector3(0f, 0.20f, -0.25f)
+      light = backLight
+    }
+    // Side fill light — even illumination from left
+    val sideLight = Light.builder(Light.Type.POINT)
+        .setColor(com.google.ar.sceneform.rendering.Color(android.graphics.Color.WHITE))
+        .setIntensity(FALLBACK_SIDE_LIGHT_INTENSITY)
+        .setFalloffRadius(FALLBACK_LIGHT_RADIUS)
+        .build()
+    Node().apply {
+      setParent(fallbackModelNode)
+      localPosition = Vector3(-0.25f, 0.18f, 0.05f)
+      light = sideLight
+    }
+    // Right side fill light — balance both sides
+    val rightSideLight = Light.builder(Light.Type.POINT)
+        .setColor(com.google.ar.sceneform.rendering.Color(android.graphics.Color.WHITE))
+        .setIntensity(FALLBACK_SIDE_LIGHT_INTENSITY)
+        .setFalloffRadius(FALLBACK_LIGHT_RADIUS)
+        .build()
+    Node().apply {
+      setParent(fallbackModelNode)
+      localPosition = Vector3(0.25f, 0.18f, 0.05f)
+      light = rightSideLight
+    }
+    // Bottom fill — prevent harsh shadows underneath
+    val bottomLight = Light.builder(Light.Type.POINT)
+        .setColor(com.google.ar.sceneform.rendering.Color(android.graphics.Color.WHITE))
+        .setIntensity(FALLBACK_BOTTOM_LIGHT_INTENSITY)
+        .setFalloffRadius(FALLBACK_LIGHT_RADIUS)
+        .build()
+    Node().apply {
+      setParent(fallbackModelNode)
+      localPosition = Vector3(0f, -0.15f, 0.10f)
+      light = bottomLight
+    }
+
+    // Restore original materials (undo any tint) so original GLB textures show in Non-AR
+    runCatching {
+      val riLocal = modelChildNode.renderableInstance
+      if (riLocal != null) {
+        // Use cached materials (saved before tracked node was removed)
+        val origMats = cachedOriginalMaterials
+            ?: trackedNodes.values.firstOrNull()?.originalMaterials
+        if (origMats != null && origMats.isNotEmpty()) {
+          for (i in 0 until minOf(riLocal.materialsCount, origMats.size)) {
+            runCatching { riLocal.setMaterial(i, origMats[i]) }
+          }
+        }
+      }
+    }
+
     updateFallbackPositions()
 
-    // Skeletal animation
-    val ri = fallbackModelNode?.children?.firstOrNull()?.renderableInstance
-    if (ri != null && ri.animationCount > 0) {
-      runCatching {
-        val anim = ModelAnimator.ofAnimation(ri, pickBestAnimationIndex(ri))
-        anim.interpolator = LinearInterpolator()
-        if (anim.duration > 0L) anim.duration = (anim.duration / ANIMATION_PLAYBACK_SPEED).toLong().coerceAtLeast(280L)
-        anim.repeatCount = ValueAnimator.INFINITE
-        anim.start()
+    // Non-AR fallback: play GLB animation loop (same experience as AR mode)
+    fallbackModelAnimator?.cancel()
+    fallbackModelAnimator = null
+    runCatching {
+      val ri = modelChildNode.renderableInstance
+      if (ri != null && ri.animationCount > 0) {
+        val bestIdx = pickBestAnimationIndex(ri)
+        fallbackModelAnimator = ModelAnimator.ofAnimation(ri, bestIdx).apply {
+          interpolator = LinearInterpolator()
+          if (duration > 0L) {
+            duration = (duration / ANIMATION_PLAYBACK_SPEED).toLong().coerceAtLeast(300L)
+          }
+          repeatCount = ValueAnimator.INFINITE
+          start()
+        }
       }
     }
   }
@@ -2715,7 +2886,7 @@ class ARScannerActivity : AppCompatActivity() {
     val forward = fallbackCameraForward ?: return
     val camRotation = fallbackCameraRotation ?: return
 
-    // Background plane behind model
+    // Background plane behind model — use full forward for proper coverage
     fallbackBgNode?.let { bg ->
       bg.worldPosition = Vector3(
           cameraPos.x + forward.x * FALLBACK_BG_DISTANCE,
@@ -2725,11 +2896,11 @@ class ARScannerActivity : AppCompatActivity() {
       bg.worldRotation = camRotation
     }
 
-    // Model: fixed at snapshot position, only user touch rotates it
+    // Model: place directly along camera forward direction so it's centered on screen
     fallbackModelNode?.let { model ->
       model.worldPosition = Vector3(
           cameraPos.x + forward.x * FALLBACK_MODEL_DISTANCE,
-          cameraPos.y + forward.y * FALLBACK_MODEL_DISTANCE,
+          cameraPos.y + forward.y * FALLBACK_MODEL_DISTANCE + FALLBACK_MODEL_VERTICAL_OFFSET,
           cameraPos.z + forward.z * FALLBACK_MODEL_DISTANCE,
       )
       val yawQ = Quaternion.axisAngle(Vector3.up(), fallbackUserYaw)
@@ -2752,6 +2923,7 @@ class ARScannerActivity : AppCompatActivity() {
   private fun exitFallbackMode() {
     if (!isInFallbackMode) return
     isInFallbackMode = false
+    fallbackReentryAllowedAtMs = SystemClock.elapsedRealtime() + FALLBACK_REENTRY_COOLDOWN_MS
     android.util.Log.i("ARScannerActivity", "Exiting fallback mode (tracking resumed)")
 
     cleanupFallbackScene()
@@ -2769,7 +2941,9 @@ class ARScannerActivity : AppCompatActivity() {
         arFragment.view?.let { fragView ->
           if (fragView is android.view.ViewGroup) {
             for (i in 0 until fragView.childCount) {
-              fragView.getChildAt(i).visibility = View.VISIBLE
+              val child = fragView.getChildAt(i)
+              child.visibility =
+                  if (child is com.google.ar.sceneform.ArSceneView) View.VISIBLE else View.GONE
             }
           }
         }
@@ -2783,6 +2957,8 @@ class ARScannerActivity : AppCompatActivity() {
   private fun cleanupFallbackScene() {
     fallbackRotationAnimator?.cancel()
     fallbackRotationAnimator = null
+    fallbackModelAnimator?.cancel()
+    fallbackModelAnimator = null
 
     // Cleanup pivot and its child model node
     fallbackModelNode?.let { pivot ->
@@ -2820,6 +2996,8 @@ class ARScannerActivity : AppCompatActivity() {
     textureMaterialBuildInFlight = false
     lastTextureSignature = null
     lastTextureApplyTimeMs = 0L
+    lastTextureSampleAttemptTimeMs = 0L
+    lastHighQualityTextureApplyTimeMs = 0L
     lastTextureStats = null
     pendingTextureSignature = null
     pendingTextureStreak = 0
@@ -2865,6 +3043,7 @@ class ARScannerActivity : AppCompatActivity() {
     lastTextureMissLogTimeMs = 0L
     loggedTintMaterialAttach = false
     loggedMissingTintTemplate = false
+    consecutiveTrackingLossUpdates = 0
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -2884,8 +3063,7 @@ class ARScannerActivity : AppCompatActivity() {
     lastTintUpdateTimeMs = now
     if (textureMaterialBuildInFlight) return null
     val inPerformanceRelief = now < performanceReliefUntilMs
-    val textureRefreshIntervalMs = textureRefreshIntervalMs(inPerformanceRelief)
-    if ((now - lastTextureApplyTimeMs) < textureRefreshIntervalMs && hasAppliedPageTexture) {
+    if (!isTextureSamplingDue(now, inPerformanceRelief)) {
       return null
     }
 
@@ -2896,7 +3074,7 @@ class ARScannerActivity : AppCompatActivity() {
         val texId = extractCameraTextureId(sceneView)
         if (texId > 0) {
           cameraTextureId = texId
-          val outputSize = textureSampleSizePx(inPerformanceRelief).coerceIn(128, 512)
+          val outputSize = textureSampleSizePx(inPerformanceRelief).coerceIn(128, 448)
           val processor = GpuTextureProcessor()
           processor.initialize(outputSize)
           if (processor.isInitialized()) {
@@ -2919,13 +3097,13 @@ class ARScannerActivity : AppCompatActivity() {
 
     // Upload subject mask once
     if (!gpuMaskUploaded) {
-      val outputSize = processor.getOutputSize().coerceIn(128, 512)
+      val outputSize = processor.getOutputSize().coerceIn(128, 448)
       val mask = getFullPageSubjectMask(outputSize)
       processor.uploadSubjectMask(mask, outputSize, outputSize)
       gpuMaskUploaded = true
     }
     if (!gpuReferenceUploaded) {
-      val outputSize = processor.getOutputSize().coerceIn(128, 512)
+      val outputSize = processor.getOutputSize().coerceIn(128, 448)
       val referencePixels = getFullPageReferencePixels(outputSize)
       processor.uploadReferenceTexture(referencePixels, outputSize, outputSize)
       gpuReferenceUploaded = true
@@ -3213,11 +3391,14 @@ class ARScannerActivity : AppCompatActivity() {
     lastTintUpdateTimeMs = now
     if (textureMaterialBuildInFlight) return null
     val inPerformanceRelief = now < performanceReliefUntilMs
-    val textureRefreshIntervalMs = textureRefreshIntervalMs(inPerformanceRelief)
-    val textureSampleSize = textureSampleSizePx(inPerformanceRelief)
-    if ((now - lastTextureApplyTimeMs) < textureRefreshIntervalMs && hasAppliedPageTexture) {
-      return null
-    }
+    if (!isTextureSamplingDue(now, inPerformanceRelief)) return null
+    val requestHighQuality = shouldRequestHighQualityTexture(now, inPerformanceRelief)
+    val textureSampleSize =
+        if (requestHighQuality) {
+          highQualityTextureSampleSizePx()
+        } else {
+          textureSampleSizePx(inPerformanceRelief)
+        }
     return sampleTrackedPageTexture(frame, sceneView, textureSampleSize)
   }
 
@@ -3244,7 +3425,11 @@ class ARScannerActivity : AppCompatActivity() {
             val sig = stats.signature
             val changed = isTextureSignatureSignificantlyChanged(lastTextureSignature, sig)
             val ageMs = nowBg - lastTextureApplyTimeMs
+            val inPerformanceRelief = nowBg < performanceReliefUntilMs
+            val minApplyIntervalMs = minTextureApplyIntervalMs(inPerformanceRelief)
+            val canApplyNow = !hasAppliedPageTexture || ageMs >= minApplyIntervalMs
             if (!textureMaterialBuildInFlight &&
+                canApplyNow &&
                 (!hasAppliedPageTexture || changed || ageMs >= FORCE_TEXTURE_MATERIAL_REFRESH_MS)
             ) {
               withContext(Dispatchers.Main) {
@@ -3414,7 +3599,7 @@ class ARScannerActivity : AppCompatActivity() {
     if (!isPageQuadStableForSampling(insetPageCorners, now)) {
       return null
     }
-    val output = outputSizePx.coerceIn(48, 160)
+    val output = outputSizePx.coerceIn(48, 512)
     val pooledPixels = getPooledIntArray(output * output)
     val pooledBitmap = getPooledBitmap(output, output)
     return runCatching {
@@ -3448,8 +3633,14 @@ class ARScannerActivity : AppCompatActivity() {
 
     val sampler =
         Texture.Sampler.builder()
-            .setMinFilter(Texture.Sampler.MinFilter.LINEAR_MIPMAP_LINEAR) // smooth at all angles
-            .setMagFilter(Texture.Sampler.MagFilter.LINEAR) // smooth color transitions, no blocky pixels
+            .setMinFilter(Texture.Sampler.MinFilter.LINEAR)
+            .setMagFilter(
+                if (bitmap.width >= HIGH_QUALITY_TEXTURE_MIN_SIZE_PX) {
+                  Texture.Sampler.MagFilter.NEAREST
+                } else {
+                  Texture.Sampler.MagFilter.LINEAR
+                },
+            )
             .setWrapMode(Texture.Sampler.WrapMode.CLAMP_TO_EDGE)
             .build()
 
@@ -3485,6 +3676,9 @@ class ARScannerActivity : AppCompatActivity() {
             lastTextureSignature = signature
             lastTextureStats = textureStats
             lastTextureApplyTimeMs = SystemClock.elapsedRealtime()
+            if (bitmap.width >= HIGH_QUALITY_TEXTURE_MIN_SIZE_PX) {
+              lastHighQualityTextureApplyTimeMs = lastTextureApplyTimeMs
+            }
             lastAcceptedTextureBitmap = bitmap
             lastAcceptedTextureSource = source
             if (source == TEXTURE_SOURCE_CPU_PARITY) {
@@ -4116,20 +4310,39 @@ class ARScannerActivity : AppCompatActivity() {
     val hasMask = subjectMask.isNotEmpty()
     val hasRef = referencePixels.isNotEmpty()
     val hasPrev = previousPixels != null
-    val pixelStep = if (performanceProfile.tier == PerformanceTier.LOW) 2 else 1
+    val inPerformanceReliefNow = SystemClock.elapsedRealtime() < performanceReliefUntilMs
+    val pixelStep =
+        if (inPerformanceReliefNow && outputWidth < HIGH_QUALITY_TEXTURE_MIN_SIZE_PX) 2 else 1
 
     for (index in 0 until totalPixels step pixelStep) {
       val camPixel = currentPixels[index]
       val red = Color.red(camPixel)
       val green = Color.green(camPixel)
       val blue = Color.blue(camPixel)
+      val maxChannel = max(red, max(green, blue))
+      val minChannel = min(red, min(green, blue))
+      val chroma = maxChannel - minChannel
+      val insideMask = if (hasMask) subjectMask.getOrElse(index) { true } else true
+
+      // Fast rejects for obvious shadow/paper pixels to avoid expensive HSV conversion.
+      if (maxChannel <= 38) {
+        currentPixels[index] = android.graphics.Color.WHITE
+        continue
+      }
+      if (maxChannel >= 236 && chroma <= 16) {
+        currentPixels[index] = android.graphics.Color.WHITE
+        continue
+      }
+      if (!insideMask && maxChannel >= 212 && chroma <= 20) {
+        currentPixels[index] = android.graphics.Color.WHITE
+        continue
+      }
 
       // Single HSV conversion for ALL checks below
       Color.colorToHSV(camPixel, hsv)
       val hue = hsv[0]
       val sat = hsv[1]
       val value = hsv[2]
-      val chroma = max(red, max(green, blue)) - min(red, min(green, blue))
 
       // 1) Very dark pixel → shadow/outline → WHITE
       if (value < 0.15f) {
@@ -4139,7 +4352,6 @@ class ARScannerActivity : AppCompatActivity() {
 
       val previous = if (hasPrev) previousPixels!![index] else 0
       val hasPrevPixel = hasPrev
-      val insideMask = if (hasMask) subjectMask.getOrElse(index) { true } else true
 
       // 2) Skin tone → hand is covering the page → use previous frame or WHITE
       if (isLikelySkinToneHsv(hsv, red, green, blue)) {
@@ -4206,7 +4418,7 @@ class ARScannerActivity : AppCompatActivity() {
 
       if (userColored) {
         coloredCount++
-        val boosted = boostDrawingPixel(camPixel)
+        val boosted = if (EXACT_TEXTURE_COLOR_MATCH) camPixel else boostDrawingPixel(camPixel)
         currentPixels[index] =
             if (hasPrevPixel) blendRgb(previous, boosted, TEXTURE_BLEND_ALPHA) else boosted
       } else {
@@ -4239,10 +4451,7 @@ class ARScannerActivity : AppCompatActivity() {
     val hasUserColoring = coloredCount >= MIN_COLORED_PIXELS_FOR_TEXTURE
     if (hasUserColoring) {
       hasDetectedUserColoring = true
-      // Skip fillWhiteHoles on LOW/MEDIUM tier — saves ~2-4ms per frame
-      if (performanceProfile.tier == PerformanceTier.HIGH) {
-        fillWhiteHoles(currentPixels, subjectMask, outputWidth, outputHeight)
-      }
+      // Keep sanitizer lightweight for smoother AR. Hole-fill pass is intentionally disabled.
     }
 
     if ((now() - lastTextureDebugLogTimeMs) >= 2000L) {
@@ -5613,13 +5822,13 @@ class ARScannerActivity : AppCompatActivity() {
             "mixamo",
         )
     private const val MIN_ANIMATION_DURATION_SEC = 0.08f
-    private const val FRAME_PROCESS_INTERVAL_MS = 50L           // ~20fps texture processing, rendering stays at 60fps
+    private const val FRAME_PROCESS_INTERVAL_MS = 80L
     private const val COLOR_REFRESH_INTERVAL_MS = 55L           // was 80 → faster live color response
     private const val TEXTURE_REFRESH_INTERVAL_MS = 55L         // was 80 → faster texture updates
     private const val TEXTURE_REFRESH_INTERVAL_MS_RELIEF = 200L // was 300 → less noticeable slowdown in relief
     private const val MIN_TEXTURE_APPLY_INTERVAL_MS = 70L       // was 100 → faster texture application
     private const val MIN_TEXTURE_APPLY_INTERVAL_MS_RELIEF = 280L // was 400
-    private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 280L  // was 400 → quicker forced refresh
+    private const val FORCE_TEXTURE_MATERIAL_REFRESH_MS = 520L
     private const val TEXTURE_HOLD_AFTER_SAMPLE_MISS_MS = 12000L  // was 10000 → hold texture longer when page not visible
     private const val DELTA_COLORED_THRESHOLD_SQ = 450   // was 800 (~28 RGB) → now ~21 RGB; detects lighter crayon strokes
     // Minimum color saturation/chroma for a pixel to be considered "user colored" even when
@@ -5629,14 +5838,24 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MIN_COLORED_PIXELS_FOR_TEXTURE = 3
     private const val TEXTURE_ONLY_WARMUP_MS = 120L  // was 200 → faster initial texture apply
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
-    // Grace period before transitioning to non-AR fallback view (shorter = more responsive)
-    private const val FALLBACK_GRACE_PERIOD_MS = 400L
+    // Grace period before transitioning to non-AR fallback view.
+    // Tuned to avoid fallback flicker while user is still scanning the sheet.
+    private const val FALLBACK_GRACE_PERIOD_MS = 1200L
+    private const val MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK = 2
+    private const val FALLBACK_REENTRY_COOLDOWN_MS = 900L
     // Fallback mode: distance of background plane from camera (must cover entire FOV)
     private const val FALLBACK_BG_DISTANCE = 12f
     // Fallback mode: distance of 3D model from camera
-    private const val FALLBACK_MODEL_DISTANCE = 0.80f
+    private const val FALLBACK_MODEL_DISTANCE = 1.2f    // distance from camera — further back so full model is visible
+    private const val FALLBACK_MODEL_VERTICAL_OFFSET = -0.10f
     // Fallback mode: virtual size of the model in fallback view (meters)
-    private const val FALLBACK_MODEL_VIEW_SIZE = 0.18f
+    private const val FALLBACK_MODEL_VIEW_SIZE = 0.25f   // model virtual size in meters — visible and centered
+    // Fallback mode lighting — bright enough to show model colors clearly on dark background
+    private const val FALLBACK_KEY_LIGHT_INTENSITY = 2500f
+    private const val FALLBACK_BACK_LIGHT_INTENSITY = 1800f
+    private const val FALLBACK_SIDE_LIGHT_INTENSITY = 1200f
+    private const val FALLBACK_BOTTOM_LIGHT_INTENSITY = 800f
+    private const val FALLBACK_LIGHT_RADIUS = 4.0f
     // If tracked image position jumps more than ~15cm, assume different physical sheet
     private const val SHEET_SWITCH_DISTANCE_SQ = 0.0225f  // 0.15m squared
     private const val ANCHOR_SMOOTHING_ALPHA = 0.22f             // was 0.35 → smoother position lerp (less jitter)
@@ -5673,11 +5892,11 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SINGLE_FINGER_ROTATION_MIN_PX = 3f          // minimum drag distance to trigger rotation
     private const val MIN_COLORING_SATURATION = 0.025f  // was 0.03 → detect more subtle coloring
     private const val MIN_COLORING_BRIGHTNESS = 0.04f   // was 0.05 → accept slightly darker strokes
-    private const val TINT_SMOOTHING_ALPHA = 0.60f   // was 0.78 → smoother color transitions (less jumpy)
+    private const val TINT_SMOOTHING_ALPHA = 0.72f   // was 0.60 → more responsive to actual color changes
     private const val MIN_TINT_DELTA = 0.018f        // was 0.025 → more responsive to subtle color changes
-    private const val BASE_EMISSIVE_BOOST = 0.42f             // was 0.35 → colors glow slightly more on model
-    private const val EXTRA_EMISSIVE_BOOST_DARK_SCENES = 0.65f // was 0.55 → better in dark environments
-    private const val MAX_EMISSIVE_VALUE = 1.55f               // was 1.40 → allow more vivid emission
+    private const val BASE_EMISSIVE_BOOST = 0.55f             // stronger glow for vivid colors on model
+    private const val EXTRA_EMISSIVE_BOOST_DARK_SCENES = 0.80f // much better in dark environments
+    private const val MAX_EMISSIVE_VALUE = 1.80f               // allow very vivid emission for production look
     private const val COLOR_HOLD_ON_NOISE_MS = 500L      // was 700 → faster recovery from noise
     private const val MIN_MATERIAL_REBUILD_INTERVAL_MS = 120L // was 180 → faster material rebuilds
     private const val ANIMATION_PLAYBACK_SPEED = 0.72f
@@ -5687,8 +5906,8 @@ class ARScannerActivity : AppCompatActivity() {
     private const val MAX_SURFACE_OFFSET_METERS = 0.060f
     private const val SURFACE_CONTACT_BIAS_METERS = 0.003f
     private const val PAGE_COLOR_SAMPLE_CENTER_Z_RATIO = 0.0f
-    private const val PAGE_TEXTURE_SAMPLE_SIZE_PX = 88    // small for fast CPU processing
-    private const val PAGE_TEXTURE_SAMPLE_SIZE_PX_RELIEF = 64
+    private const val PAGE_TEXTURE_SAMPLE_SIZE_PX = 160   // larger for crisp CPU texture sampling
+    private const val PAGE_TEXTURE_SAMPLE_SIZE_PX_RELIEF = 112
     private const val PAGE_QUAD_INSET_RATIO = 0.030f
     private const val PAGE_TEXTURE_SAMPLE_PADDING_RATIO = 0.015f
     private const val SUBJECT_SAMPLE_POINT_KEEP_RATIO = 0.55f
@@ -5696,9 +5915,13 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SUBJECT_TEXTURE_MIN_SAMPLE_POINTS = 20
     private const val SUBJECT_TEXTURE_INSET_RATIO_X = 0.03f
     private const val SUBJECT_TEXTURE_INSET_RATIO_Y = 0.04f
+    private const val HIGH_QUALITY_TEXTURE_MIN_STABLE_STREAK = 1
+    private const val HIGH_QUALITY_TEXTURE_REFRESH_INTERVAL_MS = 650L
+    private const val HIGH_QUALITY_TEXTURE_MIN_SIZE_PX = 320
+    private const val EXACT_TEXTURE_COLOR_MATCH = true
     // Do not shrink the subject mask; erosion was clipping head/legs and causing white patches.
     private const val SUBJECT_MASK_EROSION_RADIUS_PX = 0
-    private const val TEXTURE_BLEND_ALPHA = 0.88f  // was 0.72 → 88% new frame, much sharper colors (less blur from old frames)
+    private const val TEXTURE_BLEND_ALPHA = 1.0f   // 100% new frame — sharpest possible, no temporal blur
     // Increased so vivid sketch colors are not wrongly rejected as skin
     private const val SKIN_REJECT_MIN_DELTA = 55
     private const val HAND_OCCLUSION_SKIN_RATIO = 0.05f  // 5% skin pixels → reject entire frame (hand on page)
@@ -5722,10 +5945,10 @@ class ARScannerActivity : AppCompatActivity() {
     private const val LOCAL_SKETCH_MAX_CHANGE_RATIO = 0.45f
     private const val GRID_CELL_CHANGE_DELTA = 34
     private const val TEXTURE_STATS_GRID = 8  // was 6 → finer grid for better color change detection
-    private const val ENABLE_MODEL_ANIMATION = true
+    private const val ENABLE_MODEL_ANIMATION = false
     private const val ENABLE_SOLID_TINT_FALLBACK = false
-    private const val HIGH_FRAME_WORK_DURATION_MS = 14L    // aggressive — enter relief quickly to keep rendering smooth
-    private const val PERFORMANCE_RELIEF_WINDOW_MS = 800L  // longer relief = more time for smooth rendering
+    private const val HIGH_FRAME_WORK_DURATION_MS = 12L
+    private const val PERFORMANCE_RELIEF_WINDOW_MS = 1400L
     private const val CENTER_TEXTURE_FALLBACK_WIDTH_RATIO = 0.22f
     private const val CENTER_TEXTURE_FALLBACK_HEIGHT_RATIO = 0.18f
     private const val MIN_TEXTURE_SIGNATURE_DELTA = 3  // was 4 → detect smaller color changes faster

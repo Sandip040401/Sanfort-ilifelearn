@@ -36,8 +36,10 @@ class ARImageTrackingFragment : ArFragment() {
       Log.w(logTag, "Image tracking disabled until a high-quality reference image is provided.")
     }
 
+    // Hide ALL scanning/instruction overlays (scan square, hand motion, etc.)
     instructionsController.setEnabled(InstructionsController.TYPE_PLANE_DISCOVERY, false)
     instructionsController.setVisible(InstructionsController.TYPE_PLANE_DISCOVERY, false)
+    runCatching { instructionsController.isEnabled = false }
     arSceneView.planeRenderer.isVisible = false
     return config
   }

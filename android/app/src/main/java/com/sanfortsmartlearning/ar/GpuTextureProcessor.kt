@@ -73,7 +73,7 @@ class GpuTextureProcessor {
      */
     fun initialize(size: Int) {
         if (initialized) release()
-        outputSize = size.coerceIn(64, 768)  // was 512 → allow higher resolution textures
+        outputSize = size.coerceIn(64, 1024)  // was 768 → production-quality high resolution textures
 
         // Create FBO + color texture
         val fbos = IntArray(1)
@@ -408,7 +408,7 @@ void main() {
 
         private const val FRAGMENT_SHADER = """#version 300 es
 #extension GL_OES_EGL_image_external_essl3 : require
-precision mediump float;
+precision highp float;  // high precision for sharp, accurate colors
 
 uniform samplerExternalOES uCameraTexture;
 uniform sampler2D uSubjectMask;
@@ -536,10 +536,10 @@ void main() {
     }
 
     if (userColored) {
-        // Vivid saturation boost to make colors pop on 3D model
+        // Vivid saturation + brightness boost for crisp, production-quality colors on 3D model
         vec3 boosted = rgb;
-        float satBoost = (sat < 0.25) ? 1.50 : (sat < 0.45) ? 1.35 : 1.22;
-        float valBoost = (val_ < 0.40) ? 1.25 : (val_ < 0.65) ? 1.15 : 1.06;
+        float satBoost = (sat < 0.25) ? 1.70 : (sat < 0.45) ? 1.50 : 1.35;
+        float valBoost = (val_ < 0.40) ? 1.35 : (val_ < 0.65) ? 1.22 : 1.12;
         // Apply boost in HSV space
         vec3 boostedHsv = hsv;
         boostedHsv.y = min(boostedHsv.y * satBoost, 1.0);

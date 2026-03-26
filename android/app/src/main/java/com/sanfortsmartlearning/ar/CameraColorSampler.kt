@@ -292,7 +292,8 @@ object CameraColorSampler {
       return null
     }
 
-    val output = outputSize.coerceIn(48, 320)
+    val output = outputSize.coerceIn(48, 512)
+    val useNearestSampling = output >= 320
     val regionWidth = (safeMaxX - safeMinX).coerceAtLeast(1)
     val regionHeight = (safeMaxY - safeMinY).coerceAtLeast(1)
     val pixels = IntArray(output * output)
@@ -302,7 +303,15 @@ object CameraColorSampler {
       for (col in 0 until output) {
         val sourceX = safeMinX + ((col.toFloat() / (output - 1).toFloat()) * regionWidth.toFloat())
         pixels[row * output + col] =
-            readRgbBilinearColor(image, sourceX, sourceY, safeMinX, safeMinY, safeMaxX, safeMaxY)
+            if (useNearestSampling) {
+              readRgbAtColor(
+                  image,
+                  sourceX.roundToInt().coerceIn(safeMinX, safeMaxX),
+                  sourceY.roundToInt().coerceIn(safeMinY, safeMaxY),
+              )
+            } else {
+              readRgbBilinearColor(image, sourceX, sourceY, safeMinX, safeMinY, safeMaxX, safeMaxY)
+            }
       }
     }
 
@@ -325,7 +334,8 @@ object CameraColorSampler {
     val br = cornersPx[2]
     val bl = cornersPx[3]
     val homography = computeUnitSquareToQuadHomography(tl, tr, br, bl)
-    val output = outputSize.coerceIn(48, 320)
+    val output = outputSize.coerceIn(48, 512)
+    val useNearestSampling = output >= 320
     val pixelCount = output * output
     val projectedSource = FloatArray(2)
     val pixels =
@@ -347,15 +357,23 @@ object CameraColorSampler {
           projectedSource[1] = bilinearScalar(tl.second, tr.second, br.second, bl.second, u, v)
         }
         pixels[(row * output) + col] =
-            readRgbBilinearColor(
-                image = image,
-                sourceX = projectedSource[0],
-                sourceY = projectedSource[1],
-                minX = 0,
-                minY = 0,
-                maxX = image.width - 1,
-                maxY = image.height - 1,
-            )
+            if (useNearestSampling) {
+              readRgbAtColor(
+                  image,
+                  projectedSource[0].roundToInt().coerceIn(0, image.width - 1),
+                  projectedSource[1].roundToInt().coerceIn(0, image.height - 1),
+              )
+            } else {
+              readRgbBilinearColor(
+                  image = image,
+                  sourceX = projectedSource[0],
+                  sourceY = projectedSource[1],
+                  minX = 0,
+                  minY = 0,
+                  maxX = image.width - 1,
+                  maxY = image.height - 1,
+              )
+            }
       }
     }
     val targetBitmap =
