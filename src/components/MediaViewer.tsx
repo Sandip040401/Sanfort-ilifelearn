@@ -255,7 +255,7 @@ export default function MediaViewer({
                 )}
               </View>
 
-              <View style={styles.videoMetaCard}>
+              {/* <View style={styles.videoMetaCard}>
                 <Text style={styles.videoMetaEyebrow}>
                   {showsEmbeddedYouTube ? 'YouTube-style player' : 'Lesson player'}
                 </Text>
@@ -269,7 +269,7 @@ export default function MediaViewer({
                     ? 'Embedded playback opens inside a full-width 16:9 viewer.'
                     : 'Playback uses the native controls with a stable full-width frame.'}
                 </Text>
-              </View>
+              </View> */}
             </View>
           )}
 
