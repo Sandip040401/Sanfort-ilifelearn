@@ -1,12 +1,15 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import {
+  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ViewStyle,
   useWindowDimensions,
 } from 'react-native';
 import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
@@ -20,10 +23,6 @@ import {
   Bell,
   BookOpen,
   FileText,
-  Gamepad2,
-  Glasses,
-  Globe,
-  Mic,
   User,
 } from 'lucide-react-native';
 import { useAuth } from '@/store';
@@ -61,6 +60,7 @@ export default function HomeScreen() {
   const { width, height } = useWindowDimensions();
   const { tabBarTranslateY } = useTabBarScroll();
   const lastScrollY = useRef(0);
+  const isTabBarHidden = useRef(false);
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
 
   const isTablet = width >= 768;
@@ -68,35 +68,64 @@ export default function HomeScreen() {
   const outerHPad = isTablet && isLandscape ? scale(12) : H_PAD;
   const maxContentWidth = isTablet && !isLandscape ? width - 48 : undefined;
   const gridGap = isTablet ? 14 : CARD_GAP;
-  const containerStyle: any = [
-    styles.container,
-    { paddingHorizontal: outerHPad },
-    maxContentWidth ? { width: maxContentWidth, alignSelf: 'center' } : null,
-  ];
+  const containerStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      styles.container,
+      { paddingHorizontal: outerHPad },
+      maxContentWidth ? { width: maxContentWidth, alignSelf: 'center' } : null,
+    ],
+    [maxContentWidth, outerHPad],
+  );
+
+  const contentContainerStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      styles.scrollContent,
+      {
+        paddingBottom: tabBarHeight + 24,
+        backgroundColor: colors.background,
+      },
+    ],
+    [colors.background, tabBarHeight],
+  );
+
+  const animateTabBar = useCallback(
+    (hide: boolean) => {
+      if (isTabBarHidden.current === hide) {
+        return;
+      }
+      isTabBarHidden.current = hide;
+      tabBarTranslateY.value = withTiming(hide ? tabBarHeight : 0, { duration: 200 });
+    },
+    [tabBarHeight, tabBarTranslateY],
+  );
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
     if (y <= 0) {
-      tabBarTranslateY.value = withTiming(0, { duration: 200 });
+      animateTabBar(false);
       return;
     }
-    if (diff > 0) {
-      // scrolling down — snap hide immediately
-      tabBarTranslateY.value = withTiming(tabBarHeight, { duration: 200 });
+    if (diff > 2) {
+      // scrolling down — hide once
+      animateTabBar(true);
     } else if (diff < -2) {
       // scrolling up — show
-      tabBarTranslateY.value = withTiming(0, { duration: 200 });
+      animateTabBar(false);
     }
-  }, [tabBarTranslateY, tabBarHeight]);
+  }, [animateTabBar]);
 
   const firstName = useMemo(() => {
-    const n = user?.name?.split(' ')[0] ?? 'Learner';
+    const n = user?.name?.trim().split(/\s+/)[0] || 'Learner';
     return n.charAt(0).toUpperCase() + n.slice(1);
   }, [user?.name]);
-  const greeting = useMemo(() => getGreeting(), []);
+  const greeting = getGreeting();
   const isUserLoaded = !!user;
+
+  const handleNotificationsPress = useCallback(() => {
+    Alert.alert('Coming Soon', 'Notifications will be available soon.');
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -105,11 +134,7 @@ export default function HomeScreen() {
         style={[styles.scroll, { backgroundColor: colors.background }]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{
-          paddingBottom: tabBarHeight + 24,
-          backgroundColor: colors.background,
-          flexGrow: 1,
-        }}>
+        contentContainerStyle={contentContainerStyle}>
 
         {/* ── Header ── */}
         <View style={[styles.headerOuter, { paddingTop: insets.top + 16 }]}>
@@ -135,7 +160,8 @@ export default function HomeScreen() {
               <View style={styles.headerBtns}>
                 <TouchableOpacity
                   activeOpacity={0.7}
-                  style={styles.iconBtn}>
+                  style={styles.iconBtn}
+                  onPress={handleNotificationsPress}>
                   <Bell size={20} color="#fff" strokeWidth={1.2} />
                   <View style={styles.notiBadge} />
                 </TouchableOpacity>
@@ -173,7 +199,7 @@ export default function HomeScreen() {
 
         {/* ── Content ── */}
         <View style={[styles.content, { backgroundColor: colors.background }]}>
-          <View style={[containerStyle as any]}>
+          <View style={containerStyle}>
 
             {/* Featured — Books */}
             <Text style={[styles.section, styles.sectionFirst, { color: colors.text }]}>Featured</Text>
@@ -189,7 +215,7 @@ export default function HomeScreen() {
                   <View style={styles.heroIconWrap}>
                     <BookOpen size={32} color="#fff" strokeWidth={1.2} />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.flexOne}>
                     <Text style={styles.heroTitle}>Grade Books</Text>
                     <Text style={styles.heroSub}>Curriculum-aligned ebooks{'\n'}for every grade level</Text>
                   </View>
@@ -229,7 +255,7 @@ export default function HomeScreen() {
                 <View style={styles.wideIcon}>
                   <FileText size={28} color="#fff" strokeWidth={1.2} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.flexOne}>
                   <Text style={styles.wideTitle}>AR Sheets</Text>
                   <Text style={styles.wideSub}>Scan worksheets with AR camera to see 3D animations live</Text>
                 </View>
@@ -247,6 +273,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  flexOne: { flex: 1 },
 
   headerOuter: { paddingBottom: verticalScale(50), overflow: 'hidden' },
   headerContent: { zIndex: 1 }, // Ensure content stays above decors

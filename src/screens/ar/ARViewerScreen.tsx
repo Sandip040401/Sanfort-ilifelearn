@@ -24,12 +24,8 @@ import LinearGradient from 'react-native-linear-gradient';
 import { WebView } from 'react-native-webview';
 import Video, { type VideoRef } from 'react-native-video';
 import {
-  Activity,
-  Brush,
   ChevronLeft,
-  ChevronRight,
   CheckCircle2,
-  Grid2X2,
   Image as ImageIcon,
   Lightbulb,
   Menu,
@@ -37,22 +33,17 @@ import {
   Pause,
   Play,
   Plus,
-  RefreshCw,
   Search,
-  Settings2,
-  Sparkles,
   Volume1,
   Volume2,
   VolumeX,
   X,
   Minus,
   Eraser,
-  Rotate3D
 } from 'lucide-react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import {
   BottomSheetModal,
-  BottomSheetView,
   BottomSheetScrollView,
   BottomSheetBackdrop,
 } from '@gorhom/bottom-sheet';
@@ -146,6 +137,14 @@ const TARGET_ASSETS: Record<string, string> = {
   Wolf: 'https://i.ibb.co/35LpnYGX/Wolf.jpg',
 };
 
+const AUDIO_BUFFER_CONFIG = {
+  minBufferMs: 700,
+  maxBufferMs: 6000,
+  bufferForPlaybackMs: 120,
+  bufferForPlaybackAfterRebufferMs: 250,
+  cacheSizeMB: 80,
+} as const;
+
 
 function ModelPreviewImage({
   thumbnailUri,
@@ -225,6 +224,7 @@ export default function ARViewerScreen() {
   const webViewRef = useRef<WebView>(null);
   const sheetWebViewRef = useRef<WebView>(null);
   const audioRef = useRef<VideoRef>(null);
+  const loadEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loadingModel, setLoadingModel] = useState(true);
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -233,7 +233,6 @@ export default function ARViewerScreen() {
   const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [autoRotate, setAutoRotate] = useState(true);
-  const [wireframe, setWireframe] = useState(false);
   const [environment, setEnvironment] = useState('sunset');
   const [showLeftMenu, setShowLeftMenu] = useState(false);
   const [activeControlCategory, setActiveControlCategory] = useState<string | null>(null);
@@ -246,11 +245,10 @@ export default function ARViewerScreen() {
   const [paintingEnabled, setPaintingEnabled] = useState(false);
   const [brushColor, setBrushColor] = useState(COLOR_SWATCHES[0]);
   const [brushSize, setBrushSize] = useState(32);
-  const [showBrushControls, setShowBrushControls] = useState(false);
   const [showTargetPainter, setShowTargetPainter] = useState(false);
   const [targetTextureDataUrl, setTargetTextureDataUrl] = useState<string | null>(null);
   const [textureDisplayMode, setTextureDisplayMode] = useState<'original' | 'model-paint' | 'target-paint'>('original');
-  const [paintMode, setPaintMode] = useState<'model' | 'target'>('model');
+  const [, setPaintMode] = useState<'model' | 'target'>('model');
   const [isExporting, setIsExporting] = useState(false);
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [exportStatusText, setExportStatusText] = useState('');
@@ -258,6 +256,8 @@ export default function ARViewerScreen() {
   const [isEraser, setIsEraser] = useState(false);
   const [sheetBrushSize, setSheetBrushSize] = useState(5);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [audioReady, setAudioReady] = useState(false);
+  const [audioSyncPending, setAudioSyncPending] = useState(false);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
@@ -285,6 +285,14 @@ export default function ARViewerScreen() {
     StatusBar.setBarStyle('light-content');
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (loadEndTimeoutRef.current) {
+        clearTimeout(loadEndTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Pause audio when app goes to background
   const audioPlayingBeforeBg = useRef(false);
   useEffect(() => {
@@ -294,6 +302,7 @@ export default function ARViewerScreen() {
         if (audioPlaying) setAudioPlaying(false);
       } else if (nextState === 'active' && audioPlayingBeforeBg.current) {
         setAudioPlaying(true);
+        setAudioSyncPending(true);
       }
     });
     return () => sub.remove();
@@ -340,15 +349,22 @@ export default function ARViewerScreen() {
     const m = currentModel as any;
     if (m.type === 'multiple-glb' && m.parts && m.parts.length > 0) {
       const baseUrl = ARService.getModelFileUrl(getModelStableId(currentModel));
-      const partsConfig = m.parts.map((p: any) => {
-        const filename = p.file.split('/').pop();
-        return {
+      const partsConfig = m.parts.flatMap((p: any) => {
+        const rawFile = typeof p?.file === 'string' ? p.file : '';
+        const filename = rawFile.split('/').pop();
+        if (!filename) {
+          return [];
+        }
+        return [{
           id: p.partId,
           name: p.name,
-          url: `${baseUrl}?part=${filename}`,
+          url: `${baseUrl}?part=${encodeURIComponent(filename)}`,
           audioUrl: p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null
-        };
+        }];
       });
+      if (!partsConfig.length) {
+        return baseUrl;
+      }
       return JSON.stringify(partsConfig);
     }
     return ARService.getModelFileUrl(getModelStableId(currentModel));
@@ -430,8 +446,14 @@ export default function ARViewerScreen() {
     setLoadingModel(true);
     setViewerError(null);
     setProgress(0);
+    if (loadEndTimeoutRef.current) {
+      clearTimeout(loadEndTimeoutRef.current);
+      loadEndTimeoutRef.current = null;
+    }
     setShowLeftMenu(false);
     setAudioPlaying(false);
+    setAudioReady(false);
+    setAudioSyncPending(false);
     setAssetSearchTerm('');
     setPaintingEnabled(false);
     setTextureDisplayMode('original');
@@ -453,6 +475,7 @@ export default function ARViewerScreen() {
     if (isSpecialType) {
       setAutoRotate(false);
       setAudioPlaying(true);
+      setAudioSyncPending(true);
       sendToWebView({ type: 'toggleRotate', value: false });
       if ((currentModel as any)?.type === 'multiple-animation-execution') {
         sendToWebView({ type: 'playAllAnimations', value: isPlaying });
@@ -466,7 +489,7 @@ export default function ARViewerScreen() {
       setAutoRotate(true);
       sendToWebView({ type: 'toggleRotate', value: true });
     }
-  }, [loadingModel, currentModel, selectedPartId]);
+  }, [isPlaying, loadingModel, currentModel, selectedPartId]);
 
   useEffect(() => {
     if (!openPainter) {
@@ -538,14 +561,24 @@ export default function ARViewerScreen() {
       const part = parts.find((p: any) => p.partId === selectedPartId);
       if (part?.audio?.gridfsId) {
         const uri = ARService.getAudioStreamUrlById(part.audio.gridfsId);
-        return uri ? { uri } : undefined;
+        return uri ? {
+          uri,
+          shouldCache: true,
+          minLoadRetryCount: 3,
+          bufferConfig: AUDIO_BUFFER_CONFIG,
+        } : undefined;
       }
     }
     if (!selectedAudio?.gridfsId) {
       return undefined;
     }
     const uri = ARService.getAudioStreamUrlById(selectedAudio.gridfsId) || '';
-    return uri ? { uri } : undefined;
+    return uri ? {
+      uri,
+      shouldCache: true,
+      minLoadRetryCount: 3,
+      bufferConfig: AUDIO_BUFFER_CONFIG,
+    } : undefined;
   }, [currentModel, selectedPartId, selectedAudio?.gridfsId]);
 
   const currentLighting =
@@ -587,9 +620,54 @@ export default function ARViewerScreen() {
   };
 
   useEffect(() => {
+    if (!audioSource) {
+      setAudioReady(false);
+      setAudioSyncPending(false);
+      return;
+    }
+    setAudioReady(false);
+    if (audioPlaying) {
+      setAudioSyncPending(true);
+    }
+  }, [audioPlaying, audioSource]);
+
+  useEffect(() => {
+    if (!audioSyncPending || !audioPlaying || !audioReady) {
+      return;
+    }
+    try {
+      audioRef.current?.seek(0);
+    } catch {
+      // ignore seek failures on unloaded streams
+    }
+    if (isSpecialType) {
+      if (!isPlaying) {
+        setIsPlaying(true);
+      }
+      sendToWebView({ type: 'playAllAnimations' });
+      sendToWebView({ type: 'togglePlay', value: true });
+    } else {
+      const activeAnimation = selectedAnimation || animations[0];
+      if (activeAnimation) {
+        sendToWebView({ type: 'setAnimation', value: activeAnimation });
+      }
+    }
+    setAudioSyncPending(false);
+  }, [
+    animations,
+    audioPlaying,
+    audioReady,
+    audioSyncPending,
+    isPlaying,
+    isSpecialType,
+    selectedAnimation,
+  ]);
+
+  useEffect(() => {
     if (!loadingModel && selectedPartId) {
       sendToWebView({ type: 'switchPart', id: selectedPartId });
       setAudioPlaying(true);
+      setAudioSyncPending(true);
     }
   }, [selectedPartId, loadingModel]);
 
@@ -614,6 +692,10 @@ export default function ARViewerScreen() {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'loaded') {
+        if (loadEndTimeoutRef.current) {
+          clearTimeout(loadEndTimeoutRef.current);
+          loadEndTimeoutRef.current = null;
+        }
         setLoadingModel(false);
         setProgress(100);
         return;
@@ -639,6 +721,10 @@ export default function ARViewerScreen() {
         return;
       }
       if (data.type === 'error') {
+        if (loadEndTimeoutRef.current) {
+          clearTimeout(loadEndTimeoutRef.current);
+          loadEndTimeoutRef.current = null;
+        }
         setViewerError(data.message || 'Failed to load model');
         setLoadingModel(false);
         setIsExporting(false);
@@ -657,7 +743,9 @@ export default function ARViewerScreen() {
     if (!audioSource) {
       return;
     }
-    setAudioPlaying(current => !current);
+    const next = !audioPlaying;
+    setAudioPlaying(next);
+    setAudioSyncPending(next);
   };
 
   const handleLanguageChange = (language: string) => {
@@ -784,18 +872,6 @@ export default function ARViewerScreen() {
         </View>
 
         <View style={styles.topBarActions}>
-          {/* <TouchableOpacity
-            onPress={() => {
-              const next = !wireframe;
-              setWireframe(next);
-              sendToWebView({ type: 'toggleWireframe', value: next });
-            }}
-            style={[
-              styles.iconPill,
-              wireframe && styles.iconPillActive,
-            ]}>
-            <Grid2X2 size={moderateScale(15)} color="#fff" strokeWidth={2.1} />
-          </TouchableOpacity> */}
           <TouchableOpacity
             onPress={() => {
               const next = !autoRotate;
@@ -834,11 +910,20 @@ export default function ARViewerScreen() {
           }}
           onMessage={handleWebMessage}
           onLoadEnd={() => {
-            setTimeout(() => {
+            if (loadEndTimeoutRef.current) {
+              clearTimeout(loadEndTimeoutRef.current);
+            }
+            loadEndTimeoutRef.current = setTimeout(() => {
               setLoadingModel(current => (viewerError ? current : false));
             }, 10000);
           }}
-          onError={() => setLoadingModel(false)}
+          onError={() => {
+            if (loadEndTimeoutRef.current) {
+              clearTimeout(loadEndTimeoutRef.current);
+              loadEndTimeoutRef.current = null;
+            }
+            setLoadingModel(false);
+          }}
         />
 
         {loadingModel && (
@@ -872,6 +957,13 @@ export default function ARViewerScreen() {
           playWhenInactive={false}
           audioOutput="speaker"
           ignoreSilentSwitch="ignore"
+          progressUpdateInterval={250}
+          onLoadStart={() => setAudioReady(false)}
+          onLoad={() => setAudioReady(true)}
+          onError={() => {
+            setAudioReady(false);
+            setAudioSyncPending(false);
+          }}
         />
       )}
 
@@ -1478,7 +1570,6 @@ export default function ARViewerScreen() {
                         setShowTargetPainter(false);
                         setPaintMode('target');
                         setPaintingEnabled(false);
-                        setShowBrushControls(false);
                       } else if (data.type === 'log') {
                         console.log('[SheetWebView]', data.message);
                       } else if (data.type === 'error') {
@@ -1530,7 +1621,6 @@ export default function ARViewerScreen() {
                       setShowTargetPainter(false);
                       setPaintMode('target');
                       setPaintingEnabled(false);
-                      setShowBrushControls(false);
                     } else if (data.type === 'log') {
                       console.log('[SheetWebView]', data.message);
                     } else if (data.type === 'error') {

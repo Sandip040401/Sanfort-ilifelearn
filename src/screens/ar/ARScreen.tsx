@@ -7,7 +7,6 @@ import {
   PermissionsAndroid,
   Platform,
   RefreshControl,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,13 +15,11 @@ import {
   View,
   useWindowDimensions,
   FlatList,
-  Dimensions,
 } from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetView,
   BottomSheetBackdrop,
-  BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import Animated, { FadeIn, FadeInDown, FadeInUp, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
@@ -56,8 +53,6 @@ import type {
 } from '@/types';
 import {
   getBrowsableEnvironments,
-  getLevelStars,
-  getModelLevel,
   getModelStableId,
   getModelsForEnvironment,
   type AREnvironmentView,
@@ -141,16 +136,12 @@ const androidCardBorder = {
   borderWidth: 1,
   borderColor: 'rgba(17,24,39,0.06)',
 };
-const galleryHeroEntering = isAndroid
-  ? FadeIn.duration(180)
-  : ZoomIn.duration(600).springify();
 const getGalleryCardEntering = (index: number) =>
   isAndroid
     ? FadeIn.delay(index * 50).duration(180)
     : FadeInDown.delay(index * 100).duration(600).springify();
 const galleryLayoutTransition = isAndroid ? undefined : LinearTransition.springify();
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const headerIconEntering = isAndroid ? FadeIn.duration(180) : ZoomIn.duration(600).springify();
 const headerCopyEntering = isAndroid ? FadeIn.duration(180) : FadeInUp.duration(600).springify();
 
@@ -310,9 +301,7 @@ function EnvironmentGallery({
   onScroll: (e: any) => void;
 }) {
   const { colors } = useTheme();
-  const { isTablet, isCompactCard, numColumns, cardWidth } = useResponsiveLayout();
-  const emojiSize = isCompactCard ? scale(42) : scale(48);
-  const emojiRadius = isCompactCard ? moderateScale(14) : moderateScale(16);
+  const { numColumns, cardWidth } = useResponsiveLayout();
 
   const headerPaddingTop = useMemo(
     () => ({ paddingTop: topInset + verticalScale(16) }),
@@ -405,7 +394,7 @@ function EnvironmentGallery({
         </TouchableOpacity>
       </Animated.View>
     );
-  }, [models, onEnvironmentSelect]);
+  }, [cardWidth, models, onEnvironmentSelect]);
 
   return (
     <FlatList
@@ -477,7 +466,6 @@ function ModelGallery({
   models,
   onBack,
   onOpenModel,
-  onScanModel,
   refreshing,
   onRefresh,
   searchQuery,
@@ -490,7 +478,6 @@ function ModelGallery({
   models: ARModel[];
   onBack: () => void;
   onOpenModel: (model: ARModel, opts?: { openPainter?: boolean; initialPaintMode?: string }) => void;
-  onScanModel: (model: ARModel) => void;
   refreshing: boolean;
   onRefresh: () => void;
   searchQuery: string;
@@ -580,7 +567,7 @@ function ModelGallery({
      
       )}
     </>
-  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
+  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
 
   const renderItem = useCallback(({ item, index }: { item: ARModel, index: number }) => {
     const modelId = item._id || item.id || (item as any).id;
@@ -589,9 +576,6 @@ function ModelGallery({
 
     const referenceSource = getReferenceImageSource(item);
     const referenceUri = referenceSource ? normalizeReferenceForDisplay(referenceSource) : null;
-
-    const level = getModelLevel(item);
-    const stars = getLevelStars(level);
 
     return (
       <Animated.View
@@ -631,7 +615,7 @@ function ModelGallery({
         </TouchableOpacity>
       </Animated.View>
     );
-  }, [colors.card, environment.emoji, gradientColors, modelPreviewHeight, onOpenModel, onScanModel]);
+  }, [cardWidth, colors.card, environment.emoji, gradientColors, modelPreviewHeight, onOpenModel]);
 
   return (
     <FlatList
@@ -900,7 +884,6 @@ function ARScreenContent() {
           models={filteredModels}
           onBack={() => setSelectedEnvironmentId(null)}
           onOpenModel={openModelOptions}
-          onScanModel={handleScanModel}
           refreshing={refreshing}
           onRefresh={refreshAll}
           searchQuery={modelSearchQuery}
