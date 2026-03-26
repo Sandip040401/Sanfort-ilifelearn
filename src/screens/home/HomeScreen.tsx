@@ -1,14 +1,18 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ViewStyle,
   useWindowDimensions,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
 import { withTiming } from 'react-native-reanimated';
 import LinearGradient from 'react-native-linear-gradient';
@@ -18,21 +22,14 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import {
   Bell,
-  BookOpen,
-  FileText,
-  Gamepad2,
-  Glasses,
-  Globe,
-  Mic,
   User,
 } from 'lucide-react-native';
 import { useAuth } from '@/store';
 import { useTheme } from '@/theme';
-import ARIcon from '@/components/icons/ARIcon';
-import WebVRIcon from '@/components/icons/WebVRIcon';
 import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import type { BottomTabParamList, MainStackParamList } from '@/types';
+import ComingSoonModal from '@/components/ComingSoonModal';
 
 const H_PAD = scale(20);
 const CARD_GAP = scale(12);
@@ -40,9 +37,14 @@ const CARD_GAP = scale(12);
 type TabNav = BottomTabNavigationProp<BottomTabParamList, 'Home'>;
 type MainNav = StackNavigationProp<MainStackParamList>;
 
+const LearningThemesImg = require('@/assets/images/home_screen/Learning-Themes.webp');
+const ARImg = require('@/assets/images/home_screen/AR-Image.webp');
+const WebVRImg = require('@/assets/images/home_screen/WebVR.webp');
+const EduGamesImg = require('@/assets/images/home_screen/Edu-Games.webp');
+
 const GRID_ITEMS = [
-  { key: 'AR' as const, label: 'Augmented\nReality', sub: 'Scan 3D models', Icon: ARIcon, colors: ['#0369A1', '#0EA5E9'], shadow: '#0EA5E9' },
-  { key: 'WebVR' as const, label: 'WebVR', sub: 'Virtual worlds', Icon: WebVRIcon, colors: ['#7C3AED', '#A855F7'], shadow: '#A855F7' },
+  { key: 'AR' as const, label: 'Augmented Reality', sub: 'Explore interactive 3D models through AR', image: ARImg, colors: ['#0369A1', '#0EA5E9'], shadow: '#0EA5E9' },
+  { key: 'WebVR' as const, label: 'WebVR', sub: 'Dive into fun and educational virtual worlds', image: WebVRImg, colors: ['#7C3AED', '#A855F7'], shadow: '#A855F7' },
 ] as const;
 
 function getGreeting() {
@@ -61,42 +63,73 @@ export default function HomeScreen() {
   const { width, height } = useWindowDimensions();
   const { tabBarTranslateY } = useTabBarScroll();
   const lastScrollY = useRef(0);
+  const isTabBarHidden = useRef(false);
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
+  const [isSoonVisible, setIsSoonVisible] = useState(false);
 
   const isTablet = width >= 768;
   const isLandscape = width > height;
   const outerHPad = isTablet && isLandscape ? scale(12) : H_PAD;
   const maxContentWidth = isTablet && !isLandscape ? width - 48 : undefined;
   const gridGap = isTablet ? 14 : CARD_GAP;
-  const containerStyle: any = [
-    styles.container,
-    { paddingHorizontal: outerHPad },
-    maxContentWidth ? { width: maxContentWidth, alignSelf: 'center' } : null,
-  ];
+  const containerStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      styles.container,
+      { paddingHorizontal: outerHPad },
+      maxContentWidth ? { width: maxContentWidth, alignSelf: 'center' } : null,
+    ],
+    [maxContentWidth, outerHPad],
+  );
+
+  const contentContainerStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      styles.scrollContent,
+      {
+        paddingBottom: tabBarHeight + 24,
+        backgroundColor: colors.background,
+      },
+    ],
+    [colors.background, tabBarHeight],
+  );
+
+  const animateTabBar = useCallback(
+    (hide: boolean) => {
+      if (isTabBarHidden.current === hide) {
+        return;
+      }
+      isTabBarHidden.current = hide;
+      tabBarTranslateY.value = withTiming(hide ? tabBarHeight : 0, { duration: 200 });
+    },
+    [tabBarHeight, tabBarTranslateY],
+  );
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = e.nativeEvent.contentOffset.y;
     const diff = y - lastScrollY.current;
     lastScrollY.current = y;
     if (y <= 0) {
-      tabBarTranslateY.value = withTiming(0, { duration: 200 });
+      animateTabBar(false);
       return;
     }
-    if (diff > 0) {
-      // scrolling down — snap hide immediately
-      tabBarTranslateY.value = withTiming(tabBarHeight, { duration: 200 });
+    if (diff > 2) {
+      // scrolling down — hide once
+      animateTabBar(true);
     } else if (diff < -2) {
       // scrolling up — show
-      tabBarTranslateY.value = withTiming(0, { duration: 200 });
+      animateTabBar(false);
     }
-  }, [tabBarTranslateY, tabBarHeight]);
+  }, [animateTabBar]);
 
   const firstName = useMemo(() => {
-    const n = user?.name?.split(' ')[0] ?? 'Learner';
+    const n = user?.name?.trim().split(/\s+/)[0] || 'Learner';
     return n.charAt(0).toUpperCase() + n.slice(1);
   }, [user?.name]);
-  const greeting = useMemo(() => getGreeting(), []);
+  const greeting = getGreeting();
   const isUserLoaded = !!user;
+
+  const handleNotificationsPress = useCallback(() => {
+    Alert.alert('Coming Soon', 'Notifications will be available soon.');
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -105,11 +138,7 @@ export default function HomeScreen() {
         style={[styles.scroll, { backgroundColor: colors.background }]}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{
-          paddingBottom: tabBarHeight + 24,
-          backgroundColor: colors.background,
-          flexGrow: 1,
-        }}>
+        contentContainerStyle={contentContainerStyle}>
 
         {/* ── Header ── */}
         <View style={[styles.headerOuter, { paddingTop: insets.top + 16 }]}>
@@ -135,7 +164,8 @@ export default function HomeScreen() {
               <View style={styles.headerBtns}>
                 <TouchableOpacity
                   activeOpacity={0.7}
-                  style={styles.iconBtn}>
+                  style={styles.iconBtn}
+                  onPress={handleNotificationsPress}>
                   <Bell size={20} color="#fff" strokeWidth={1.2} />
                   <View style={styles.notiBadge} />
                 </TouchableOpacity>
@@ -173,11 +203,11 @@ export default function HomeScreen() {
 
         {/* ── Content ── */}
         <View style={[styles.content, { backgroundColor: colors.background }]}>
-          <View style={[containerStyle as any]}>
+          <View style={containerStyle}>
 
             {/* Featured — Books */}
             <Text style={[styles.section, styles.sectionFirst, { color: colors.text }]}>Featured</Text>
-            <TouchableOpacity onPress={() => tabNav.navigate('Books')} activeOpacity={0.88}>
+            <TouchableOpacity onPress={() => tabNav.navigate('Themes')} activeOpacity={0.88}>
               <View style={styles.heroCard}>
                 <LinearGradient
                   colors={['#4F46E5', '#5D49F2', '#6C4CFF', '#8354FF', '#9B5CFF']}
@@ -186,12 +216,10 @@ export default function HomeScreen() {
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={styles.heroInner}>
-                  <View style={styles.heroIconWrap}>
-                    <BookOpen size={32} color="#fff" strokeWidth={1.2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.heroTitle}>Grade Books</Text>
-                    <Text style={styles.heroSub}>Curriculum-aligned ebooks{'\n'}for every grade level</Text>
+                  <FastImage source={LearningThemesImg} style={styles.heroImageOnly} resizeMode={FastImage.resizeMode.contain} />
+                  <View style={styles.flexOne}>
+                    <Text style={styles.heroTitle}>Learning Themes</Text>
+                    <Text style={styles.heroSub}>Thematic curriculum for all grades</Text>
                   </View>
                 </View>
                 <View style={styles.decor1} /><View style={styles.decor2} />
@@ -201,15 +229,13 @@ export default function HomeScreen() {
             {/* Grid — 2x2 on all devices */}
             <Text style={[styles.section, { color: colors.text }]}>Learning Tools</Text>
             <View style={[styles.gridRow, { gap: gridGap, marginBottom: gridGap }]}>
-              {GRID_ITEMS.slice(0, 2).map(({ key, label, sub, Icon, colors: c }) => (
-                <TouchableOpacity key={key} onPress={() => tabNav.navigate(key)} activeOpacity={0.88} style={styles.gridTouchable}>
+              {GRID_ITEMS.slice(0, 2).map((item) => (
+                <TouchableOpacity key={item.key} onPress={() => tabNav.navigate(item.key)} activeOpacity={0.88} style={styles.gridTouchable}>
                   <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
-                    <LinearGradient colors={c as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-                    <View style={[styles.gridIcon, isTablet && styles.gridIconTablet]}>
-                      <Icon width={isTablet ? 42 : (key === 'AR' ? 42 : 34)} height={isTablet ? 42 : (key === 'AR' ? 42 : 34)} color="#fff" strokeWidth={label ==='Augmented\nReality' ? 2.6 : 0.8} />
-                    </View>
-                    <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{label}</Text>
-                    <Text style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{sub}</Text>
+                    <LinearGradient colors={item.colors as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+                    <FastImage source={item.image} style={[styles.gridImageOnly, isTablet && styles.gridImageOnlyTablet]} resizeMode={FastImage.resizeMode.contain} />
+                    <Text style={[styles.gridLabel, isTablet && styles.gridLabelTablet]}>{item.label}</Text>
+                    <Text android_hyphenationFrequency="full" style={[styles.gridSub, isTablet && styles.gridSubTablet]}>{item.sub}</Text>
                     <View style={styles.gridDecor} />
                   </View>
                 </TouchableOpacity>
@@ -217,7 +243,7 @@ export default function HomeScreen() {
             </View>
 
             {/* AR Sheets */}
-            <Text style={[styles.section, { color: colors.text }]}>Worksheets</Text>
+            {/* <Text style={[styles.section, { color: colors.text }]}>Worksheets</Text>
             <TouchableOpacity onPress={() => tabNav.navigate('ARSheets')} activeOpacity={0.88}>
               <View style={styles.wideCard}>
                 <LinearGradient
@@ -229,13 +255,46 @@ export default function HomeScreen() {
                 <View style={styles.wideIcon}>
                   <FileText size={28} color="#fff" strokeWidth={1.2} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.flexOne}>
                   <Text style={styles.wideTitle}>AR Sheets</Text>
                   <Text style={styles.wideSub}>Scan worksheets with AR camera to see 3D animations live</Text>
                 </View>
                 <View style={styles.wideDecor} />
               </View>
+            </TouchableOpacity> */}
+
+            {/* Educational Games — Coming Soon */}
+            <Text style={[styles.section, { color: colors.text }]}>Games</Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setIsSoonVisible(true)}
+              style={styles.gameTouchable}
+            >
+              <View style={styles.wideCard}>
+                <LinearGradient
+                  colors={['#4F46E5', '#6366F1', '#7E22CE']}
+                  locations={[0, 0.5, 1]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <FastImage source={EduGamesImg} style={styles.wideImageOnly} resizeMode={FastImage.resizeMode.contain} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.wideTitle}>Educational Games</Text>
+                    <View style={styles.comingSoonBadge}>
+                      <Text style={styles.comingSoonText}>Soon</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.wideSub}>Fun learning games for kids</Text>
+                </View>
+                <View style={styles.wideDecor} />
+              </View>
             </TouchableOpacity>
+
+            <ComingSoonModal
+              visible={isSoonVisible}
+              onClose={() => setIsSoonVisible(false)}
+            />
 
           </View>
         </View>
@@ -247,6 +306,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  flexOne: { flex: 1 },
 
   headerOuter: { paddingBottom: verticalScale(50), overflow: 'hidden' },
   headerContent: { zIndex: 1 }, // Ensure content stays above decors
@@ -290,7 +351,7 @@ const styles = StyleSheet.create({
   sectionFirst: { marginTop: 0 },
 
   heroCard: {
-    borderRadius: moderateScale(20), padding: moderateScale(22), marginBottom: verticalScale(8), overflow: 'hidden',
+    borderRadius: moderateScale(20), padding: moderateScale(18), paddingVertical: moderateScale(16), marginBottom: verticalScale(8), overflow: 'hidden',
   },
   heroInner: { flexDirection: 'row', alignItems: 'center', gap: scale(16) },
   heroIconWrap: { width: scale(60), height: scale(60), borderRadius: moderateScale(16), backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
@@ -316,4 +377,44 @@ const styles = StyleSheet.create({
   wideTitle: { fontSize: moderateScale(15), fontWeight: '700', color: '#fff', marginBottom: verticalScale(3) },
   wideSub: { fontSize: moderateScale(11), color: 'rgba(255,255,255,0.8)', lineHeight: moderateScale(16) },
   wideDecor: { position: 'absolute', top: verticalScale(-20), right: scale(-20), width: scale(80), height: scale(80), borderRadius: scale(40), backgroundColor: 'rgba(255,255,255,0.08)' },
+  comingSoonBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
+    borderRadius: moderateScale(6),
+    marginLeft: scale(8),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  comingSoonText: {
+    fontSize: moderateScale(9),
+    color: '#fff',
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroImageOnly: {
+    width: scale(65),
+    height: scale(65),
+  },
+  gridImageOnly: {
+    width: scale(84),
+    height: scale(64),
+    marginBottom: verticalScale(8),
+  },
+  gridImageOnlyTablet: {
+    width: 62,
+    height: 62,
+    marginBottom: 10,
+  },
+  wideImageOnly: {
+    width: scale(77),
+    height: scale(62),
+    flexShrink: 0,
+  },
+  gameTouchable: {
+    width: '100%',
+  },
 });

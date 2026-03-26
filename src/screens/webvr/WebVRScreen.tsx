@@ -2,7 +2,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   FlatList,
-  Image,
   InteractionManager,
   Platform,
   StyleSheet,
@@ -12,10 +11,11 @@ import {
   useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {Globe, RefreshCw} from 'lucide-react-native';
+import {RefreshCw} from 'lucide-react-native';
 import WebVRIcon from '@/components/icons/WebVRIcon';
 import {useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
@@ -24,6 +24,7 @@ import {ScreenErrorBoundary, Skeleton} from '@/components/ui';
 import {WebVRService} from '@/services/webvr.service';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
+import {useModals} from '@/store';
 import Animated, {FadeIn, FadeInUp, LinearTransition, ZoomIn} from 'react-native-reanimated';
 import type {WebVRStackParamList} from '@/types';
 
@@ -155,10 +156,10 @@ const FolderCard = React.memo(function FolderCard({
         style={[styles.card, { width: cardWidth }]}
         onPress={handlePress}>
         <View style={styles.cardContainer}>
-            <Image
+            <FastImage
               source={item.image}
-              style={{position: 'absolute', inset: 0, width: '100%', height: '100%', transform: [{ translateY: -12 }] }}
-              resizeMode="cover"
+              style={styles.cardImage}
+              resizeMode={FastImage.resizeMode.cover}
             />
           <View style={styles.cardContent}>
             <LinearGradient
@@ -175,7 +176,7 @@ const FolderCard = React.memo(function FolderCard({
               {item.description}
             </Text>
           </View>
-          <View style={[styles.worldCountBadge, { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: item.accent + '33' }]}>
+          <View style={[styles.worldCountBadge, {borderColor: item.accent + '33'}]}>
             <WebVRIcon width={moderateScale(16)} height={moderateScale(16)} color={item.accent} />
             <Text style={[styles.worldCountText, { color: item.accent }]}>{item.assetCount ?? 0}</Text>
           </View>
@@ -261,10 +262,6 @@ function parseFolders(response: any): FolderItem[] {
 }
 
 // ── Main content ───────────────────────────────────────────────────────
-
-import {useModals} from '@/store';
-
-
 function WebVRContent() {
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
@@ -284,6 +281,7 @@ function WebVRContent() {
 
 
   const lastScrollY = useRef(0);
+  const isTabBarHiddenRef = useRef(false);
   // Use short side for tablet detection — phones in landscape have width>768 but short side ~390px
   const isTabletDynamic = Math.min(screenWidth, screenHeight) >= 600;
   const contentWidth = isTabletDynamic ? Math.min(screenWidth * 0.85, 720) : undefined;
@@ -362,6 +360,11 @@ function WebVRContent() {
     [bottomContentInset],
   );
 
+  const contentMaxWidthStyle = useMemo(
+    () => (contentWidth ? {width: contentWidth, alignSelf: 'center' as const, paddingHorizontal: 0} : undefined),
+    [contentWidth],
+  );
+
   // Memoized header
   const headerPaddingTop = useMemo(
     () => ({paddingTop: insets.top + verticalScale(16)}),
@@ -379,17 +382,28 @@ function WebVRContent() {
       const diff = y - lastScrollY.current;
       lastScrollY.current = y;
       if (y <= 0) {
-        tabBarTranslateY.value = 0;
+        if (isTabBarHiddenRef.current) {
+          isTabBarHiddenRef.current = false;
+          tabBarTranslateY.value = 0;
+        }
         return;
       }
-      if (diff > 0) {
+      if (diff > 0 && !isTabBarHiddenRef.current) {
+        isTabBarHiddenRef.current = true;
         tabBarTranslateY.value = tabBarHeight;
-      } else if (diff < -2) {
+      } else if (diff < -2 && isTabBarHiddenRef.current) {
+        isTabBarHiddenRef.current = false;
         tabBarTranslateY.value = 0;
       }
     },
     [tabBarTranslateY, tabBarHeight],
   );
+
+  useEffect(() => {
+    return () => {
+      tabBarTranslateY.value = 0;
+    };
+  }, [tabBarTranslateY]);
 
   const ListHeader = useMemo(
     () => (
@@ -421,7 +435,7 @@ function WebVRContent() {
         <View
           style={[
             styles.content,
-            contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined,
+            contentMaxWidthStyle,
           ]}>
 
 
@@ -445,7 +459,7 @@ function WebVRContent() {
       headerPaddingTop,
       loading,
       folders.length,
-      contentWidth,
+      contentMaxWidthStyle,
       containerStyle,
     ],
   );
@@ -457,7 +471,7 @@ function WebVRContent() {
         <View
           style={[
             styles.content,
-            contentWidth ? {width: contentWidth, alignSelf: 'center', paddingHorizontal: 0} : undefined,
+            contentMaxWidthStyle,
           ]}>
           <FolderSkeleton numColumns={numColumns} cardWidth={cardWidth} />
         </View>
@@ -494,7 +508,7 @@ function WebVRContent() {
         </Text>
       </View>
     );
-  }, [loading, error, colors.text, colors.textSecondary, handleRetry, contentWidth, numColumns, cardWidth]);
+  }, [loading, error, colors.text, colors.textSecondary, handleRetry, contentMaxWidthStyle, numColumns, cardWidth]);
 
   return (
     <View style={[styles.root, {backgroundColor: colors.background}]}>
@@ -671,6 +685,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
+  cardImage: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    transform: [{translateY: -12}],
+  },
   cardContent: {
     zIndex: 2,
     padding: moderateScale(12),
@@ -715,6 +735,7 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(3),
     borderRadius: moderateScale(20),
     borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

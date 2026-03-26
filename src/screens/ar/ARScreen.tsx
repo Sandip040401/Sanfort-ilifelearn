@@ -7,7 +7,6 @@ import {
   PermissionsAndroid,
   Platform,
   RefreshControl,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,13 +15,11 @@ import {
   View,
   useWindowDimensions,
   FlatList,
-  Dimensions,
 } from 'react-native';
 import {
   BottomSheetModal,
   BottomSheetView,
   BottomSheetBackdrop,
-  BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
 import Animated, { FadeIn, FadeInDown, FadeInUp, LinearTransition, ZoomIn } from 'react-native-reanimated';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
@@ -56,8 +53,6 @@ import type {
 } from '@/types';
 import {
   getBrowsableEnvironments,
-  getLevelStars,
-  getModelLevel,
   getModelStableId,
   getModelsForEnvironment,
   type AREnvironmentView,
@@ -69,6 +64,7 @@ import {
   getReferenceImageSource,
 } from './ar.reference';
 import { useTheme } from '@/theme';
+import { normalizeEnvName } from '@/utils/normalize';
 
 function useResponsiveLayout() {
   const { width, height } = useWindowDimensions();
@@ -140,16 +136,12 @@ const androidCardBorder = {
   borderWidth: 1,
   borderColor: 'rgba(17,24,39,0.06)',
 };
-const galleryHeroEntering = isAndroid
-  ? FadeIn.duration(180)
-  : ZoomIn.duration(600).springify();
 const getGalleryCardEntering = (index: number) =>
   isAndroid
     ? FadeIn.delay(index * 50).duration(180)
     : FadeInDown.delay(index * 100).duration(600).springify();
 const galleryLayoutTransition = isAndroid ? undefined : LinearTransition.springify();
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const headerIconEntering = isAndroid ? FadeIn.duration(180) : ZoomIn.duration(600).springify();
 const headerCopyEntering = isAndroid ? FadeIn.duration(180) : FadeInUp.duration(600).springify();
 
@@ -240,25 +232,58 @@ function getEnvironmentColors(environment: AREnvironmentView) {
 
 function ARLoading() {
   const { colors } = useTheme();
-  const { contentWidth, gap, cardWidth, worldCardHeight } = useResponsiveLayout();
+  const { contentWidth, gap, cardWidth, worldCardHeight, numColumns } = useResponsiveLayout();
+  const loadingContainerStyle = useMemo(
+    () => ({ width: contentWidth, alignSelf: 'center' as const }),
+    [contentWidth],
+  );
+  const loadingRows = useMemo(() => {
+    const items = [1, 2, 3, 4, 5, 6];
+    const rows: number[][] = [];
+    for (let index = 0; index < items.length; index += numColumns) {
+      rows.push(items.slice(index, index + numColumns));
+    }
+    return rows;
+  }, [numColumns]);
+  const loadingRowGapStyle = useMemo(
+    () => ({ gap, marginBottom: gap }),
+    [gap],
+  );
+  const skeletonSpacerStyle = useMemo(
+    () => ({ width: cardWidth, height: worldCardHeight }),
+    [cardWidth, worldCardHeight],
+  );
 
   return (
     <View style={[styles.loadingRoot, { backgroundColor: colors.background }]}>
-      <View style={{ width: contentWidth, alignSelf: 'center' }}>
+      <View style={loadingContainerStyle}>
         <Skeleton
           width={contentWidth}
           height={verticalScale(100)}
           borderRadius={moderateScale(20)}
-          style={{ marginTop: verticalScale(8), marginBottom: verticalScale(14) }}
+          style={styles.loadingHeroSkeleton}
         />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton
-              key={i}
-              width={cardWidth}
-              height={worldCardHeight}
-              borderRadius={moderateScale(20)}
-            />
+        <View style={styles.loadingCardsGrid}>
+          {loadingRows.map((row, rowIndex) => (
+            <View
+              key={`skeleton-row-${rowIndex}`}
+              style={[
+                styles.loadingCardsRow,
+                loadingRowGapStyle,
+                rowIndex === loadingRows.length - 1 && styles.loadingCardsRowLast,
+              ]}>
+              {row.map(i => (
+                <Skeleton
+                  key={i}
+                  width={cardWidth}
+                  height={worldCardHeight}
+                  borderRadius={moderateScale(20)}
+                />
+              ))}
+              {Array.from({ length: Math.max(0, numColumns - row.length) }).map((_, spacerIndex) => (
+                <View key={`skeleton-spacer-${rowIndex}-${spacerIndex}`} style={skeletonSpacerStyle} />
+              ))}
+            </View>
           ))}
         </View>
       </View>
@@ -309,9 +334,7 @@ function EnvironmentGallery({
   onScroll: (e: any) => void;
 }) {
   const { colors } = useTheme();
-  const { isTablet, isCompactCard, numColumns, cardWidth } = useResponsiveLayout();
-  const emojiSize = isCompactCard ? scale(42) : scale(48);
-  const emojiRadius = isCompactCard ? moderateScale(14) : moderateScale(16);
+  const { numColumns, cardWidth } = useResponsiveLayout();
 
   const headerPaddingTop = useMemo(
     () => ({ paddingTop: topInset + verticalScale(16) }),
@@ -332,7 +355,7 @@ function EnvironmentGallery({
           style={styles.bannerIconWrap}>
           <ARIcon width={moderateScale(42)} height={moderateScale(42)} color="#fff" strokeWidth={2.5} />
         </Animated.View>
-        <Animated.View entering={headerCopyEntering} style={{ flex: 1 }}>
+        <Animated.View entering={headerCopyEntering} style={styles.flexOne}>
           <Text style={styles.headerTitleMain}>AR Worlds</Text>
           <Text style={styles.headerSubMain}>
             Explore 3D models in augmented reality!
@@ -395,7 +418,7 @@ function EnvironmentGallery({
               </Text>
             </View>
 
-            <View style={[styles.worldCountBadge, { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: item.accent + '44' }]}>
+            <View style={[styles.worldCountBadge, { borderColor: item.accent + '44' }]}>
               <ARIcon width={moderateScale(16)} height={moderateScale(16)} color={item.accent} strokeWidth={3} />
               <Text style={[styles.worldCountText, { color: item.accent }]}>{modelCount}</Text>
             </View>
@@ -404,7 +427,7 @@ function EnvironmentGallery({
         </TouchableOpacity>
       </Animated.View>
     );
-  }, [models, onEnvironmentSelect]);
+  }, [cardWidth, models, onEnvironmentSelect]);
 
   return (
     <FlatList
@@ -476,7 +499,6 @@ function ModelGallery({
   models,
   onBack,
   onOpenModel,
-  onScanModel,
   refreshing,
   onRefresh,
   searchQuery,
@@ -489,7 +511,6 @@ function ModelGallery({
   models: ARModel[];
   onBack: () => void;
   onOpenModel: (model: ARModel, opts?: { openPainter?: boolean; initialPaintMode?: string }) => void;
-  onScanModel: (model: ARModel) => void;
   refreshing: boolean;
   onRefresh: () => void;
   searchQuery: string;
@@ -501,6 +522,13 @@ function ModelGallery({
   const { colors, isDark } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
   const { modelPreviewHeight, numColumns, cardWidth } = useResponsiveLayout();
+  const searchContainerThemeStyle = useMemo(
+    () => ({
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+    }),
+    [isDark],
+  );
 
   const headerPaddingTop = useMemo(
     () => ({ paddingTop: topInset + verticalScale(10) }),
@@ -534,10 +562,7 @@ function ModelGallery({
         <View style={[styles.curve, { backgroundColor: colors.background }]} />
       </View>
 
-      <View style={[styles.searchContainer, {
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
-          }]}>
+      <View style={[styles.searchContainer, searchContainerThemeStyle]}>
             <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
@@ -579,7 +604,7 @@ function ModelGallery({
      
       )}
     </>
-  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
+  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchContainerThemeStyle, searchQuery, onSearchChange]);
 
   const renderItem = useCallback(({ item, index }: { item: ARModel, index: number }) => {
     const modelId = item._id || item.id || (item as any).id;
@@ -588,9 +613,6 @@ function ModelGallery({
 
     const referenceSource = getReferenceImageSource(item);
     const referenceUri = referenceSource ? normalizeReferenceForDisplay(referenceSource) : null;
-
-    const level = getModelLevel(item);
-    const stars = getLevelStars(level);
 
     return (
       <Animated.View
@@ -630,7 +652,7 @@ function ModelGallery({
         </TouchableOpacity>
       </Animated.View>
     );
-  }, [colors.card, environment.emoji, gradientColors, modelPreviewHeight, onOpenModel, onScanModel]);
+  }, [cardWidth, colors.card, environment.emoji, gradientColors, modelPreviewHeight, onOpenModel]);
 
   return (
     <FlatList
@@ -666,6 +688,7 @@ function ARScreenContent() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
   const { tabBarTranslateY } = useTabBarScroll();
   const lastScrollY = useRef(0);
+  const isTabBarHidden = useRef(false);
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [scanningModel, setScanningModel] = useState<ARModel | null>(null);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
@@ -739,6 +762,16 @@ function ARScreenContent() {
   const hasError = modelsQuery.isError || foldersQuery.isError;
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
   const bottomInset = tabBarHeight + verticalScale(12);
+  const setTabBarHidden = useCallback(
+    (hidden: boolean) => {
+      if (isTabBarHidden.current === hidden) {
+        return;
+      }
+      isTabBarHidden.current = hidden;
+      tabBarTranslateY.value = hidden ? tabBarHeight : 0;
+    },
+    [tabBarHeight, tabBarTranslateY],
+  );
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -746,16 +779,16 @@ function ARScreenContent() {
       const diff = y - lastScrollY.current;
       lastScrollY.current = y;
       if (y <= 0) {
-        tabBarTranslateY.value = 0;
+        setTabBarHidden(false);
         return;
       }
-      if (diff > 0) {
-        tabBarTranslateY.value = tabBarHeight;
+      if (diff > 2) {
+        setTabBarHidden(true);
       } else if (diff < -2) {
-        tabBarTranslateY.value = 0;
+        setTabBarHidden(false);
       }
     },
-    [tabBarTranslateY, tabBarHeight],
+    [setTabBarHidden],
   );
 
   useEffect(() => {
@@ -829,9 +862,9 @@ function ARScreenContent() {
         return;
       }
 
-      const modelId = model._id || model.id || (model as any).name;
+      const modelId = String(model._id || model.id || '').trim();
       if (!modelId) {
-        Alert.alert('Error', 'Model ID not found.');
+        Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
         return;
       }
 
@@ -899,7 +932,6 @@ function ARScreenContent() {
           models={filteredModels}
           onBack={() => setSelectedEnvironmentId(null)}
           onOpenModel={openModelOptions}
-          onScanModel={handleScanModel}
           refreshing={refreshing}
           onRefresh={refreshAll}
           searchQuery={modelSearchQuery}
@@ -927,7 +959,7 @@ function ARScreenContent() {
         snapPoints={snapPoints}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        handleIndicatorStyle={{ backgroundColor: '#C4C4C4', width: scale(48), height: verticalScale(5), borderRadius: moderateScale(3) }}
+        handleIndicatorStyle={styles.sheetHandleIndicator}
         backgroundStyle={{
           backgroundColor: colors.card,
           borderTopLeftRadius: moderateScale(28),
@@ -937,6 +969,7 @@ function ARScreenContent() {
           {selectedModelForOptions && (
             <ARModelOptionsSheet
               model={selectedModelForOptions}
+              environmentName={selectedEnvironment?.name || selectedEnvironment?.folderName}
               onView3D={() => handleOpenModel(selectedModelForOptions)}
               onViewSheet={() => handleOpenModel(selectedModelForOptions, { openPainter: true, initialPaintMode: 'target' })}
               onScan={() => handleScanModel(selectedModelForOptions)}
@@ -961,20 +994,25 @@ function ARScreenContent() {
 
 function ARModelOptionsSheet({
   model,
+  environmentName,
   onView3D,
   onViewSheet,
   onScan,
 }: {
   model: ARModel;
+  environmentName?: string;
   onView3D: () => void;
   onViewSheet: () => void;
   onScan: () => void;
 }) {
   const { colors } = useTheme();
   const { isLandscape } = useResponsiveLayout();
+  const normalizedEnvironment = normalizeEnvName(environmentName || '').toLowerCase();
+  const isLimitedModeEnvironment = normalizedEnvironment === 'numbers' || normalizedEnvironment === 'my body';
 
   const buttons = [
     {
+      id: 'place',
       label: '3D Color & Place',
       sub: 'Color your character in 3D & place it in your real world',
       gradient: ['#6486ee', '#7663d7', '#8153b5'] as string[],
@@ -983,6 +1021,7 @@ function ARModelOptionsSheet({
       image: require('@/assets/images/ar_modes/3D.webp'),
     },
     {
+      id: 'sheet',
       label: 'Color Sheet → 3D',
       sub: 'Color on screen and turn it into a 3D character you can place',
       gradient: ['#c66fe4', '#dd66cc', '#e660bf', '#f19769'] as string[],
@@ -991,6 +1030,7 @@ function ARModelOptionsSheet({
       image: require('@/assets/images/ar_modes/Color.webp'),
     },
     {
+      id: 'scan',
       label: 'Scan Drawing → 3D',
       sub: 'Color on paper, scan it and bring your character to life in 3D.',
       gradient: ['#479bf2', '#47b2c6', '#47da91'] as string[],
@@ -998,7 +1038,7 @@ function ARModelOptionsSheet({
       onPress: onScan,
       image: require('@/assets/images/ar_modes/Scan.webp'),
     },
-  ];
+  ].filter(button => !isLimitedModeEnvironment || button.id === 'place');
 
   if (isLandscape) {
     // ── Landscape: compact horizontal 3-column layout ──
@@ -1147,9 +1187,25 @@ const styles = StyleSheet.create({
   screenContent: {
     paddingBottom: 0,
   },
+  flexOne: {
+    flex: 1,
+  },
   loadingRoot: {
     flex: 1,
     paddingTop: verticalScale(16),
+  },
+  loadingHeroSkeleton: {
+    marginTop: verticalScale(8),
+    marginBottom: verticalScale(14),
+  },
+  loadingCardsGrid: {
+    width: '100%',
+  },
+  loadingCardsRow: {
+    flexDirection: 'row',
+  },
+  loadingCardsRowLast: {
+    marginBottom: 0,
   },
   loadingTitle: {
     marginTop: verticalScale(16),
@@ -1349,6 +1405,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: moderateScale(6),
     right: moderateScale(6),
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: moderateScale(20),
     paddingHorizontal: scale(8),
     paddingVertical: verticalScale(3),
@@ -1484,6 +1541,7 @@ const styles = StyleSheet.create({
     gap: scale(12),
   },
   modelCardWrap: {
+    marginBottom: CARD_MARGIN_BOTTOM,
     borderRadius: moderateScale(16),
     overflow: 'hidden',
     ...(isAndroid
@@ -1640,6 +1698,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: scale(20),
     paddingBottom: verticalScale(20),
+  },
+  sheetHandleIndicator: {
+    backgroundColor: '#C4C4C4',
+    width: scale(48),
+    height: verticalScale(5),
+    borderRadius: moderateScale(3),
   },
   sheetInner: {
     alignItems: 'center',

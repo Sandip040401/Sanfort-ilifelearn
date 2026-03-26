@@ -161,64 +161,118 @@ export function buildARViewerHtml(modelFileUrl: string) {
     });
   }
 
+  const inputUrl = ${JSON.stringify(modelFileUrl)};
+  let modelsToLoad = [];
+  try {
+    modelsToLoad = inputUrl.startsWith('[') ? JSON.parse(inputUrl) : [{ id: 'default', url: inputUrl }];
+  } catch(e) {
+    modelsToLoad = [{ id: 'default', url: inputUrl }];
+  }
+
+  const loadedModelsMap = new Map();
   const loader = new GLTFLoader();
-  loader.load(
-    '${modelFileUrl}',
-    (gltf) => {
-      loadedModel = gltf.scene;
-      scene.add(loadedModel);
 
-      const box = new THREE.Box3().setFromObject(loadedModel);
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const scale = 2.5 / maxDim;
-      loadedModel.scale.setScalar(scale);
+  Promise.all(modelsToLoad.map(modelInfo => {
+    return new Promise((resolve, reject) => {
+      loader.load(
+        modelInfo.url,
+        (gltf) => {
+          const sceneGroup = gltf.scene;
+          scene.add(sceneGroup);
+          sceneGroup.visible = false; // Hidden initially
+          
+          const box = new THREE.Box3().setFromObject(sceneGroup);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const scale = 2.5 / maxDim;
+          sceneGroup.scale.setScalar(scale);
 
-      // Center X/Z on origin, then set Y so the model's bottom sits on the grid (y = -1.4)
-      loadedModel.position.x = -center.x * scale;
-      loadedModel.position.z = -center.z * scale;
-      loadedModel.position.y = -1.4 - (box.min.y * scale);
+          sceneGroup.position.x = -center.x * scale;
+          sceneGroup.position.z = -center.z * scale;
+          sceneGroup.position.y = -1.4 - (box.min.y * scale);
+          
+          sceneGroup.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+              setupPaintCanvas(child);
+            }
+          });
 
-      // Orbit around the actual model center for reliable 360 access (including lower areas).
-      const worldBox = new THREE.Box3().setFromObject(loadedModel);
-      const worldCenter = worldBox.getCenter(new THREE.Vector3());
-      controls.target.copy(worldCenter);
-      controls.update();
+          let localMixer = null;
+          if (gltf.animations && gltf.animations.length > 0) {
+            localMixer = new THREE.AnimationMixer(sceneGroup);
+          }
 
-      loadedModel.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-          setupPaintCanvas(child);
+          loadedModelsMap.set(modelInfo.id, {
+            scene: sceneGroup,
+            mixer: localMixer,
+            animations: gltf.animations || [],
+            center: center
+          });
+
+          resolve();
+        },
+        (progress) => {
+          if (progress.total > 0 && modelsToLoad.length === 1) {
+            const pct = Math.round((progress.loaded / progress.total) * 100);
+            status.textContent = 'Loading... ' + pct + '%';
+            postMsg({ type: 'progress', percent: pct });
+          }
+        },
+        (error) => {
+          reject(error);
         }
-      });
-
-      if (gltf.animations && gltf.animations.length > 0) {
-        mixer = new THREE.AnimationMixer(loadedModel);
-        window._gltfAnimations = gltf.animations;
-        const names = gltf.animations.map(a => a.name || 'Action');
-        postMsg({ type: 'animations', list: names });
-        window._currentAnimation = gltf.animations[0];
-        const action = mixer.clipAction(gltf.animations[0]);
-        action.play();
-      }
-
-      status.classList.add('hidden');
-      postMsg({ type: 'loaded' });
-    },
-    (progress) => {
-      if (progress.total > 0) {
-        const pct = Math.round((progress.loaded / progress.total) * 100);
-        status.textContent = 'Loading... ' + pct + '%';
-        postMsg({ type: 'progress', percent: pct });
-      }
-    },
-    (error) => {
-      status.textContent = 'Failed to load model';
-      postMsg({ type: 'error', message: error.message || 'Load error' });
+      );
+    });
+  })).then(() => {
+    status.classList.add('hidden');
+    postMsg({ type: 'loaded' });
+    
+    // Auto-select the first one
+    if (modelsToLoad.length > 0) {
+      window.switchModelPart(modelsToLoad[0].id);
     }
-  );
+  }).catch((error) => {
+    status.textContent = 'Failed to load model(s)';
+    postMsg({ type: 'error', message: error.message || 'Load error' });
+  });
+
+  window.switchModelPart = function(id) {
+    if (loadedModel) {
+      loadedModel.visible = false;
+      if (mixer) mixer.stopAllAction();
+    }
+    
+    const data = loadedModelsMap.get(id);
+    if (!data) return;
+
+    loadedModel = data.scene;
+    loadedModel.visible = true;
+    mixer = data.mixer;
+    window._gltfAnimations = data.animations;
+
+    controls.target.copy(data.center);
+    controls.update();
+
+    if (mixer && window._gltfAnimations.length > 0) {
+      const names = window._gltfAnimations.map(a => a.name || 'Action');
+      postMsg({ type: 'animations', list: names });
+      
+      const isMultipleAnim = inputUrl.includes('multiple-animation-execution') || window._playAllAnims;
+      if (isMultipleAnim) {
+        window._gltfAnimations.forEach(clip => {
+          mixer.clipAction(clip).play();
+        });
+      } else {
+        window._currentAnimation = window._gltfAnimations[0];
+        mixer.clipAction(window._gltfAnimations[0]).play();
+      }
+    } else {
+      postMsg({ type: 'animations', list: [] });
+    }
+  };
 
   function setupPaintCanvas(mesh) {
     if (!mesh.geometry || !mesh.geometry.attributes.uv) return;
@@ -365,6 +419,21 @@ export function buildARViewerHtml(modelFileUrl: string) {
             action.play();
             mixer.timeScale = isPlaying ? 1 : 0;
           }
+        }
+      }
+      if (data.type === 'playAllAnimations') {
+        window._playAllAnims = true;
+        if (mixer && window._gltfAnimations) {
+          mixer.stopAllAction();
+          window._gltfAnimations.forEach(clip => {
+            mixer.clipAction(clip).play();
+          });
+          mixer.timeScale = 1;
+        }
+      }
+      if (data.type === 'switchPart') {
+        if (window.switchModelPart) {
+          window.switchModelPart(data.id);
         }
       }
       if (data.type === 'toggleWireframe') {

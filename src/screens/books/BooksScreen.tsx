@@ -12,10 +12,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import {
-  ActivityIndicator,
-  Image,
-} from 'react-native';
+import FastImage from 'react-native-fast-image';
 import Animated, {
   FadeInLeft,
   FadeInRight,
@@ -29,6 +26,7 @@ import {
   PlayCircle,
 } from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
+import { Skeleton } from '@/components/ui';
 import { useTheme } from '@/theme';
 import type { BooksStackParamList } from '@/types';
 import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
@@ -120,6 +118,11 @@ function BooksScreenContent() {
   const cardWidth = showTwoColumn
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : singleCardWidth;
+  const skeletonCount = showTwoColumn ? 6 : 4;
+  const skeletonItems = React.useMemo(
+    () => Array.from({ length: skeletonCount }, (_, idx) => idx),
+    [skeletonCount],
+  );
 
   const [grades, setGrades] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -145,17 +148,17 @@ function BooksScreenContent() {
           if (resData.success) {
             const sequence = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'];
             let groupedGradesMap = new Map();
-            
+
             resData.grades.forEach((g: any) => {
               const baseName = g.category.split(' (')[0];
               const design = DESIGN_MAP[baseName] || DESIGN_MAP['SAN Toddler'];
               if (!groupedGradesMap.has(baseName)) {
-                groupedGradesMap.set(baseName, { 
-                  _id: baseName, 
+                groupedGradesMap.set(baseName, {
+                  _id: baseName,
                   category: g.category,
-                  books: [], 
-                  design, 
-                  baseName 
+                  books: [],
+                  design,
+                  baseName
                 });
               }
               groupedGradesMap.get(baseName).books.push({...g, design, baseName});
@@ -163,12 +166,12 @@ function BooksScreenContent() {
 
             let apiGrades = Array.from(groupedGradesMap.values())
               .sort((a: any, b: any) => sequence.indexOf(a.baseName) - sequence.indexOf(b.baseName));
-              
+
             const role = user?.role?.toLowerCase();
             if (role !== 'teacher' && role !== 'super-admin' && role !== 'admin') {
               const targetGrade = ((user as any)?.gradeName || 'SAN Toddler').trim().toLowerCase();
               const filtered = apiGrades.filter((g: any) => g.baseName.trim().toLowerCase() === targetGrade);
-              
+
               if (filtered.length > 0) {
                 apiGrades = filtered;
               } else if (apiGrades.length > 0) {
@@ -256,7 +259,7 @@ function BooksScreenContent() {
         <View style={styles.content}>
           <View style={[styles.contentInner, { width: contentWidth - H_PAD * 2 }]}>
 
-{/* 
+{/*
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Choose Grade
             </Text>
@@ -266,9 +269,17 @@ function BooksScreenContent() {
 
             <View style={[styles.gradeGrid, showTwoColumn && styles.gradeGridTablet]}>
               {loading ? (
-                <View style={[styles.loadingWrap, { width: singleCardWidth }]}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                </View>
+                skeletonItems.map(item => (
+                  <View
+                    key={`grade-skeleton-${item}`}
+                    style={[styles.gradeCardSkeletonWrap, { width: cardWidth }]}>
+                    <Skeleton
+                      width="100%"
+                      height={verticalScale(172)}
+                      borderRadius={moderateScale(24)}
+                    />
+                  </View>
+                ))
               ) : (
                 grades.map((grade, index) => {
                   const { design } = grade;
@@ -289,10 +300,10 @@ function BooksScreenContent() {
 
                   const ImageSection = (
                     <View style={[styles.gradeImageSideWrap, isEven ? { left: scale(-15) } : { right: scale(-15) }]}>
-                      <Image
+                      <FastImage
                         source={{ uri: design.image }}
                         style={styles.gradeImageFull}
-                        resizeMode="cover"
+                        resizeMode={FastImage.resizeMode.cover}
                       />
                     </View>
                   );
@@ -787,11 +798,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     overflow: 'hidden',
     marginBottom: CARD_GAP,
-    elevation: 4,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
+  },
+  gradeCardSkeletonWrap: {
+    marginBottom: CARD_GAP,
   },
   gradeHeaderBar: {
     height: verticalScale(0), // Removed top bar for cleaner look
@@ -837,10 +850,5 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     fontStyle: 'italic',
     lineHeight: moderateScale(18),
-  },
-  loadingWrap: {
-    height: verticalScale(200),
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

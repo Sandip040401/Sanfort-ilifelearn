@@ -25,8 +25,9 @@ export async function openModelInAR(params: {
   modelName: string;
   audios?: Array<{gridfsId: string; language: string; level: string}>;
   animations?: string[];
+  modelType?: string;
 }) {
-  const {modelUrl, modelName, audios, animations} = params;
+  const {modelUrl, modelName, audios, animations, modelType} = params;
 
   if (Platform.OS === 'android' && NativeModules.ARNativeModule?.openAR) {
     NativeModules.ARNativeModule.openAR(
@@ -34,6 +35,7 @@ export async function openModelInAR(params: {
       modelName,
       buildAudiosJson(audios),
       animations?.length ? JSON.stringify(animations) : null,
+      modelType || null,
     );
     return;
   }
@@ -58,8 +60,9 @@ export async function openModelInARFromBase64(params: {
   originalModelUrl?: string;
   audios?: Array<{gridfsId: string; language: string; level: string}>;
   animations?: string[];
+  modelType?: string;
 }) {
-  const {modelBase64, modelName, originalModelUrl, audios, animations} = params;
+  const {modelBase64, modelName, originalModelUrl, audios, animations, modelType} = params;
 
   if (Platform.OS === 'android' && NativeModules.ARNativeModule?.openARFromBase64) {
     await NativeModules.ARNativeModule.openARFromBase64(
@@ -68,6 +71,7 @@ export async function openModelInARFromBase64(params: {
       originalModelUrl || null,
       buildAudiosJson(audios),
       animations?.length ? JSON.stringify(animations) : null,
+      modelType || null,
     );
     return;
   }

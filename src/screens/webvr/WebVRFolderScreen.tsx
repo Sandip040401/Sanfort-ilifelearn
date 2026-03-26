@@ -365,11 +365,24 @@ export default function WebVRFolderScreen() {
     [insets.top],
   );
 
-  const countText = useMemo(() => {
-    if (loading) return 'Loading...';
-    const list = searchQuery.trim() ? filteredTopics : topics;
-    return `${list.length} experience${list.length !== 1 ? 's' : ''}`;
-  }, [loading, topics.length, filteredTopics.length, searchQuery]);
+  const contentMaxWidthStyle = useMemo(
+    () => (contentMaxWidth ? {width: contentMaxWidth, alignSelf: 'center' as const} : undefined),
+    [contentMaxWidth],
+  );
+
+  const searchContainerThemeStyle = useMemo(
+    () => ({
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+    }),
+    [isDark],
+  );
+
+  const searchIconColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
+  const topicCount = searchQuery.trim() ? filteredTopics.length : topics.length;
+  const countText = loading
+    ? 'Loading...'
+    : `${topicCount} experience${topicCount !== 1 ? 's' : ''}`;
 
   // Memoized empty component
   const EmptyComponent = useMemo(
@@ -422,7 +435,7 @@ export default function WebVRFolderScreen() {
 
       {/* Content */}
       {loading ? (
-        <View style={[styles.skeletonContainer, contentMaxWidth ? {width: contentMaxWidth, alignSelf: 'center'} : undefined]}>
+        <View style={[styles.skeletonContainer, contentMaxWidthStyle]}>
           <TopicSkeleton />
         </View>
       ) : error ? (
@@ -442,15 +455,12 @@ export default function WebVRFolderScreen() {
         </View>
       ) : (<>
       {/* Search Bar  */}
-      <View style={[styles.searchContainer, { 
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
-      }]}>
-        <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
+      <View style={[styles.searchContainer, searchContainerThemeStyle]}>
+        <Search size={moderateScale(18)} color={searchIconColor} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
           placeholder="Search experiences..."
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+          placeholderTextColor={searchIconColor}
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCorrect={false}
@@ -458,7 +468,7 @@ export default function WebVRFolderScreen() {
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <X size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
+            <X size={moderateScale(18)} color={searchIconColor} />
           </TouchableOpacity>
         )}
       </View>
@@ -469,7 +479,7 @@ export default function WebVRFolderScreen() {
           getItemLayout={getItemLayout}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={[contentStyle, contentMaxWidth ? {width: contentMaxWidth, alignSelf: 'center'} : undefined]}
+          contentContainerStyle={[contentStyle, contentMaxWidthStyle]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={EmptyComponent}
           // ── FlatList perf tuning ──

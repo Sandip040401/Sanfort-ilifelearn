@@ -24,12 +24,8 @@ import LinearGradient from 'react-native-linear-gradient';
 import { WebView } from 'react-native-webview';
 import Video, { type VideoRef } from 'react-native-video';
 import {
-  Activity,
-  Brush,
   ChevronLeft,
-  ChevronRight,
   CheckCircle2,
-  Grid2X2,
   Image as ImageIcon,
   Lightbulb,
   Menu,
@@ -37,22 +33,17 @@ import {
   Pause,
   Play,
   Plus,
-  RefreshCw,
   Search,
-  Settings2,
-  Sparkles,
   Volume1,
   Volume2,
   VolumeX,
   X,
   Minus,
   Eraser,
-  Rotate3D
 } from 'lucide-react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import {
   BottomSheetModal,
-  BottomSheetView,
   BottomSheetScrollView,
   BottomSheetBackdrop,
 } from '@gorhom/bottom-sheet';
@@ -146,16 +137,24 @@ const TARGET_ASSETS: Record<string, string> = {
   Wolf: 'https://i.ibb.co/35LpnYGX/Wolf.jpg',
 };
 
+const AUDIO_BUFFER_CONFIG = {
+  minBufferMs: 700,
+  maxBufferMs: 6000,
+  bufferForPlaybackMs: 120,
+  bufferForPlaybackAfterRebufferMs: 250,
+  cacheSizeMB: 80,
+} as const;
 
-function ModelPreviewImage({ 
-  thumbnailUri, 
-  previewUri, 
+
+function ModelPreviewImage({
+  thumbnailUri,
+  previewUri,
   fallbackIcon,
   style,
   resizeMode = 'cover'
-}: { 
-  thumbnailUri?: string | null; 
-  previewUri?: string | null; 
+}: {
+  thumbnailUri?: string | null;
+  previewUri?: string | null;
   fallbackIcon: string;
   style: any;
   resizeMode?: 'contain' | 'cover' | 'stretch' | 'center';
@@ -225,6 +224,7 @@ export default function ARViewerScreen() {
   const webViewRef = useRef<WebView>(null);
   const sheetWebViewRef = useRef<WebView>(null);
   const audioRef = useRef<VideoRef>(null);
+  const loadEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loadingModel, setLoadingModel] = useState(true);
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -233,7 +233,6 @@ export default function ARViewerScreen() {
   const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [autoRotate, setAutoRotate] = useState(true);
-  const [wireframe, setWireframe] = useState(false);
   const [environment, setEnvironment] = useState('sunset');
   const [showLeftMenu, setShowLeftMenu] = useState(false);
   const [activeControlCategory, setActiveControlCategory] = useState<string | null>(null);
@@ -246,17 +245,19 @@ export default function ARViewerScreen() {
   const [paintingEnabled, setPaintingEnabled] = useState(false);
   const [brushColor, setBrushColor] = useState(COLOR_SWATCHES[0]);
   const [brushSize, setBrushSize] = useState(32);
-  const [showBrushControls, setShowBrushControls] = useState(false);
   const [showTargetPainter, setShowTargetPainter] = useState(false);
   const [targetTextureDataUrl, setTargetTextureDataUrl] = useState<string | null>(null);
   const [textureDisplayMode, setTextureDisplayMode] = useState<'original' | 'model-paint' | 'target-paint'>('original');
-  const [paintMode, setPaintMode] = useState<'model' | 'target'>('model');
+  const [, setPaintMode] = useState<'model' | 'target'>('model');
   const [isExporting, setIsExporting] = useState(false);
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [exportStatusText, setExportStatusText] = useState('');
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const [isEraser, setIsEraser] = useState(false);
   const [sheetBrushSize, setSheetBrushSize] = useState(5);
+  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [audioReady, setAudioReady] = useState(false);
+  const [audioSyncPending, setAudioSyncPending] = useState(false);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
 
@@ -284,6 +285,14 @@ export default function ARViewerScreen() {
     StatusBar.setBarStyle('light-content');
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (loadEndTimeoutRef.current) {
+        clearTimeout(loadEndTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Pause audio when app goes to background
   const audioPlayingBeforeBg = useRef(false);
   useEffect(() => {
@@ -293,6 +302,7 @@ export default function ARViewerScreen() {
         if (audioPlaying) setAudioPlaying(false);
       } else if (nextState === 'active' && audioPlayingBeforeBg.current) {
         setAudioPlaying(true);
+        setAudioSyncPending(true);
       }
     });
     return () => sub.remove();
@@ -333,6 +343,32 @@ export default function ARViewerScreen() {
     () => models.find(model => getModelStableId(model) === modelId) || null,
     [modelId, models],
   );
+
+  const modelUrl = useMemo(() => {
+    if (!currentModel) return '';
+    const m = currentModel as any;
+    if (m.type === 'multiple-glb' && m.parts && m.parts.length > 0) {
+      const baseUrl = ARService.getModelFileUrl(getModelStableId(currentModel));
+      const partsConfig = m.parts.flatMap((p: any) => {
+        const rawFile = typeof p?.file === 'string' ? p.file : '';
+        const filename = rawFile.split('/').pop();
+        if (!filename) {
+          return [];
+        }
+        return [{
+          id: p.partId,
+          name: p.name,
+          url: `${baseUrl}?part=${encodeURIComponent(filename)}`,
+          audioUrl: p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null
+        }];
+      });
+      if (!partsConfig.length) {
+        return baseUrl;
+      }
+      return JSON.stringify(partsConfig);
+    }
+    return ARService.getModelFileUrl(getModelStableId(currentModel));
+  }, [currentModel]);
 
   const currentEnvironment = useMemo<AREnvironmentView | null>(() => {
     const byId = environments.find(env => env._id === environmentId);
@@ -410,8 +446,14 @@ export default function ARViewerScreen() {
     setLoadingModel(true);
     setViewerError(null);
     setProgress(0);
+    if (loadEndTimeoutRef.current) {
+      clearTimeout(loadEndTimeoutRef.current);
+      loadEndTimeoutRef.current = null;
+    }
     setShowLeftMenu(false);
     setAudioPlaying(false);
+    setAudioReady(false);
+    setAudioSyncPending(false);
     setAssetSearchTerm('');
     setPaintingEnabled(false);
     setTextureDisplayMode('original');
@@ -423,8 +465,31 @@ export default function ARViewerScreen() {
     setIsExporting(false);
     setExportStatusText('');
     setActiveControlCategory(null);
+    setSelectedPartId(null);
     bottomSheetModalRef.current?.dismiss();
   }, [modelId]);
+
+  useEffect(() => {
+    if (loadingModel) return;
+    const isSpecialType = (currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb';
+    if (isSpecialType) {
+      setAutoRotate(false);
+      setAudioPlaying(true);
+      setAudioSyncPending(true);
+      sendToWebView({ type: 'toggleRotate', value: false });
+      if ((currentModel as any)?.type === 'multiple-animation-execution') {
+        sendToWebView({ type: 'playAllAnimations', value: isPlaying });
+      } else if ((currentModel as any)?.type === 'multiple-glb' && !selectedPartId) {
+        const parts = (currentModel as any).parts || [];
+        if (parts.length > 0) {
+          setSelectedPartId(parts[0].partId);
+        }
+      }
+    } else {
+      setAutoRotate(true);
+      sendToWebView({ type: 'toggleRotate', value: true });
+    }
+  }, [isPlaying, loadingModel, currentModel, selectedPartId]);
 
   useEffect(() => {
     if (!openPainter) {
@@ -460,11 +525,6 @@ export default function ARViewerScreen() {
     }
   }, [loadingModel, paintingEnabled, targetTextureDataUrl, textureDisplayMode]);
 
-  const modelUrl = useMemo(
-    () => (currentModel ? ARService.getModelFileUrl(getModelStableId(currentModel)) : ''),
-    [currentModel],
-  );
-
   const viewerHtml = useMemo(
     () => (modelUrl ? buildARViewerHtml(modelUrl) : ''),
     [modelUrl],
@@ -495,17 +555,37 @@ export default function ARViewerScreen() {
   );
 
   const audioSource = useMemo(() => {
+    const isMultiGlb = (currentModel as any)?.type === 'multiple-glb';
+    if (isMultiGlb && selectedPartId) {
+      const parts = (currentModel as any)?.parts || [];
+      const part = parts.find((p: any) => p.partId === selectedPartId);
+      if (part?.audio?.gridfsId) {
+        const uri = ARService.getAudioStreamUrlById(part.audio.gridfsId);
+        return uri ? {
+          uri,
+          shouldCache: true,
+          minLoadRetryCount: 3,
+          bufferConfig: AUDIO_BUFFER_CONFIG,
+        } : undefined;
+      }
+    }
     if (!selectedAudio?.gridfsId) {
       return undefined;
     }
     const uri = ARService.getAudioStreamUrlById(selectedAudio.gridfsId) || '';
-    return uri ? { uri } : undefined;
-  }, [selectedAudio?.gridfsId]);
+    return uri ? {
+      uri,
+      shouldCache: true,
+      minLoadRetryCount: 3,
+      bufferConfig: AUDIO_BUFFER_CONFIG,
+    } : undefined;
+  }, [currentModel, selectedPartId, selectedAudio?.gridfsId]);
 
   const currentLighting =
     LIGHTING_OPTIONS.find(item => item.name === environment) || LIGHTING_OPTIONS[0];
 
   const viewerLoading = modelsQuery.isPending || foldersQuery.isPending || !currentModel;
+  const isSpecialType = (currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb';
   const topBarTop = insets.top + verticalScale(4);
   const topBarHeight = verticalScale(44);
   const webViewTop = topBarTop + topBarHeight;
@@ -540,6 +620,58 @@ export default function ARViewerScreen() {
   };
 
   useEffect(() => {
+    if (!audioSource) {
+      setAudioReady(false);
+      setAudioSyncPending(false);
+      return;
+    }
+    setAudioReady(false);
+    if (audioPlaying) {
+      setAudioSyncPending(true);
+    }
+  }, [audioPlaying, audioSource]);
+
+  useEffect(() => {
+    if (!audioSyncPending || !audioPlaying || !audioReady) {
+      return;
+    }
+    try {
+      audioRef.current?.seek(0);
+    } catch {
+      // ignore seek failures on unloaded streams
+    }
+    if (isSpecialType) {
+      if (!isPlaying) {
+        setIsPlaying(true);
+      }
+      sendToWebView({ type: 'playAllAnimations' });
+      sendToWebView({ type: 'togglePlay', value: true });
+    } else {
+      const activeAnimation = selectedAnimation || animations[0];
+      if (activeAnimation) {
+        sendToWebView({ type: 'setAnimation', value: activeAnimation });
+      }
+    }
+    setAudioSyncPending(false);
+  }, [
+    animations,
+    audioPlaying,
+    audioReady,
+    audioSyncPending,
+    isPlaying,
+    isSpecialType,
+    selectedAnimation,
+  ]);
+
+  useEffect(() => {
+    if (!loadingModel && selectedPartId) {
+      sendToWebView({ type: 'switchPart', id: selectedPartId });
+      setAudioPlaying(true);
+      setAudioSyncPending(true);
+    }
+  }, [selectedPartId, loadingModel]);
+
+  useEffect(() => {
     sendToWebView({ type: 'setBrushColor', value: brushColor });
     sendToSheetWebView({ type: 'setBrushColor', value: brushColor });
   }, [brushColor]);
@@ -560,6 +692,10 @@ export default function ARViewerScreen() {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'loaded') {
+        if (loadEndTimeoutRef.current) {
+          clearTimeout(loadEndTimeoutRef.current);
+          loadEndTimeoutRef.current = null;
+        }
         setLoadingModel(false);
         setProgress(100);
         return;
@@ -585,6 +721,10 @@ export default function ARViewerScreen() {
         return;
       }
       if (data.type === 'error') {
+        if (loadEndTimeoutRef.current) {
+          clearTimeout(loadEndTimeoutRef.current);
+          loadEndTimeoutRef.current = null;
+        }
         setViewerError(data.message || 'Failed to load model');
         setLoadingModel(false);
         setIsExporting(false);
@@ -600,10 +740,12 @@ export default function ARViewerScreen() {
   };
 
   const toggleAudio = () => {
-    if (!selectedAudio) {
+    if (!audioSource) {
       return;
     }
-    setAudioPlaying(current => !current);
+    const next = !audioPlaying;
+    setAudioPlaying(next);
+    setAudioSyncPending(next);
   };
 
   const handleLanguageChange = (language: string) => {
@@ -635,6 +777,7 @@ export default function ARViewerScreen() {
           level: audio.level,
         })),
         animations,
+        modelType: (currentModel as any)?.type,
       });
     } catch (error: any) {
       setViewerError(error?.message || 'Unable to export custom AR model');
@@ -666,6 +809,7 @@ export default function ARViewerScreen() {
         level: audio.level,
       })),
       animations,
+      modelType: (currentModel as any)?.type,
     });
   };
 
@@ -728,18 +872,6 @@ export default function ARViewerScreen() {
         </View>
 
         <View style={styles.topBarActions}>
-          {/* <TouchableOpacity
-            onPress={() => {
-              const next = !wireframe;
-              setWireframe(next);
-              sendToWebView({ type: 'toggleWireframe', value: next });
-            }}
-            style={[
-              styles.iconPill,
-              wireframe && styles.iconPillActive,
-            ]}>
-            <Grid2X2 size={moderateScale(15)} color="#fff" strokeWidth={2.1} />
-          </TouchableOpacity> */}
           <TouchableOpacity
             onPress={() => {
               const next = !autoRotate;
@@ -778,11 +910,20 @@ export default function ARViewerScreen() {
           }}
           onMessage={handleWebMessage}
           onLoadEnd={() => {
-            setTimeout(() => {
+            if (loadEndTimeoutRef.current) {
+              clearTimeout(loadEndTimeoutRef.current);
+            }
+            loadEndTimeoutRef.current = setTimeout(() => {
               setLoadingModel(current => (viewerError ? current : false));
             }, 10000);
           }}
-          onError={() => setLoadingModel(false)}
+          onError={() => {
+            if (loadEndTimeoutRef.current) {
+              clearTimeout(loadEndTimeoutRef.current);
+              loadEndTimeoutRef.current = null;
+            }
+            setLoadingModel(false);
+          }}
         />
 
         {loadingModel && (
@@ -816,6 +957,13 @@ export default function ARViewerScreen() {
           playWhenInactive={false}
           audioOutput="speaker"
           ignoreSilentSwitch="ignore"
+          progressUpdateInterval={250}
+          onLoadStart={() => setAudioReady(false)}
+          onLoad={() => setAudioReady(true)}
+          onError={() => {
+            setAudioReady(false);
+            setAudioSyncPending(false);
+          }}
         />
       )}
 
@@ -958,31 +1106,33 @@ export default function ARViewerScreen() {
         </View>
       )}
 
-      <View style={[styles.paintSwitchContainer, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }]}>
-        <Text style={styles.paintSwitchTopLabel}>Real Texture</Text>
-        <TouchableOpacity
-          onPress={() => {
-            const next = textureDisplayMode !== 'original';
-            if (next) {
-              setTextureDisplayMode('original');
-              setPaintingEnabled(false);
-              sendToWebView({ type: 'enablePaint', value: false });
-              sendToWebView({ type: 'showOriginalTexture' });
-            } else {
-              setTextureDisplayMode('model-paint');
-              setPaintingEnabled(true);
-              sendToWebView({ type: 'enablePaint', value: true });
-              sendToWebView({ type: 'showPaintTexture' });
-            }
-          }}
-          activeOpacity={0.8}
-          style={[styles.paintSwitch, textureDisplayMode === 'original' && styles.paintSwitchActiveHighlight]}>
-          <View style={[styles.paintSwitchThumb, textureDisplayMode === 'original' && styles.paintSwitchThumbActive]} />
-          <Text style={styles.paintSwitchLabel}>
-            {textureDisplayMode === 'original' ? 'ON' : 'OFF'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {!isSpecialType && (
+        <View style={[styles.paintSwitchContainer, { bottom: verticalScale(bottomBarHeight + verticalScale(3)) }]}>
+          <Text style={styles.paintSwitchTopLabel}>Real Texture</Text>
+          <TouchableOpacity
+            onPress={() => {
+              const next = textureDisplayMode !== 'original';
+              if (next) {
+                setTextureDisplayMode('original');
+                setPaintingEnabled(false);
+                sendToWebView({ type: 'enablePaint', value: false });
+                sendToWebView({ type: 'showOriginalTexture' });
+              } else {
+                setTextureDisplayMode('model-paint');
+                setPaintingEnabled(true);
+                sendToWebView({ type: 'enablePaint', value: true });
+                sendToWebView({ type: 'showPaintTexture' });
+              }
+            }}
+            activeOpacity={0.8}
+            style={[styles.paintSwitch, textureDisplayMode === 'original' && styles.paintSwitchActiveHighlight]}>
+            <View style={[styles.paintSwitchThumb, textureDisplayMode === 'original' && styles.paintSwitchThumbActive]} />
+            <Text style={styles.paintSwitchLabel}>
+              {textureDisplayMode === 'original' ? 'ON' : 'OFF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity
         onPress={handleOpenAR}
@@ -998,10 +1148,10 @@ export default function ARViewerScreen() {
           contentContainerStyle={styles.controlBarContent}>
           {[
             { id: 'animation', label: 'Animation', icon: AnimationIcon },
-            ...(paintingEnabled ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
+            ...(paintingEnabled && !isSpecialType ? [{ id: 'paint', label: 'Paint', icon: Palette }] : []),
             { id: 'audio', label: 'Audio', icon: Volume2 },
             { id: 'lighting', label: 'Lighting', icon: Lightbulb },
-            { id: 'sheet', label: 'Coloring Sheet', icon: ImageIcon },
+            ...(!isSpecialType ? [{ id: 'sheet', label: 'Coloring Sheet', icon: ImageIcon }] : []),
           ].map(cat => {
             const isTabActive = activeControlCategory === cat.id;
             const isStatusActive = (cat.id === 'audio' && audioPlaying) || (cat.id === 'paint' && paintingEnabled);
@@ -1027,7 +1177,7 @@ export default function ARViewerScreen() {
                   />
                 </View>
                 <Text style={[
-                  styles.controlLabel, 
+                  styles.controlLabel,
                   isTablet && { fontSize: moderateScale(10) },
                   compact && styles.controlLabelCompact,
                   (compact && isActive) && styles.controlLabelCompactActive
@@ -1056,24 +1206,66 @@ export default function ARViewerScreen() {
           keyboardShouldPersistTaps="handled">
           {activeControlCategory === 'animation' && (
             <View style={styles.sheetInner}>
-              <Text style={styles.sheetTitle}>Animations</Text>
-              <View style={[styles.chipRow, styles.sheetRow]}>
-                {animations.map((animation, idx) => (
+              <Text style={styles.sheetTitle}>
+                {(currentModel as any)?.type === 'multiple-glb' ? 'Explore Parts' : 'Animations'}
+              </Text>
+
+              {/* Multiple GLB: Part Selection */}
+              {(currentModel as any)?.type === 'multiple-glb' && (
+                <View style={[styles.chipRow, styles.sheetRow, { paddingBottom: verticalScale(16) }]}>
+                  {((currentModel as any).parts || []).map((part: any) => (
+                    <TouchableOpacity
+                      key={part.partId}
+                      onPress={() => {
+                        setSelectedPartId(part.partId);
+                      }}
+                      style={[
+                        styles.choiceChip,
+                        (selectedPartId === part.partId || (!selectedPartId && part.partId === (currentModel as any).parts[0]?.partId)) && styles.choiceChipTeal,
+                      ]}>
+                      <Text style={styles.choiceChipText}>{part.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Standard List/Multiple Animation List */}
+              {(currentModel as any)?.type !== 'multiple-animation-execution' && (currentModel as any)?.type !== 'multiple-glb' && (
+                <View style={[styles.chipRow, styles.sheetRow]}>
+                  {animations.map((animation, idx) => (
+                    <TouchableOpacity
+                      key={animation}
+                      onPress={() => {
+                        setSelectedAnimation(animation);
+                        sendToWebView({ type: 'setAnimation', value: animation });
+                        NativeModules.ARNativeModule?.setAnimation?.(idx);
+                      }}
+                      style={[
+                        styles.choiceChip,
+                        selectedAnimation === animation && styles.choiceChipTeal,
+                      ]}>
+                      <Text style={styles.choiceChipText}>{animation}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Common Play/Pause Toggle for special types */}
+              {((currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb') && (
+                <View style={styles.playPauseControlRow}>
                   <TouchableOpacity
-                    key={animation}
+                    style={[styles.playPauseBtn, isPlaying && styles.playPauseBtnActive]}
                     onPress={() => {
-                      setSelectedAnimation(animation);
-                      sendToWebView({ type: 'setAnimation', value: animation });
-                      NativeModules.ARNativeModule?.setAnimation?.(idx);
+                      const next = !isPlaying;
+                      setIsPlaying(next);
+                      sendToWebView({ type: 'togglePlay', value: next });
                     }}
-                    style={[
-                      styles.choiceChip,
-                      selectedAnimation === animation && styles.choiceChipTeal,
-                    ]}>
-                    <Text style={styles.choiceChipText}>{animation}</Text>
+                  >
+                    {isPlaying ? <Pause size={moderateScale(28)} color="#fff" /> : <Play size={moderateScale(28)} color="#fff" />}
+                    <Text style={styles.playPauseBtnText}>{isPlaying ? 'Pause' : 'Play'}</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -1378,7 +1570,6 @@ export default function ARViewerScreen() {
                         setShowTargetPainter(false);
                         setPaintMode('target');
                         setPaintingEnabled(false);
-                        setShowBrushControls(false);
                       } else if (data.type === 'log') {
                         console.log('[SheetWebView]', data.message);
                       } else if (data.type === 'error') {
@@ -1430,7 +1621,6 @@ export default function ARViewerScreen() {
                       setShowTargetPainter(false);
                       setPaintMode('target');
                       setPaintingEnabled(false);
-                      setShowBrushControls(false);
                     } else if (data.type === 'log') {
                       console.log('[SheetWebView]', data.message);
                     } else if (data.type === 'error') {
@@ -1539,7 +1729,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop:verticalScale(0),
+    paddingTop: verticalScale(0),
     paddingHorizontal: scale(10),
     paddingVertical: verticalScale(8),
     borderBottomWidth: 1,
@@ -1693,7 +1883,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     marginRight: scale(40)
-    
+
   },
   topBarTitleText: {
     fontSize: moderateScale(13),
@@ -1705,8 +1895,8 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(5),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    width:'auto',
-    alignSelf:'center'
+    width: 'auto',
+    alignSelf: 'center'
   },
 
   topBarActions: {
@@ -2180,7 +2370,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     paddingVertical: verticalScale(8),
     gap: scale(24),
-    marginHorizontal:'auto'
+    marginHorizontal: 'auto'
   },
   controlBarItem: {
     alignItems: 'center',
@@ -2313,7 +2503,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(14,165,164,0.3)',
     position: 'absolute',
-    
+
     right: scale(10),
     zIndex: 45,
   },
@@ -2554,16 +2744,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(24),
   },
   exportTitle: {
-    marginTop: verticalScale(12),
-    fontSize: moderateScale(16),
-    fontWeight: '700',
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(18),
+    fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
   },
   exportCopy: {
     marginTop: verticalScale(8),
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(13),
     color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
+  },
+  playPauseControlRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: verticalScale(20),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    marginTop: verticalScale(10),
+  },
+  playPauseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(10),
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: scale(30),
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(16),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    minWidth: scale(150),
+  },
+  playPauseBtnActive: {
+    backgroundColor: '#6C4CFF',
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  playPauseBtnText: {
+    fontSize: moderateScale(16),
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
   },
 });

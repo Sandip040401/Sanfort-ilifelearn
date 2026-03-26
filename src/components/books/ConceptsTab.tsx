@@ -282,20 +282,26 @@ export default function ConceptsTab({
                 {item.title}
               </Text>
               
-              <View style={styles.metricsRow}>
-                <View style={[styles.metricPill, { backgroundColor: withAlpha(subjectColor, 0.08), borderColor: withAlpha(subjectColor, 0.16) }]}>
-                  <Images size={moderateScale(12)} color={subjectColor} strokeWidth={2.2} />
-                  <Text allowFontScaling={false} style={[styles.metricText, { color: subjectColor }]}>
-                    {item.images.length} Concept Sheet{item.images.length > 1 ? 's' : ''}
-                  </Text>
+              {(item.images.length > 0 || item.videos.length > 0) && (
+                <View style={styles.metricsRow}>
+                  {item.images.length > 0 && (
+                    <View style={[styles.metricPill, { backgroundColor: withAlpha(subjectColor, 0.08), borderColor: withAlpha(subjectColor, 0.16) }]}>
+                      <Images size={moderateScale(12)} color={subjectColor} strokeWidth={2.2} />
+                      <Text allowFontScaling={false} style={[styles.metricText, { color: subjectColor }]}>
+                        {item.images.length} Concept Sheet{item.images.length > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  )}
+                  {item.videos.length > 0 && (
+                    <View style={styles.metricPillBlue}>
+                      <PlayCircle size={moderateScale(12)} color="#2563EB" strokeWidth={2.2} />
+                      <Text allowFontScaling={false} style={styles.metricTextBlue}>
+                        {item.videos.length} Video{item.videos.length > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <View style={styles.metricPillBlue}>
-                  <PlayCircle size={moderateScale(12)} color="#2563EB" strokeWidth={2.2} />
-                  <Text allowFontScaling={false} style={styles.metricTextBlue}>
-                    {item.videos.length} Videos
-                  </Text>
-                </View>
-              </View>
+              )}
             </View>
 
             <View style={[styles.openIconWrap, { backgroundColor: withAlpha(subjectColor, 0.1) }]}>

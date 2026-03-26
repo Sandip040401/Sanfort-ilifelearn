@@ -1,7 +1,6 @@
 import React, {startTransition, useMemo, useState} from 'react';
 import {
   FlatList,
-  ImageBackground,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import FastImage from 'react-native-fast-image';
 import {moderateScale, scale, verticalScale} from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import {ChevronRight, Clapperboard, PlayCircle} from 'lucide-react-native';
@@ -232,11 +232,12 @@ export default function VideosTab({
                 },
               ]}>
               {posterUrl ? (
-                <ImageBackground
-                  source={{uri: posterUrl}}
-                  resizeMode="cover"
-                  style={styles.poster}
-                  imageStyle={styles.posterImage}>
+                <View style={styles.poster}>
+                  <FastImage
+                    source={{uri: posterUrl}}
+                    resizeMode={FastImage.resizeMode.cover}
+                    style={[StyleSheet.absoluteFill, styles.posterImage]}
+                  />
                   <LinearGradient
                     colors={['rgba(15,23,42,0.10)', 'rgba(15,23,42,0.78)']}
                     locations={[0, 1]}
@@ -262,7 +263,7 @@ export default function VideosTab({
                       </View>
                     </View>
                   </LinearGradient>
-                </ImageBackground>
+                </View>
               ) : (
                 <LinearGradient
                   colors={['#111827', '#1F2937']}

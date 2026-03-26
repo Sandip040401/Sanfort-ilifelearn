@@ -29,7 +29,7 @@ export function BottomTabs() {
         <Tab.Screen name="WebVR"     component={WebVRStack} />
         <Tab.Screen name="Games"     component={GamesScreen} />
         <Tab.Screen name="ReadAloud" component={ReadAloudScreen} />
-        <Tab.Screen name="Books"     component={BooksStack} />
+        <Tab.Screen name="Themes"     component={BooksStack} />
         <Tab.Screen name="ARSheets"  component={ARSheetsScreen} />
       </Tab.Navigator>
     </TabBarScrollProvider>
