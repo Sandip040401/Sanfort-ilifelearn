@@ -166,13 +166,9 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
 
   // ── Reanimated ──
   const drawerProgress = useSharedValue(0);
-  const headerProgress = useSharedValue(0);
 
   const drawerStyle = useAnimatedStyle(() => ({
     transform: [{translateY: (1 - drawerProgress.value) * 220}],
-  }));
-  const headerStyle = useAnimatedStyle(() => ({
-    opacity: headerProgress.value,
   }));
 
   // ── Audio data maps ──
@@ -283,7 +279,6 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
       setHeaderVisible(false);
       setPlaybackSession(prev => prev + 1);
       drawerProgress.value = 0;
-      headerProgress.value = 0;
       // Android: force resume after orientation settles
       scheduleResume(200, 600, 1200, 2000);
     } else {
@@ -296,7 +291,6 @@ function WebVRViewerModal({visible, onClose, assetTitle, folderName, assetData}:
     assetSessionKey,
     hasAudio,
     drawerProgress,
-    headerProgress,
     scheduleResume,
     clearResumeTimers,
     pausePlayers,

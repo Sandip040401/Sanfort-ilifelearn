@@ -232,25 +232,58 @@ function getEnvironmentColors(environment: AREnvironmentView) {
 
 function ARLoading() {
   const { colors } = useTheme();
-  const { contentWidth, gap, cardWidth, worldCardHeight } = useResponsiveLayout();
+  const { contentWidth, gap, cardWidth, worldCardHeight, numColumns } = useResponsiveLayout();
+  const loadingContainerStyle = useMemo(
+    () => ({ width: contentWidth, alignSelf: 'center' as const }),
+    [contentWidth],
+  );
+  const loadingRows = useMemo(() => {
+    const items = [1, 2, 3, 4, 5, 6];
+    const rows: number[][] = [];
+    for (let index = 0; index < items.length; index += numColumns) {
+      rows.push(items.slice(index, index + numColumns));
+    }
+    return rows;
+  }, [numColumns]);
+  const loadingRowGapStyle = useMemo(
+    () => ({ gap, marginBottom: gap }),
+    [gap],
+  );
+  const skeletonSpacerStyle = useMemo(
+    () => ({ width: cardWidth, height: worldCardHeight }),
+    [cardWidth, worldCardHeight],
+  );
 
   return (
     <View style={[styles.loadingRoot, { backgroundColor: colors.background }]}>
-      <View style={{ width: contentWidth, alignSelf: 'center' }}>
+      <View style={loadingContainerStyle}>
         <Skeleton
           width={contentWidth}
           height={verticalScale(100)}
           borderRadius={moderateScale(20)}
-          style={{ marginTop: verticalScale(8), marginBottom: verticalScale(14) }}
+          style={styles.loadingHeroSkeleton}
         />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap }}>
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton
-              key={i}
-              width={cardWidth}
-              height={worldCardHeight}
-              borderRadius={moderateScale(20)}
-            />
+        <View style={styles.loadingCardsGrid}>
+          {loadingRows.map((row, rowIndex) => (
+            <View
+              key={`skeleton-row-${rowIndex}`}
+              style={[
+                styles.loadingCardsRow,
+                loadingRowGapStyle,
+                rowIndex === loadingRows.length - 1 && styles.loadingCardsRowLast,
+              ]}>
+              {row.map(i => (
+                <Skeleton
+                  key={i}
+                  width={cardWidth}
+                  height={worldCardHeight}
+                  borderRadius={moderateScale(20)}
+                />
+              ))}
+              {Array.from({ length: Math.max(0, numColumns - row.length) }).map((_, spacerIndex) => (
+                <View key={`skeleton-spacer-${rowIndex}-${spacerIndex}`} style={skeletonSpacerStyle} />
+              ))}
+            </View>
           ))}
         </View>
       </View>
@@ -322,7 +355,7 @@ function EnvironmentGallery({
           style={styles.bannerIconWrap}>
           <ARIcon width={moderateScale(42)} height={moderateScale(42)} color="#fff" strokeWidth={2.5} />
         </Animated.View>
-        <Animated.View entering={headerCopyEntering} style={{ flex: 1 }}>
+        <Animated.View entering={headerCopyEntering} style={styles.flexOne}>
           <Text style={styles.headerTitleMain}>AR Worlds</Text>
           <Text style={styles.headerSubMain}>
             Explore 3D models in augmented reality!
@@ -385,7 +418,7 @@ function EnvironmentGallery({
               </Text>
             </View>
 
-            <View style={[styles.worldCountBadge, { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: item.accent + '44' }]}>
+            <View style={[styles.worldCountBadge, { borderColor: item.accent + '44' }]}>
               <ARIcon width={moderateScale(16)} height={moderateScale(16)} color={item.accent} strokeWidth={3} />
               <Text style={[styles.worldCountText, { color: item.accent }]}>{modelCount}</Text>
             </View>
@@ -489,6 +522,13 @@ function ModelGallery({
   const { colors, isDark } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
   const { modelPreviewHeight, numColumns, cardWidth } = useResponsiveLayout();
+  const searchContainerThemeStyle = useMemo(
+    () => ({
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+    }),
+    [isDark],
+  );
 
   const headerPaddingTop = useMemo(
     () => ({ paddingTop: topInset + verticalScale(10) }),
@@ -522,10 +562,7 @@ function ModelGallery({
         <View style={[styles.curve, { backgroundColor: colors.background }]} />
       </View>
 
-      <View style={[styles.searchContainer, {
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
-          }]}>
+      <View style={[styles.searchContainer, searchContainerThemeStyle]}>
             <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
@@ -567,7 +604,7 @@ function ModelGallery({
      
       )}
     </>
-  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchQuery, onSearchChange]);
+  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchContainerThemeStyle, searchQuery, onSearchChange]);
 
   const renderItem = useCallback(({ item, index }: { item: ARModel, index: number }) => {
     const modelId = item._id || item.id || (item as any).id;
@@ -651,6 +688,7 @@ function ARScreenContent() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
   const { tabBarTranslateY } = useTabBarScroll();
   const lastScrollY = useRef(0);
+  const isTabBarHidden = useRef(false);
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [scanningModel, setScanningModel] = useState<ARModel | null>(null);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
@@ -724,6 +762,16 @@ function ARScreenContent() {
   const hasError = modelsQuery.isError || foldersQuery.isError;
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
   const bottomInset = tabBarHeight + verticalScale(12);
+  const setTabBarHidden = useCallback(
+    (hidden: boolean) => {
+      if (isTabBarHidden.current === hidden) {
+        return;
+      }
+      isTabBarHidden.current = hidden;
+      tabBarTranslateY.value = hidden ? tabBarHeight : 0;
+    },
+    [tabBarHeight, tabBarTranslateY],
+  );
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -731,16 +779,16 @@ function ARScreenContent() {
       const diff = y - lastScrollY.current;
       lastScrollY.current = y;
       if (y <= 0) {
-        tabBarTranslateY.value = 0;
+        setTabBarHidden(false);
         return;
       }
-      if (diff > 0) {
-        tabBarTranslateY.value = tabBarHeight;
+      if (diff > 2) {
+        setTabBarHidden(true);
       } else if (diff < -2) {
-        tabBarTranslateY.value = 0;
+        setTabBarHidden(false);
       }
     },
-    [tabBarTranslateY, tabBarHeight],
+    [setTabBarHidden],
   );
 
   useEffect(() => {
@@ -814,9 +862,9 @@ function ARScreenContent() {
         return;
       }
 
-      const modelId = model._id || model.id || (model as any).name;
+      const modelId = String(model._id || model.id || '').trim();
       if (!modelId) {
-        Alert.alert('Error', 'Model ID not found.');
+        Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
         return;
       }
 
@@ -911,7 +959,7 @@ function ARScreenContent() {
         snapPoints={snapPoints}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        handleIndicatorStyle={{ backgroundColor: '#C4C4C4', width: scale(48), height: verticalScale(5), borderRadius: moderateScale(3) }}
+        handleIndicatorStyle={styles.sheetHandleIndicator}
         backgroundStyle={{
           backgroundColor: colors.card,
           borderTopLeftRadius: moderateScale(28),
@@ -1139,9 +1187,25 @@ const styles = StyleSheet.create({
   screenContent: {
     paddingBottom: 0,
   },
+  flexOne: {
+    flex: 1,
+  },
   loadingRoot: {
     flex: 1,
     paddingTop: verticalScale(16),
+  },
+  loadingHeroSkeleton: {
+    marginTop: verticalScale(8),
+    marginBottom: verticalScale(14),
+  },
+  loadingCardsGrid: {
+    width: '100%',
+  },
+  loadingCardsRow: {
+    flexDirection: 'row',
+  },
+  loadingCardsRowLast: {
+    marginBottom: 0,
   },
   loadingTitle: {
     marginTop: verticalScale(16),
@@ -1341,6 +1405,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: moderateScale(6),
     right: moderateScale(6),
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: moderateScale(20),
     paddingHorizontal: scale(8),
     paddingVertical: verticalScale(3),
@@ -1633,6 +1698,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: scale(20),
     paddingBottom: verticalScale(20),
+  },
+  sheetHandleIndicator: {
+    backgroundColor: '#C4C4C4',
+    width: scale(48),
+    height: verticalScale(5),
+    borderRadius: moderateScale(3),
   },
   sheetInner: {
     alignItems: 'center',

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 import { scale, verticalScale, moderateScale } from 'react-native-size-matters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -23,7 +23,7 @@ import { useTabBarScroll } from './TabBarScrollContext';
 import ARIcon from '@/components/icons/ARIcon';
 import WebVRIcon from '@/components/icons/WebVRIcon';
 
-export const TAB_BAR_HEIGHT = verticalScale(56);
+export const TAB_BAR_HEIGHT = verticalScale(62);
 
 // Only these 5 tabs are shown in the bar
 // ReadAloud & ARSheets stay registered in navigator so tabNav.navigate() works
@@ -62,7 +62,7 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
   // 0 = inactive, 1 = active
   const progress = useSharedValue(isFocused ? 1 : 0);
   // Per-tap bounce
-  const scale = useSharedValue(1);
+  const pressScale = useSharedValue(1);
 
   useEffect(() => {
     progress.value = withTiming(isFocused ? 1 : 0, {
@@ -72,7 +72,7 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
   }, [isFocused, progress]);
 
   const handlePress = () => {
-    scale.value = withSequence(
+    pressScale.value = withSequence(
       withSpring(1.22, { damping: 5, stiffness: 500, mass: 0.6 }),
       withSpring(1.0, { damping: 10, stiffness: 300 }),
     );
@@ -87,16 +87,11 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
 
   // Icon + label scale bounce
   const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ scale: pressScale.value }],
   }));
 
   // Animated icon/label color (interpolateColor needs a numeric driver 0→1)
   const colorProgress = useDerivedValue(() => progress.value);
-
-  const iconColorStyle = useAnimatedStyle(() => ({
-    // overlay tint at active state
-    opacity: 1,
-  }));
 
   // We use two overlapping icons (active + inactive) with opacity cross-fade
   const activeIconOpacity = useAnimatedStyle(() => ({ opacity: progress.value }));
@@ -167,7 +162,7 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
 }
 
 // ── Main TabBar ───────────────────────────────────────────────────────
-export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { tabBarTranslateY } = useTabBarScroll();
@@ -252,7 +247,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: TAB_BAR_HEIGHT,
-    paddingTop: verticalScale(4),
+    paddingTop: verticalScale(6),
+    paddingBottom: verticalScale(2),
   },
   activeIndicator: {
     position: 'absolute',

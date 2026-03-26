@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   ScrollView,
@@ -29,7 +28,6 @@ import {
   Globe,
   HelpCircle,
   Key,
-  Lock,
   LogOut,
   Mail,
   Monitor,
@@ -42,7 +40,7 @@ import {
   UserX,
 } from 'lucide-react-native';
 import { useAuth, useModals } from '@/store';
-import { useTheme, Typography, BorderRadius, type AppColors } from '@/theme';
+import { useTheme, BorderRadius, type AppColors } from '@/theme';
 import CustomAlert from '@/components/CustomAlert';
 import { AuthService } from '@/services/auth.service';
 import { APP_NAME, APP_VERSION } from '@/config/appInfo';
@@ -74,6 +72,7 @@ export default function ProfileScreen() {
   const [activeModal, setActiveModal] = useState<'none' | 'reset' | 'delete'>('none');
   const [modalStep, setModalStep] = useState<'confirm' | 'processing' | 'success' | 'input' | 'error' | 'final_confirm'>('confirm');
   const [errorMessage, setErrorMessage] = useState('');
+  const deleteLogoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Form Inputs
   const [password, setPassword] = useState('');
@@ -103,9 +102,30 @@ export default function ProfileScreen() {
 
   const displayName = capitalize(user?.name || 'User');
   const avatarLetter = displayName.charAt(0);
-  const userId = user?.id ?? user?._id ?? 'N/A';
+  const userId = String(user?.id ?? user?._id ?? 'N/A');
+
+  React.useEffect(() => {
+    return () => {
+      if (deleteLogoutTimerRef.current) {
+        clearTimeout(deleteLogoutTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scrollContentStyle = { paddingBottom: insets.bottom + verticalScale(24) };
+  const logoutIconBgStyle = isDark ? styles.surfaceIndigoDark : styles.surfaceIndigoLight;
+  const dangerRowBgStyle = isDark ? styles.surfaceDangerDark : styles.surfaceDangerLight;
+  const statusDangerBgStyle = isDark ? styles.surfaceDangerStrongDark : styles.surfaceDangerStrongLight;
+  const statusSuccessBgStyle = isDark ? styles.surfaceSuccessDark : styles.surfaceSuccessLight;
+  const warningContainerThemeStyle = isDark ? styles.warningContainerDark : styles.warningContainerLight;
+  const warningTextThemeStyle = isDark ? styles.warningTextDark : styles.warningTextLight;
+  const dangerRowBorderStyle = { borderColor: colors.error + '30' };
 
   const resetModal = () => {
+    if (deleteLogoutTimerRef.current) {
+      clearTimeout(deleteLogoutTimerRef.current);
+      deleteLogoutTimerRef.current = null;
+    }
     setActiveModal('none');
     setModalStep('confirm');
     setPassword('');
@@ -129,14 +149,7 @@ export default function ProfileScreen() {
     setModalStep('confirm');
   };
 
-  const { checkParentGate, openExternalUrl } = useModals();
-
-  const startParentGate = () => {
-    checkParentGate(() => {
-      // This callback runs only after successful gate solve
-      Alert.alert('Success', 'Parental identity verified! Parental controls unlocked.');
-    });
-  };
+  const { openExternalUrl } = useModals();
 
   const processResetPassword = async () => {
     if (!oldPassword || !newPassword) {
@@ -147,7 +160,7 @@ export default function ProfileScreen() {
 
     setModalStep('processing');
     try {
-      const response = await AuthService.resetPassword({
+      await AuthService.resetPassword({
         email: user?.email || '',
         oldPassword,
         newPassword
@@ -188,9 +201,7 @@ export default function ProfileScreen() {
       }
 
       setModalStep('success');
-      setTimeout(() => {
-        // Double check we are still on the delete modal before logging out
-        resetModal();
+      deleteLogoutTimerRef.current = setTimeout(() => {
         logout();
       }, 2000);
     } catch (error: any) {
@@ -231,7 +242,7 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + verticalScale(24) }}
+        contentContainerStyle={scrollContentStyle}
         showsVerticalScrollIndicator={false}>
 
         {/* ── Avatar Section ───────────────────────── */}
@@ -449,7 +460,7 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
             onPress={() => setShowLogout(true)}
             style={[styles.logoutRow, { backgroundColor: colors.card, borderColor: colors.divider }]}>
-            <View style={[styles.logoutIcon, { backgroundColor: isDark ? '#1E1B4B' : '#EEF2FF' }]}>
+            <View style={[styles.logoutIcon, logoutIconBgStyle]}>
               <LogOut size={moderateScale(18)} color={colors.primary} />
             </View>
             <Text style={[styles.logoutText, { color: colors.text }]}>Log Out</Text>
@@ -463,14 +474,11 @@ export default function ProfileScreen() {
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={startDeleteAccount}
-            style={[styles.logoutRow, {
-              backgroundColor: isDark ? '#2A1215' : '#FFF1F2',
-              borderColor: colors.error + '30',
-            }]}>
+            style={[styles.logoutRow, dangerRowBgStyle, dangerRowBorderStyle]}>
             <View style={[styles.logoutIcon, { backgroundColor: colors.error }]}>
               <Trash2 size={moderateScale(16)} color="#fff" />
             </View>
-            <Text style={[styles.logoutText, { color: colors.error, fontWeight: '700' }]}>Delete Account</Text>
+            <Text style={[styles.logoutText, styles.fontWeight700, { color: colors.error }]}>Delete Account</Text>
             <ChevronRight size={moderateScale(16)} color={colors.error + '60'} />
           </TouchableOpacity>
         </View>
@@ -493,7 +501,7 @@ export default function ProfileScreen() {
           <Animated.View style={[styles.modalOverlay, backdropAnimStyle]}>
             <TouchableOpacity
               activeOpacity={1}
-              style={{ flex: 1 }}
+              style={styles.flex1}
               onPress={modalStep !== 'processing' ? resetModal : undefined}
             />
           </Animated.View>
@@ -504,11 +512,11 @@ export default function ProfileScreen() {
               {/* ── Standard Error View ──────────────────────── */}
               {modalStep === 'error' && (
                 <>
-                  <View style={[styles.statusIcon, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }]}>
+                  <View style={[styles.statusIcon, statusDangerBgStyle]}>
                     <AlertTriangle size={moderateScale(32)} color="#EF4444" />
                   </View>
                   <Text style={[styles.modalTitle, { color: colors.error }]}>Action Failed</Text>
-                  <Text style={[styles.modalDesc, { color: colors.textSecondary, textAlign: 'center' }]}>
+                  <Text style={[styles.modalDesc, styles.textCenter, { color: colors.textSecondary }]}>
                     {errorMessage || "Something went wrong. Please try again later."}
                   </Text>
                   <TouchableOpacity
@@ -525,7 +533,7 @@ export default function ProfileScreen() {
                   {modalStep === 'confirm' && (
                     <>
                       <Text style={[styles.modalDesc, { color: colors.textSecondary }]}>
-                        Updating password for <Text style={{ fontWeight: '700' }}>{user?.email}</Text>
+                        Updating password for <Text style={styles.fontWeight700}>{user?.email}</Text>
                       </Text>
 
                       <TextInput
@@ -559,10 +567,10 @@ export default function ProfileScreen() {
                   )}
                   {modalStep === 'success' && (activeModal === 'reset') && (
                     <>
-                      <View style={[styles.statusIcon, { backgroundColor: isDark ? '#064E3B' : '#ECFDF4' }]}>
+                      <View style={[styles.statusIcon, statusSuccessBgStyle]}>
                         <CheckCircle size={moderateScale(32)} color="#10B981" />
                       </View>
-                      <Text style={[styles.modalDesc, { color: colors.textSecondary, textAlign: 'center' }]}>
+                      <Text style={[styles.modalDesc, styles.textCenter, { color: colors.textSecondary }]}>
                         Password has been successfully updated!
                       </Text>
                       <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={resetModal}>
@@ -579,11 +587,11 @@ export default function ProfileScreen() {
                   {modalStep === 'confirm' && (
                     <>
                       <Text style={[styles.modalDesc, { color: colors.textSecondary, marginBottom: verticalScale(16) }]}>
-                        Are you sure you want to delete your account? This will permanently remove <Text style={{ fontWeight: '700', color: colors.text }}>{user?.email}</Text>.
+                        Are you sure you want to delete your account? This will permanently remove <Text style={[styles.fontWeight700, { color: colors.text }]}>{user?.email}</Text>.
                       </Text>
 
-                      <View style={styles.warningContainer}>
-                        <Text style={styles.warningText}>
+                      <View style={[styles.warningContainer, warningContainerThemeStyle]}>
+                        <Text style={[styles.warningText, warningTextThemeStyle]}>
                           Warning: This action cannot be undone. All your progress, favorites, and profile data will be lost forever.
                         </Text>
                       </View>
@@ -617,21 +625,21 @@ export default function ProfileScreen() {
 
                   {modalStep === 'final_confirm' && (
                     <>
-                      <View style={[styles.statusIcon, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }]}>
+                      <View style={[styles.statusIcon, statusDangerBgStyle]}>
                         <Trash2 size={moderateScale(32)} color="#EF4444" />
                       </View>
                       <Text style={[styles.modalTitle, { color: colors.error }]}>Final Confirmation</Text>
                       <Text style={[styles.modalDesc, { color: colors.textSecondary, marginBottom: verticalScale(16) }]}>
-                        Are you absolutely sure you want to delete your account? This action is <Text style={{ fontWeight: '800', color: colors.error }}>permanent</Text> and cannot be reversed.
+                        Are you absolutely sure you want to delete your account? This action is <Text style={[styles.fontWeight800, { color: colors.error }]}>permanent</Text> and cannot be reversed.
                       </Text>
 
-                      <View style={styles.warningContainer}>
-                        <Text style={styles.warningText}>
-                          Warning: All your progress, favorites, and profile data for <Text style={{ fontWeight: '700' }}>{user?.email}</Text> will be lost forever.
+                      <View style={[styles.warningContainer, warningContainerThemeStyle]}>
+                        <Text style={[styles.warningText, warningTextThemeStyle]}>
+                          Warning: All your progress, favorites, and profile data for <Text style={styles.fontWeight700}>{user?.email}</Text> will be lost forever.
                         </Text>
                       </View>
 
-                      <View style={[styles.finalBtnRow, { marginTop: verticalScale(20) }]}>
+                      <View style={[styles.finalBtnRow, styles.finalBtnRowSpaced]}>
                         <TouchableOpacity
                           style={[styles.finalBtn, styles.finalBtnNo, { borderColor: colors.divider }]}
                           onPress={resetModal}>
@@ -640,7 +648,7 @@ export default function ProfileScreen() {
                         <TouchableOpacity
                           style={[styles.finalBtn, styles.finalBtnYes, { backgroundColor: colors.error }]}
                           onPress={executeFinalDelete}>
-                          <Text style={[styles.finalBtnText, { color: '#fff' }]}>Yes, Delete</Text>
+                          <Text style={[styles.finalBtnText, styles.textWhite]}>Yes, Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </>
@@ -653,10 +661,10 @@ export default function ProfileScreen() {
                   )}
                   {modalStep === 'success' && (activeModal === 'delete') && (
                     <>
-                      <View style={[styles.statusIcon, { backgroundColor: isDark ? '#450A0A' : '#FEF2F2' }]}>
+                      <View style={[styles.statusIcon, statusDangerBgStyle]}>
                         <UserX size={moderateScale(32)} color="#EF4444" />
                       </View>
-                      <Text style={[styles.modalDesc, { color: colors.textSecondary, textAlign: 'center' }]}>
+                      <Text style={[styles.modalDesc, styles.textCenter, { color: colors.textSecondary }]}>
                         Account deleted. Logging you out...
                       </Text>
                     </>
@@ -711,7 +719,7 @@ function CardRow({
             styles.rowValue,
             { color: colors.text },
             mono && styles.mono,
-            !label && { marginTop: 0 }
+            !label && styles.rowValueNoLabel
           ]}
           numberOfLines={1}>
           {value}
@@ -732,6 +740,30 @@ function Divider({ color }: { color: string }) {
 // ─── Styles ───────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  flex1: { flex: 1 },
+  textCenter: { textAlign: 'center' },
+  textWhite: { color: '#fff' },
+  fontWeight700: { fontWeight: '700' },
+  fontWeight800: { fontWeight: '800' },
+  rowValueNoLabel: { marginTop: 0 },
+  surfaceIndigoDark: { backgroundColor: '#1E1B4B' },
+  surfaceIndigoLight: { backgroundColor: '#EEF2FF' },
+  surfaceDangerDark: { backgroundColor: '#2A1215' },
+  surfaceDangerLight: { backgroundColor: '#FFF1F2' },
+  surfaceDangerStrongDark: { backgroundColor: '#450A0A' },
+  surfaceDangerStrongLight: { backgroundColor: '#FEF2F2' },
+  surfaceSuccessDark: { backgroundColor: '#064E3B' },
+  surfaceSuccessLight: { backgroundColor: '#ECFDF4' },
+  warningContainerDark: {
+    backgroundColor: '#2A1215',
+    borderColor: '#7F1D1D',
+  },
+  warningContainerLight: {
+    backgroundColor: '#FFF1F2',
+    borderColor: '#FECDD3',
+  },
+  warningTextDark: { color: '#FCA5A5' },
+  warningTextLight: { color: '#BE123C' },
 
   // Header
   header: {
@@ -1055,6 +1087,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '100%',
     gap: scale(10),
+  },
+  finalBtnRowSpaced: {
+    marginTop: verticalScale(20),
   },
   finalBtn: {
     flex: 1,
