@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   queueVisualTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
   },
   queueVisualBottom: {
     gap: verticalScale(3),
@@ -421,10 +421,10 @@ const styles = StyleSheet.create({
   },
   queueContent: {
     flex: 1,
-    paddingLeft: scale(12),
-    paddingRight: scale(12),
-    paddingTop: verticalScale(8),
-    paddingBottom: verticalScale(10),
+    paddingLeft: scale(10),
+    paddingRight: scale(10),
+    paddingTop: verticalScale(6),
+    paddingBottom: verticalScale(8),
   },
   categoryBadge: {
     alignSelf: 'flex-start',
@@ -845,29 +845,29 @@ const GameCard = React.memo(({
           minHeight,
           { backgroundColor: colors.surface, borderColor: colors.border },
         ]}>
-        <View style={[styles.queueVisual, visualStyle]}>
-          <LinearGradient
-            colors={meta.gradient}
-            locations={[0, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill} />
-          <View style={styles.queueVisualTop}>
-            <View style={styles.queueIconBubble}>
-              {item.icon ? (
-                <Text style={styles.cardEmoji}>{item.icon}</Text>
-              ) : (
-                <Icon size={moderateScale(22)} color="#fff" strokeWidth={2} />
-              )}
+          <View style={[styles.queueVisual, visualStyle]}>
+            <LinearGradient
+              colors={meta.gradient}
+              locations={[0, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill} />
+            <View style={styles.queueVisualTop}>
+              <View>
+                <Text style={styles.queueMetaLabel}>Difficulty</Text>
+                <Text numberOfLines={1} style={styles.queueMetaTitle}>
+                  {item.difficultyLevel || 'Basic'}
+                </Text>
+              </View>
+              <View style={styles.queueIconBubble}>
+                {item.icon ? (
+                  <Text style={styles.cardEmoji}>{item.icon}</Text>
+                ) : (
+                  <Icon size={moderateScale(22)} color="#fff" strokeWidth={2} />
+                )}
+              </View>
             </View>
           </View>
-          <View style={styles.queueVisualBottom}>
-            <Text style={styles.queueMetaLabel}>Difficulty</Text>
-            <Text numberOfLines={1} style={styles.queueMetaTitle}>
-              {item.difficultyLevel || 'Basic'}
-            </Text>
-          </View>
-        </View>
 
         <View style={styles.queueContent}>
           <View style={[styles.categoryBadge, { backgroundColor: meta.accentSoft, borderColor: meta.border }]}>
@@ -909,11 +909,11 @@ function GamesScreenContent() {
     [width],
   );
   const queueVisualStyle = useMemo(
-    () => ({ minHeight: isTablet ? verticalScale(84) : verticalScale(60) }),
+    () => ({ minHeight: isTablet ? verticalScale(60) : verticalScale(42) }),
     [isTablet],
   );
   const queueCardMinHeightStyle = useMemo(
-    () => ({ minHeight: isTablet ? verticalScale(220) : verticalScale(186) }),
+    () => ({ minHeight: isTablet ? verticalScale(180) : verticalScale(148) }),
     [isTablet],
   );
 
