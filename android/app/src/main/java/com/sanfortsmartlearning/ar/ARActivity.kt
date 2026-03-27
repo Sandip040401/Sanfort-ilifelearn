@@ -54,6 +54,7 @@ import com.google.ar.sceneform.rendering.Texture
 import com.google.ar.sceneform.ux.*
 import org.json.JSONArray
 import kotlin.math.abs
+import kotlin.math.tan
 
 // ---------------------------------------------------------------------------
 //  Simple data holders (no Gson / Moshi dependency)
@@ -181,7 +182,9 @@ class ARActivity : AppCompatActivity() {
     private val autoPlacementMinDistanceMeters = 0.45f
     private val autoPlacementMaxDistanceMeters = 2.8f
     private val autoPlacementMinUpAlignment = 0.70f
-    private val targetModelLongestSideMeters = 0.22f
+    private val minTargetModelLongestSideMeters = 0.16f
+    private val maxTargetModelLongestSideMeters = 0.55f
+    private val targetScreenFillRatio = 0.30f
 
     private data class MaterialSnapshot(
             val instanceMaterials: List<Material?>,
@@ -1680,6 +1683,57 @@ class ARActivity : AppCompatActivity() {
         }
     }
 
+    private fun resolvePlacementTargetLongestSideMeters(hitResult: HitResult): Float {
+        val distanceMeters =
+                hitResult.distance
+                        .coerceAtLeast(0.25f)
+                        .coerceAtMost(autoPlacementMaxDistanceMeters)
+        val cameraFovDegrees =
+                runCatching { arFragment.arSceneView.scene.camera.verticalFovDegrees }
+                        .getOrDefault(60f)
+                        .coerceIn(35f, 85f)
+        val halfFovRad = Math.toRadians(cameraFovDegrees.toDouble() / 2.0)
+        val visibleHeightMeters = (2.0 * distanceMeters.toDouble() * tan(halfFovRad)).toFloat()
+        val targetByScreen = visibleHeightMeters * targetScreenFillRatio
+        return targetByScreen.coerceIn(minTargetModelLongestSideMeters, maxTargetModelLongestSideMeters)
+    }
+
+    private fun resolveModelScaleProfileMultiplier(maxDimension: Float): Float {
+        val adaptiveMultiplier =
+                when {
+                    maxDimension >= 6f -> 2.00f
+                    maxDimension >= 3f -> 1.55f
+                    maxDimension >= 1.8f -> 1.25f
+                    maxDimension >= 0.9f -> 1.00f
+                    maxDimension >= 0.35f -> 0.82f
+                    else -> 0.62f
+                }
+
+        val identifier = (modelName ?: "").trim().lowercase()
+        val profileMultiplier =
+                when {
+                    identifier.contains("elephant") -> 0.56f
+                    identifier.contains("bear") -> 0.60f
+                    identifier.contains("dolphin") -> 1.70f
+                    identifier.contains("apple") -> 1.15f
+                    identifier.contains("dog") -> 1.35f
+                    identifier.contains("wolf") -> 1.30f
+                    identifier.contains("mybody") || identifier.contains("my body") -> 1.35f
+                    else -> null
+                }
+
+        return profileMultiplier ?: adaptiveMultiplier
+    }
+
+    private fun resolveBaseScaleUpperBound(distanceMeters: Float): Float {
+        return when {
+            distanceMeters <= 0.55f -> 0.18f
+            distanceMeters <= 0.85f -> 0.24f
+            distanceMeters <= 1.40f -> 0.30f
+            else -> 0.36f
+        }
+    }
+
     private fun loadAndPlaceModel(hitResult: HitResult) {
         if (isModelLoading) {
             return
@@ -1808,11 +1862,26 @@ class ARActivity : AppCompatActivity() {
                             renderable.collisionShape as? com.google.ar.sceneform.collision.Box
                     val size = collisionShape?.size ?: Vector3(1f, 1f, 1f)
                     val maxDimension = maxOf(size.x, maxOf(size.y, size.z)).coerceAtLeast(0.01f)
+                    val targetLongestSideMeters = resolvePlacementTargetLongestSideMeters(hitResult)
+                    val profileMultiplier = resolveModelScaleProfileMultiplier(maxDimension)
+                    val adjustedTargetLongestSideMeters =
+                            (targetLongestSideMeters * profileMultiplier)
+                                    .coerceIn(
+                                            minTargetModelLongestSideMeters * 0.75f,
+                                            maxTargetModelLongestSideMeters * 1.35f,
+                                    )
+                    val baseScaleUpperBound = resolveBaseScaleUpperBound(hitResult.distance)
 
-                    // Production sizing: normalize every asset to table-friendly physical size.
-                    val baseScale = (targetModelLongestSideMeters / maxDimension).coerceIn(0.03f, 0.60f)
-                    val minScale = (baseScale * 0.45f).coerceIn(0.02f, 0.45f)
-                    val maxScale = (baseScale * 3.0f).coerceIn(minScale + 0.05f, 1.40f)
+                    // Normalize all assets to a consistent physical size in AR regardless of authoring units.
+                    val baseScale =
+                            (adjustedTargetLongestSideMeters / maxDimension)
+                                    .coerceIn(0.015f, baseScaleUpperBound)
+                    val minScale = (baseScale * 0.45f).coerceAtLeast(0.008f)
+                    val maxScale =
+                            (baseScale * 2.6f)
+                                    .coerceAtLeast(baseScale + 0.06f)
+                                    .coerceAtMost(baseScaleUpperBound * 2.9f)
+                                    .coerceAtLeast(minScale * 1.5f)
 
                     this.getScaleController()?.setMinScale(minScale)
                     this.getScaleController()?.setMaxScale(maxScale)
