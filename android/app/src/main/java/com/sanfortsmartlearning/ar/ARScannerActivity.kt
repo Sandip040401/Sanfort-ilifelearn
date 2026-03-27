@@ -212,6 +212,9 @@ class ARScannerActivity : AppCompatActivity() {
   private var fallbackLastTouchX: Float = 0f
   private var fallbackLastTouchY: Float = 0f
   private var fallbackIsDragging: Boolean = false
+  // Require short stable full-tracking window before exiting fallback to avoid blink loops.
+  private var fallbackRecoveryTrackingStartMs: Long = 0L
+  private var fallbackRecoveryImageIndex: Int = -1
   // Prevent immediate fallback re-entry after tracking briefly recovers (anti-flicker hysteresis).
   private var fallbackReentryAllowedAtMs: Long = 0L
   // Fixed camera snapshot — locks position so model doesn't jitter
@@ -1512,28 +1515,97 @@ class ARScannerActivity : AppCompatActivity() {
     val frame = sceneView.arFrame ?: return
     val renderable = sharedRenderable ?: return
 
-    // ── In fallback mode: reposition model relative to current camera each frame ──
+    // ── In fallback mode: keep fallback model in front of camera and wait for stable tracking recovery ──
     if (isInFallbackMode) {
       // Track camera each frame so model stays in front of wherever camera is
       val cam = scene.camera
-      fallbackCameraPos = Vector3(cam.worldPosition.x, cam.worldPosition.y, cam.worldPosition.z)
-      fallbackCameraForward = Vector3(cam.forward.x, cam.forward.y, cam.forward.z)
-      fallbackCameraRotation = Quaternion(cam.worldRotation.x, cam.worldRotation.y, cam.worldRotation.z, cam.worldRotation.w)
+      val nextCamPos = Vector3(cam.worldPosition.x, cam.worldPosition.y, cam.worldPosition.z)
+      val nextCamForward = Vector3(cam.forward.x, cam.forward.y, cam.forward.z)
+      val nextCamRotation =
+          Quaternion(cam.worldRotation.x, cam.worldRotation.y, cam.worldRotation.z, cam.worldRotation.w)
+
+      val prevCamPos = fallbackCameraPos
+      fallbackCameraPos =
+          if (prevCamPos == null) {
+            nextCamPos
+          } else {
+            Vector3(
+                prevCamPos.x + ((nextCamPos.x - prevCamPos.x) * FALLBACK_CAMERA_SMOOTHING_ALPHA),
+                prevCamPos.y + ((nextCamPos.y - prevCamPos.y) * FALLBACK_CAMERA_SMOOTHING_ALPHA),
+                prevCamPos.z + ((nextCamPos.z - prevCamPos.z) * FALLBACK_CAMERA_SMOOTHING_ALPHA),
+            )
+          }
+
+      val prevCamForward = fallbackCameraForward
+      val blendedForward =
+          if (prevCamForward == null) {
+            nextCamForward
+          } else {
+            Vector3(
+                prevCamForward.x + ((nextCamForward.x - prevCamForward.x) * FALLBACK_CAMERA_SMOOTHING_ALPHA),
+                prevCamForward.y + ((nextCamForward.y - prevCamForward.y) * FALLBACK_CAMERA_SMOOTHING_ALPHA),
+                prevCamForward.z + ((nextCamForward.z - prevCamForward.z) * FALLBACK_CAMERA_SMOOTHING_ALPHA),
+            )
+          }
+      val blendedForwardLen =
+          sqrt(
+              (blendedForward.x * blendedForward.x + blendedForward.y * blendedForward.y + blendedForward.z * blendedForward.z)
+                  .toDouble(),
+          ).toFloat()
+      fallbackCameraForward =
+          if (blendedForwardLen > 0.0001f) {
+            Vector3(
+                blendedForward.x / blendedForwardLen,
+                blendedForward.y / blendedForwardLen,
+                blendedForward.z / blendedForwardLen,
+            )
+          } else {
+            Vector3(0f, 0f, -1f)
+          }
+
+      val prevCamRotation = fallbackCameraRotation
+      fallbackCameraRotation =
+          if (prevCamRotation == null) {
+            nextCamRotation
+          } else {
+            Quaternion.slerp(prevCamRotation, nextCamRotation, FALLBACK_CAMERA_SMOOTHING_ALPHA)
+          }
       updateFallbackPositions()
 
+      var recoveredImage: AugmentedImage? = null
       frame.getUpdatedTrackables(AugmentedImage::class.java).forEach { image ->
         if (image.trackingState == TrackingState.TRACKING && isImageFullyTracked(image)) {
+          recoveredImage = image
+        }
+      }
+
+      val stableImage = recoveredImage
+      if (stableImage != null) {
+        if (fallbackRecoveryImageIndex != stableImage.index) {
+          fallbackRecoveryImageIndex = stableImage.index
+          fallbackRecoveryTrackingStartMs = now
+        } else if (fallbackRecoveryTrackingStartMs <= 0L) {
+          fallbackRecoveryTrackingStartMs = now
+        }
+
+        val stableForMs = now - fallbackRecoveryTrackingStartMs
+        if (stableForMs >= FALLBACK_EXIT_STABLE_TRACKING_MS) {
+          fallbackRecoveryTrackingStartMs = 0L
+          fallbackRecoveryImageIndex = -1
           lastTrackingActiveTimeMs = now
           consecutiveTrackingLossUpdates = 0
           exitFallbackMode()
-          if (!trackedNodes.containsKey(image.index)) {
-            trackedNodes[image.index] = createTrackedNode(image, renderable, scene)
+          if (!trackedNodes.containsKey(stableImage.index)) {
+            trackedNodes[stableImage.index] = createTrackedNode(stableImage, renderable, scene)
             modelEverCreated = true
           }
           val name = modelName?.takeIf { it.isNotBlank() } ?: "model"
           instructionText.text =
               "Great! Now color your ${name.lowercase()} with crayons and watch it come alive!"
         }
+      } else {
+        fallbackRecoveryTrackingStartMs = 0L
+        fallbackRecoveryImageIndex = -1
       }
       return
     }
@@ -2729,6 +2801,8 @@ class ARScannerActivity : AppCompatActivity() {
     fallbackUserPitch = 0f
     fallbackUserScale = 1f
     fallbackIsDragging = false
+    fallbackRecoveryTrackingStartMs = 0L
+    fallbackRecoveryImageIndex = -1
 
     // Snapshot camera — freeze position for stable rendering
     val camera = scene.camera
@@ -2781,6 +2855,15 @@ class ARScannerActivity : AppCompatActivity() {
     val modelBounds = estimateModelBounds(nodeRenderable)
     val modelMaxDim = max(modelBounds.horizontalSize, max(modelBounds.sizeY, modelBounds.sizeZ)).coerceAtLeast(0.01f)
     val fitScale = FALLBACK_MODEL_VIEW_SIZE / modelMaxDim
+    val centeredOffsetX =
+        (-modelBounds.centerX * fitScale)
+            .coerceIn(-FALLBACK_MAX_MODEL_CENTER_OFFSET_XZ_METERS, FALLBACK_MAX_MODEL_CENTER_OFFSET_XZ_METERS)
+    val centeredOffsetY =
+        (-modelBounds.centerY * fitScale)
+            .coerceIn(-FALLBACK_MAX_MODEL_CENTER_OFFSET_Y_METERS, FALLBACK_MAX_MODEL_CENTER_OFFSET_Y_METERS)
+    val centeredOffsetZ =
+        (-modelBounds.centerZ * fitScale)
+            .coerceIn(-FALLBACK_MAX_MODEL_CENTER_OFFSET_XZ_METERS, FALLBACK_MAX_MODEL_CENTER_OFFSET_XZ_METERS)
 
     // Pivot node: model child offset by -center so rotation is around visual center
     fallbackModelNode = Node().apply { setParent(scene) }
@@ -2789,9 +2872,9 @@ class ARScannerActivity : AppCompatActivity() {
       this.renderable = nodeRenderable
       localScale = Vector3(fitScale, fitScale, fitScale)
       localPosition = Vector3(
-          -modelBounds.centerX * fitScale,
-          -modelBounds.centerY * fitScale,
-          -modelBounds.centerZ * fitScale,
+          centeredOffsetX,
+          centeredOffsetY,
+          centeredOffsetZ,
       )
     }
 
@@ -2894,6 +2977,13 @@ class ARScannerActivity : AppCompatActivity() {
     val cameraPos = fallbackCameraPos ?: return
     val forward = fallbackCameraForward ?: return
     val camRotation = fallbackCameraRotation ?: return
+    val horizontalForwardLength = sqrt((forward.x * forward.x + forward.z * forward.z).toDouble()).toFloat()
+    val horizontalForward =
+        if (horizontalForwardLength > 0.0001f) {
+          Vector3(forward.x / horizontalForwardLength, 0f, forward.z / horizontalForwardLength)
+        } else {
+          Vector3(0f, 0f, -1f)
+        }
 
     // Background plane behind model — use full forward for proper coverage
     fallbackBgNode?.let { bg ->
@@ -2908,9 +2998,9 @@ class ARScannerActivity : AppCompatActivity() {
     // Model: place directly along camera forward direction so it's centered on screen
     fallbackModelNode?.let { model ->
       model.worldPosition = Vector3(
-          cameraPos.x + forward.x * FALLBACK_MODEL_DISTANCE,
-          cameraPos.y + forward.y * FALLBACK_MODEL_DISTANCE + FALLBACK_MODEL_VERTICAL_OFFSET,
-          cameraPos.z + forward.z * FALLBACK_MODEL_DISTANCE,
+          cameraPos.x + horizontalForward.x * FALLBACK_MODEL_DISTANCE,
+          cameraPos.y + FALLBACK_MODEL_VERTICAL_OFFSET,
+          cameraPos.z + horizontalForward.z * FALLBACK_MODEL_DISTANCE,
       )
       val yawQ = Quaternion.axisAngle(Vector3.up(), fallbackUserYaw)
       val pitchQ = Quaternion.axisAngle(Vector3.right(), fallbackUserPitch)
@@ -2932,6 +3022,8 @@ class ARScannerActivity : AppCompatActivity() {
   private fun exitFallbackMode() {
     if (!isInFallbackMode) return
     isInFallbackMode = false
+    fallbackRecoveryTrackingStartMs = 0L
+    fallbackRecoveryImageIndex = -1
     fallbackReentryAllowedAtMs = SystemClock.elapsedRealtime() + FALLBACK_REENTRY_COOLDOWN_MS
     android.util.Log.i("ARScannerActivity", "Exiting fallback mode (tracking resumed)")
 
@@ -5849,18 +5941,21 @@ class ARScannerActivity : AppCompatActivity() {
     private const val TRACKING_GRACE_PERIOD_MS = 5000L
     // Grace period before transitioning to non-AR fallback view.
     // Tuned to avoid fallback flicker while user is still scanning the sheet.
-    private const val FALLBACK_GRACE_PERIOD_MS = 1200L
+    private const val FALLBACK_GRACE_PERIOD_MS = 1500L
     private const val MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK = 2
-    private const val FALLBACK_REENTRY_COOLDOWN_MS = 900L
-    // Temporary kill switch: keep scanner AR-only by disabling non-AR fallback screen.
-    private const val ENABLE_NON_AR_FALLBACK_MODE = false
+    private const val FALLBACK_REENTRY_COOLDOWN_MS = 1500L
+    private const val FALLBACK_EXIT_STABLE_TRACKING_MS = 500L
+    private const val ENABLE_NON_AR_FALLBACK_MODE = true
+    private const val FALLBACK_CAMERA_SMOOTHING_ALPHA = 0.18f
     // Fallback mode: distance of background plane from camera (must cover entire FOV)
     private const val FALLBACK_BG_DISTANCE = 12f
     // Fallback mode: distance of 3D model from camera
-    private const val FALLBACK_MODEL_DISTANCE = 1.2f    // distance from camera — further back so full model is visible
-    private const val FALLBACK_MODEL_VERTICAL_OFFSET = -0.10f
+    private const val FALLBACK_MODEL_DISTANCE = 1.1f
+    private const val FALLBACK_MODEL_VERTICAL_OFFSET = -0.08f
     // Fallback mode: virtual size of the model in fallback view (meters)
-    private const val FALLBACK_MODEL_VIEW_SIZE = 0.25f   // model virtual size in meters — visible and centered
+    private const val FALLBACK_MODEL_VIEW_SIZE = 0.20f
+    private const val FALLBACK_MAX_MODEL_CENTER_OFFSET_XZ_METERS = 0.16f
+    private const val FALLBACK_MAX_MODEL_CENTER_OFFSET_Y_METERS = 0.32f
     // Fallback mode lighting — bright enough to show model colors clearly on dark background
     private const val FALLBACK_KEY_LIGHT_INTENSITY = 2500f
     private const val FALLBACK_BACK_LIGHT_INTENSITY = 1800f
