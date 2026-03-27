@@ -19,6 +19,7 @@ import Orientation from 'react-native-orientation-locker';
 import LinearGradient from 'react-native-linear-gradient';
 import {useTheme} from '@/theme';
 import type {MainStackParamList} from '@/types';
+import CustomAlert from '@/components/CustomAlert';
 
 type GamePlayerRouteProp = RouteProp<MainStackParamList, 'GamePlayer'>;
 type GamePlayerNavigationProp = StackNavigationProp<MainStackParamList, 'GamePlayer'>;
@@ -35,6 +36,7 @@ export default function GamePlayerScreen() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(() => {
     StatusBar.setHidden(true, 'fade');
@@ -151,6 +153,36 @@ export default function GamePlayerScreen() {
           setHasError(true);
           setIsLoading(false);
         }}
+        injectedJavaScript={`
+          (function() {
+            // Override browser close/back to signal the app
+            window.close = function() {
+              window.ReactNativeWebView.postMessage('closeGame');
+            };
+            window.history.back = function() {
+              window.ReactNativeWebView.postMessage('closeGame');
+            };
+            
+            // Listen for window messages from the game (common in some web game engines)
+            window.addEventListener('message', function(event) {
+              var msg = event.data;
+              if (typeof msg === 'string' && (
+                msg.toLowerCase() === 'close' || 
+                msg.toLowerCase() === 'exit' || 
+                msg.toLowerCase() === 'quit' ||
+                msg.toLowerCase() === 'closegame'
+              )) {
+                window.ReactNativeWebView.postMessage('closeGame');
+              }
+            });
+          })();
+          true;
+        `}
+        onMessage={(event) => {
+          if (event.nativeEvent.data === 'closeGame') {
+            setShowExitConfirm(true);
+          }
+        }}
         renderLoading={() => (
           <View style={styles.loadingLayer}>
             <View style={styles.loadingOrb}>
@@ -168,7 +200,7 @@ export default function GamePlayerScreen() {
           pointerEvents={controlsVisible ? 'auto' : 'none'}
           style={[styles.controlsRow, {opacity: controlsOpacity}]}>
           <Pressable
-            onPress={() => navigation.goBack()}
+            onPress={() => setShowExitConfirm(true)}
             onPressIn={() => showControls(true)}
             style={styles.iconButton}>
             <ArrowLeft size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
@@ -225,6 +257,21 @@ export default function GamePlayerScreen() {
           </LinearGradient>
         </View>
       )}
+
+      <CustomAlert
+        visible={showExitConfirm}
+        type="warning"
+        title="Exit Game?"
+        message={`Are you sure you want to exit "${gameTitle}"? Any unsaved progress will be lost.`}
+        confirmText="Yes, Exit"
+        cancelText="No, Keep Playing"
+        onConfirm={() => {
+          setShowExitConfirm(false);
+          navigation.goBack();
+        }}
+        onCancel={() => setShowExitConfirm(false)}
+        onDismiss={() => setShowExitConfirm(false)}
+      />
     </View>
   );
 }

@@ -16,7 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {AlertTriangle, CheckCircle2, Info, XCircle} from 'lucide-react-native';
 import {useTheme} from '@/theme';
-import {moderateScale} from 'react-native-size-matters';
+import {moderateScale, scale} from 'react-native-size-matters';
 
 export type AlertType = 'error' | 'success' | 'warning' | 'info';
 
@@ -162,7 +162,9 @@ const styles = StyleSheet.create({
   center:        {...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28},
 
   card: {
-    width: '100%', borderRadius: 24,
+    width: '100%',
+    maxWidth: scale(380),
+    borderRadius: 24,
     paddingTop: 32, paddingHorizontal: 24, paddingBottom: 20,
     alignItems: 'center',
     shadowColor: '#000', shadowOffset: {width: 0, height: 12},

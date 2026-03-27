@@ -267,7 +267,7 @@ export default function HomeScreen() {
             <Text style={[styles.section, { color: colors.text }]}>Games</Text>
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={() => setIsSoonVisible(true)}
+              onPress={() => tabNav.navigate('Games')}
               style={styles.gameTouchable}
             >
               <View style={styles.wideCard}>
@@ -279,12 +279,7 @@ export default function HomeScreen() {
                 />
                 <FastImage source={EduGamesImg} style={styles.wideImageOnly} resizeMode={FastImage.resizeMode.contain} />
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.wideTitle}>Educational Games</Text>
-                    <View style={styles.comingSoonBadge}>
-                      <Text style={styles.comingSoonText}>Soon</Text>
-                    </View>
-                  </View>
+                  <Text style={styles.wideTitle}>Educational Games</Text>
                   <Text style={styles.wideSub}>Fun learning games for kids</Text>
                 </View>
                 <View style={styles.wideDecor} />

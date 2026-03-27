@@ -27,7 +27,7 @@ export const TAB_BAR_HEIGHT = verticalScale(62);
 
 // Only these 5 tabs are shown in the bar
 // ReadAloud & ARSheets stay registered in navigator so tabNav.navigate() works
-const VISIBLE_TABS = ['Home', 'AR', 'WebVR', 'Themes'] as const;
+const VISIBLE_TABS = ['Home', 'AR', 'WebVR', 'Games', 'Themes'] as const;
 
 const TAB_ICONS: Record<string, any> = {
   Home: Home,
