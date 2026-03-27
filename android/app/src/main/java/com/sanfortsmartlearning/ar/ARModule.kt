@@ -9,6 +9,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.URL
+import org.json.JSONArray
 
 class ARModule(private val reactContext: ReactApplicationContext) :
         ReactContextBaseJavaModule(reactContext) {
@@ -32,15 +33,24 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             modelType: String?,
             hideColorMode: Boolean?
     ) {
-        val intent = Intent(reactContext, ARActivity::class.java)
-        intent.putExtra("modelPath", modelPath)
-        if (!modelName.isNullOrBlank()) intent.putExtra("modelName", modelName)
-        if (!audiosJson.isNullOrBlank()) intent.putExtra("audiosJson", audiosJson)
-        if (!animationsJson.isNullOrBlank()) intent.putExtra("animationsJson", animationsJson)
-        if (!modelType.isNullOrBlank()) intent.putExtra("modelType", modelType)
-        if (hideColorMode == true) intent.putExtra("hideColorMode", true)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        reactContext.startActivity(intent)
+        Thread {
+            val resolvedModelPath =
+                runCatching { resolveModelPathForAR(modelPath, modelName, modelType) }
+                    .onFailure {
+                        android.util.Log.w("ARModule", "Model prefetch failed. Falling back to original model path.", it)
+                    }
+                    .getOrDefault(modelPath)
+
+            val intent = Intent(reactContext, ARActivity::class.java).apply {
+                putExtra("modelPath", resolvedModelPath)
+                if (!modelName.isNullOrBlank()) putExtra("modelName", modelName)
+                if (!audiosJson.isNullOrBlank()) putExtra("audiosJson", audiosJson)
+                if (!animationsJson.isNullOrBlank()) putExtra("animationsJson", animationsJson)
+                if (!modelType.isNullOrBlank()) putExtra("modelType", modelType)
+                if (hideColorMode == true) putExtra("hideColorMode", true)
+            }
+            launchIntent(intent)
+        }.start()
     }
 
     @ReactMethod
@@ -191,6 +201,84 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                 promise.reject("AR_SCANNER_DOWNLOAD_FAILED", error.message, error)
             }
         }.start()
+    }
+
+    private fun launchIntent(intent: Intent) {
+        val activity = reactContext.currentActivity
+        if (activity != null) {
+            activity.runOnUiThread { activity.startActivity(intent) }
+        } else {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactContext.startActivity(intent)
+        }
+    }
+
+    private fun resolveModelPathForAR(modelPath: String, modelName: String?, modelType: String?): String {
+        val trimmed = modelPath.trim()
+        if (trimmed.isBlank()) {
+            return modelPath
+        }
+        if (modelType == "multiple-glb" && trimmed.startsWith("[")) {
+            return resolveMultiPartModelPath(trimmed, modelName)
+        }
+        return resolveSingleModelPath(trimmed, modelName)
+    }
+
+    private fun resolveMultiPartModelPath(modelPathJson: String, modelName: String?): String {
+        val arr = JSONArray(modelPathJson)
+        val resolved = JSONArray()
+        val safeBase = sanitizeName(modelName ?: "model")
+        val cacheDir = File(reactContext.cacheDir, "ar_model_cache").apply { mkdirs() }
+
+        for (index in 0 until arr.length()) {
+            val part = arr.getJSONObject(index)
+            val partUrl = part.optString("url").orEmpty().trim()
+            if (partUrl.isBlank()) {
+                resolved.put(part)
+                continue
+            }
+            val resolvedUrl = when {
+                partUrl.startsWith("http://") || partUrl.startsWith("https://") -> {
+                    val partId = sanitizeName(part.optString("id").ifBlank { "part_$index" })
+                    val ext = guessModelExtension(partUrl)
+                    val hash = Integer.toHexString(partUrl.hashCode())
+                    val file = File(cacheDir, "${safeBase}_${partId}_$hash.$ext")
+                    downloadFileWithCache(partUrl, file)
+                    Uri.fromFile(file).toString()
+                }
+                partUrl.startsWith("/") -> Uri.fromFile(File(partUrl)).toString()
+                else -> partUrl
+            }
+            part.put("url", resolvedUrl)
+            resolved.put(part)
+        }
+        return resolved.toString()
+    }
+
+    private fun resolveSingleModelPath(modelPath: String, modelName: String?): String {
+        return when {
+            modelPath.startsWith("http://") || modelPath.startsWith("https://") -> {
+                val safeBase = sanitizeName(modelName ?: "model")
+                val ext = guessModelExtension(modelPath)
+                val hash = Integer.toHexString(modelPath.hashCode())
+                val cacheDir = File(reactContext.cacheDir, "ar_model_cache").apply { mkdirs() }
+                val modelFile = File(cacheDir, "${safeBase}_$hash.$ext")
+                downloadFileWithCache(modelPath, modelFile)
+                Uri.fromFile(modelFile).toString()
+            }
+            modelPath.startsWith("/") -> Uri.fromFile(File(modelPath)).toString()
+            else -> modelPath
+        }
+    }
+
+    private fun sanitizeName(raw: String): String {
+        val cleaned = raw.lowercase().replace(Regex("[^a-z0-9_]"), "_").trim('_')
+        return if (cleaned.isBlank()) "model" else cleaned
+    }
+
+    private fun guessModelExtension(modelUrl: String): String {
+        val base = modelUrl.substringBefore('?').substringBefore('#').lowercase()
+        return if (base.endsWith(".gltf")) "gltf" else "glb"
     }
 
     private fun downloadFileWithCache(urlString: String, outputFile: File) {

@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -32,8 +33,14 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.google.ar.core.HitResult
+import com.google.ar.core.DepthPoint
+import com.google.ar.core.Plane
+import com.google.ar.core.Point
+import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.AnchorNode
 import com.google.ar.sceneform.Node
+import com.google.ar.sceneform.Scene
 import com.google.ar.sceneform.animation.ModelAnimator
 import com.google.ar.sceneform.math.Quaternion
 import com.google.ar.sceneform.math.Vector3
@@ -46,6 +53,7 @@ import com.google.ar.sceneform.rendering.RenderableInstance
 import com.google.ar.sceneform.rendering.Texture
 import com.google.ar.sceneform.ux.*
 import org.json.JSONArray
+import kotlin.math.abs
 
 // ---------------------------------------------------------------------------
 //  Simple data holders (no Gson / Moshi dependency)
@@ -65,7 +73,7 @@ data class AnimationEntry(
 
 class ARActivity : AppCompatActivity() {
 
-    private lateinit var arFragment: ArFragment
+    private lateinit var arFragment: ARFloorTrackingFragment
     private var modelPath: String? = null
     private var originalModelPath: String? = null
     private var modelName: String? = null
@@ -83,6 +91,8 @@ class ARActivity : AppCompatActivity() {
     private var activeTransformNode: TransformableNode? = null
     private var isModelLoading = false
     private var currentRenderable: ModelRenderable? = null
+    private var preloadedRenderableTemplate: ModelRenderable? = null
+    private var isRenderablePreloadInFlight = false
     private var currentInstance: RenderableInstance? = null
     private var currentAnimIndex = 0
     private var showRealTexture = true
@@ -149,6 +159,29 @@ class ARActivity : AppCompatActivity() {
     private lateinit var animPill: FrameLayout
     private lateinit var audioPill: FrameLayout
     private var safeAreaTop = 0
+    private var autoPlacementListenerAttached = false
+    private var lastAutoPlacementAttemptTimeMs = 0L
+    private val autoPlacementListener = Scene.OnUpdateListener {
+        attemptAutoPlacementOnFloor()
+    }
+    private data class AutoPlacementCandidate(
+            val hitResult: HitResult,
+            val score: Float,
+    )
+    private val autoPlacementSamplePoints =
+            listOf(
+                    Pair(0.50f, 0.50f),
+                    Pair(0.50f, 0.44f),
+                    Pair(0.50f, 0.56f),
+                    Pair(0.42f, 0.50f),
+                    Pair(0.58f, 0.50f),
+                    Pair(0.36f, 0.56f),
+                    Pair(0.64f, 0.56f),
+            )
+    private val autoPlacementMinDistanceMeters = 0.45f
+    private val autoPlacementMaxDistanceMeters = 2.8f
+    private val autoPlacementMinUpAlignment = 0.70f
+    private val targetModelLongestSideMeters = 0.22f
 
     private data class MaterialSnapshot(
             val instanceMaterials: List<Material?>,
@@ -279,7 +312,7 @@ class ARActivity : AppCompatActivity() {
         rootLayout.id = View.generateViewId()
         setContentView(rootLayout)
 
-        arFragment = ArFragment()
+        arFragment = ARFloorTrackingFragment()
         supportFragmentManager.beginTransaction().replace(rootLayout.id, arFragment).commitNow()
 
         // Configure Lighting for Sceneform Maintained (Filament)
@@ -378,6 +411,8 @@ class ARActivity : AppCompatActivity() {
         // buildDrawer(decor) -- Removed shared drawer
 
         setupTapListener()
+        preloadModelRenderable()
+        rootLayout.post { attachAutoPlacementListener() }
         prepareAudio()
     }
 
@@ -402,11 +437,17 @@ class ARActivity : AppCompatActivity() {
         super.onResume()
         arFragment.arSceneView.resume()
         if (isAudioPlaying) mediaPlayer?.start()
+        if (preloadedRenderableTemplate == null && !isRenderablePreloadInFlight) {
+            preloadModelRenderable()
+        }
+        rootLayout.post { attachAutoPlacementListener() }
     }
 
     override fun onDestroy() {
+        detachAutoPlacementListener()
         super.onDestroy()
         ARActivityHolder.activity = null
+        preloadedRenderableTemplate = null
         mediaPlayer?.release()
         mediaPlayer = null
     }
@@ -1426,37 +1467,264 @@ class ARActivity : AppCompatActivity() {
                 return@setOnTapArPlaneListener
             }
 
-            val path = modelPath ?: return@setOnTapArPlaneListener
-            isModelLoading = true
-            ModelRenderable.builder()
-                    .setSource(this, Uri.parse(path))
-                    .setIsFilamentGltf(true)
-                    .setAsyncLoadEnabled(true)
-                    .build()
-                    .thenAccept { renderable ->
-                        runOnUiThread {
-                            isModelLoading = false
-                            renderable.isShadowCaster = true
-                            renderable.isShadowReceiver = true
-                            // Tune material PBR properties for more vivid rendering
-                            for (i in 0 until renderable.submeshCount) {
-                                runCatching {
-                                    val material = renderable.getMaterial(i)
-                                    material.setFloat("reflectance", 0.4f)
-                                }
-                            }
-                            placeModel(hitResult, renderable)
-                        }
-                    }
-                    .exceptionally { error ->
-                        runOnUiThread {
-                            isModelLoading = false
-                            android.widget.Toast.makeText(this, "Failed to load 3D model", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                        android.util.Log.e("ARActivity", "Model load failed: $path", error)
-                        null
-                    }
+            loadAndPlaceModel(hitResult)
         }
+    }
+
+    private fun attachAutoPlacementListener() {
+        if (autoPlacementListenerAttached) {
+            return
+        }
+        val scene = arFragment.arSceneView?.scene ?: return
+        scene.addOnUpdateListener(autoPlacementListener)
+        autoPlacementListenerAttached = true
+    }
+
+    private fun detachAutoPlacementListener() {
+        if (!autoPlacementListenerAttached || !::arFragment.isInitialized) {
+            return
+        }
+        arFragment.arSceneView?.scene?.removeOnUpdateListener(autoPlacementListener)
+        autoPlacementListenerAttached = false
+    }
+
+    private fun attemptAutoPlacementOnFloor() {
+        if (!::arFragment.isInitialized || activeAnchorNode != null || isModelLoading) {
+            return
+        }
+        if (preloadedRenderableTemplate == null) {
+            preloadModelRenderable()
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAutoPlacementAttemptTimeMs < 180L) {
+            return
+        }
+        lastAutoPlacementAttemptTimeMs = now
+
+        val sceneView = arFragment.arSceneView
+        val frame = sceneView.arFrame ?: return
+        if (frame.camera.trackingState != TrackingState.TRACKING) {
+            return
+        }
+
+        val width = sceneView.width.toFloat()
+        val height = sceneView.height.toFloat()
+        if (width <= 0f || height <= 0f) {
+            return
+        }
+
+        val hitResult = findBestAutoPlacementHit(frame, width, height) ?: return
+
+        loadAndPlaceModel(hitResult)
+    }
+
+    private fun findBestAutoPlacementHit(
+            frame: com.google.ar.core.Frame,
+            width: Float,
+            height: Float,
+    ): HitResult? {
+        // Keep auto-placement aligned with the visible center reticle.
+        // If center has a valid hit, always prefer it to avoid "reticle here, model there".
+        val centerOnlyHit =
+                findBestAutoPlacementHitForSamples(
+                        frame = frame,
+                        width = width,
+                        height = height,
+                        samples = listOf(Pair(0.50f, 0.50f)),
+                )
+        if (centerOnlyHit != null) {
+            return centerOnlyHit
+        }
+
+        return findBestAutoPlacementHitForSamples(
+                frame = frame,
+                width = width,
+                height = height,
+                samples = autoPlacementSamplePoints,
+        )
+    }
+
+    private fun findBestAutoPlacementHitForSamples(
+            frame: com.google.ar.core.Frame,
+            width: Float,
+            height: Float,
+            samples: List<Pair<Float, Float>>,
+    ): HitResult? {
+        var bestDepth: AutoPlacementCandidate? = null
+        var bestPlane: AutoPlacementCandidate? = null
+        var bestPoint: AutoPlacementCandidate? = null
+
+        for ((nx, ny) in samples) {
+            val screenX = width * nx
+            val screenY = height * ny
+
+            frame.hitTest(screenX, screenY).forEach { hit ->
+                val distance = hit.distance
+                if (distance < autoPlacementMinDistanceMeters || distance > autoPlacementMaxDistanceMeters) {
+                    return@forEach
+                }
+                val centerScore = abs(nx - 0.5f) + abs(ny - 0.5f)
+                val closePenalty = if (distance < 0.60f) (0.60f - distance) * 2.3f else 0f
+
+                when (val trackable = hit.trackable) {
+                    is DepthPoint -> {
+                        if (trackable.trackingState != TrackingState.TRACKING) {
+                            return@forEach
+                        }
+                        val upAlignment = getHitUpAlignment(hit)
+                        if (upAlignment < autoPlacementMinUpAlignment) {
+                            return@forEach
+                        }
+                        // Strong preference for depth hits: works better on plain tables.
+                        val score = distance + centerScore * 2.4f + closePenalty - 0.15f
+                        if (bestDepth == null || score < bestDepth!!.score) {
+                            bestDepth = AutoPlacementCandidate(hit, score)
+                        }
+                    }
+                    is Plane -> {
+                        if (trackable.trackingState != TrackingState.TRACKING ||
+                                        !trackable.isPoseInPolygon(hit.hitPose)
+                        ) {
+                            return@forEach
+                        }
+                        if (trackable.type != Plane.Type.HORIZONTAL_UPWARD_FACING) {
+                            return@forEach
+                        }
+                        val planeBias = -0.30f
+                        // Prefer closer + center-ish surfaces; table usually wins over far floor.
+                        val score = distance + centerScore * 2.5f + closePenalty + planeBias
+                        if (bestPlane == null || score < bestPlane!!.score) {
+                            bestPlane = AutoPlacementCandidate(hit, score)
+                        }
+                    }
+                    is Point -> {
+                        if (trackable.trackingState != TrackingState.TRACKING ||
+                                        trackable.orientationMode !=
+                                                Point.OrientationMode.ESTIMATED_SURFACE_NORMAL
+                        ) {
+                            return@forEach
+                        }
+                        val upAlignment = getHitUpAlignment(hit)
+                        if (upAlignment < autoPlacementMinUpAlignment) {
+                            return@forEach
+                        }
+                        val score = distance + centerScore * 2.8f + closePenalty + 0.9f
+                        if (bestPoint == null || score < bestPoint!!.score) {
+                            bestPoint = AutoPlacementCandidate(hit, score)
+                        }
+                    }
+                }
+            }
+        }
+
+        return bestDepth?.hitResult ?: bestPlane?.hitResult ?: bestPoint?.hitResult
+    }
+
+    private fun getHitUpAlignment(hitResult: HitResult): Float {
+        return runCatching {
+                    val yAxis = hitResult.hitPose.getYAxis()
+                    abs(yAxis.getOrElse(1) { 0f })
+                }
+                .getOrDefault(0f)
+    }
+
+    private fun preloadModelRenderable() {
+        if (preloadedRenderableTemplate != null || isRenderablePreloadInFlight) {
+            return
+        }
+        val path = modelPath ?: return
+        isRenderablePreloadInFlight = true
+        ModelRenderable.builder()
+                .setSource(this, buildModelUri(path))
+                .setIsFilamentGltf(true)
+                .setAsyncLoadEnabled(true)
+                .build()
+                .thenAccept { renderable ->
+                    runOnUiThread {
+                        isRenderablePreloadInFlight = false
+                        configureRenderableForScene(renderable)
+                        preloadedRenderableTemplate = renderable
+                    }
+                }
+                .exceptionally { error ->
+                    runOnUiThread {
+                        isRenderablePreloadInFlight = false
+                        android.util.Log.e("ARActivity", "Model preload failed: $path", error)
+                    }
+                    null
+                }
+    }
+
+    private fun configureRenderableForScene(renderable: ModelRenderable) {
+        renderable.isShadowCaster = true
+        renderable.isShadowReceiver = true
+        // Tune material PBR properties for more vivid rendering.
+        for (i in 0 until renderable.submeshCount) {
+            runCatching {
+                val material = renderable.getMaterial(i)
+                material.setFloat("reflectance", 0.4f)
+            }
+        }
+    }
+
+    private fun buildModelUri(path: String): Uri {
+        val trimmed = path.trim()
+        return when {
+            trimmed.startsWith("file://") ||
+                    trimmed.startsWith("content://") ||
+                    trimmed.startsWith("http://") ||
+                    trimmed.startsWith("https://") -> Uri.parse(trimmed)
+            else -> Uri.fromFile(java.io.File(trimmed))
+        }
+    }
+
+    private fun loadAndPlaceModel(hitResult: HitResult) {
+        if (isModelLoading) {
+            return
+        }
+
+        preloadedRenderableTemplate?.let { cached ->
+            val renderableForPlacement =
+                    runCatching { cached.makeCopy() }.getOrNull() ?: cached
+            placeModel(hitResult, renderableForPlacement)
+            return
+        }
+
+        if (isRenderablePreloadInFlight) {
+            return
+        }
+
+        val path = modelPath ?: return
+        isModelLoading = true
+        ModelRenderable.builder()
+                .setSource(this, buildModelUri(path))
+                .setIsFilamentGltf(true)
+                .setAsyncLoadEnabled(true)
+                .build()
+                .thenAccept { renderable ->
+                    runOnUiThread {
+                        isModelLoading = false
+                        configureRenderableForScene(renderable)
+                        preloadedRenderableTemplate =
+                                runCatching { renderable.makeCopy() }.getOrNull() ?: renderable
+                        placeModel(hitResult, renderable)
+                    }
+                }
+                .exceptionally { error ->
+                    runOnUiThread {
+                        isModelLoading = false
+                        android.widget.Toast.makeText(
+                                        this,
+                                        "Failed to load 3D model",
+                                        android.widget.Toast.LENGTH_SHORT
+                                )
+                                .show()
+                    }
+                    android.util.Log.e("ARActivity", "Model load failed: $path", error)
+                    null
+                }
     }
 
     private fun reloadModelForPart() {
@@ -1510,8 +1778,20 @@ class ARActivity : AppCompatActivity() {
     }
 
     private fun placeModel(hitResult: com.google.ar.core.HitResult, renderable: ModelRenderable) {
+        detachAutoPlacementListener()
         // Hide AR surface scanning dots once placed for a cleaner view
         arFragment.arSceneView.planeRenderer.setVisible(false)
+        runCatching {
+            arFragment.instructionsController.setEnabled(
+                    InstructionsController.TYPE_PLANE_DISCOVERY,
+                    false,
+            )
+            arFragment.instructionsController.setVisible(
+                    InstructionsController.TYPE_PLANE_DISCOVERY,
+                    false,
+            )
+            arFragment.instructionsController.isEnabled = false
+        }
 
         val anchorNode =
                 AnchorNode(hitResult.createAnchor()).apply {
@@ -1529,27 +1809,25 @@ class ARActivity : AppCompatActivity() {
                     val size = collisionShape?.size ?: Vector3(1f, 1f, 1f)
                     val maxDimension = maxOf(size.x, maxOf(size.y, size.z)).coerceAtLeast(0.01f)
 
-                    // Cap the maximum scale so the model physically never gets larger than ~1.5
-                    // meters in the real world
-                    // This creates a natural "screen size" limit without breaking AR coordinate
-                    // depth
-                    val dynamicMaxScale = (1.5f / maxDimension).coerceIn(1.0f, 10.0f)
+                    // Production sizing: normalize every asset to table-friendly physical size.
+                    val baseScale = (targetModelLongestSideMeters / maxDimension).coerceIn(0.03f, 0.60f)
+                    val minScale = (baseScale * 0.45f).coerceIn(0.02f, 0.45f)
+                    val maxScale = (baseScale * 3.0f).coerceIn(minScale + 0.05f, 1.40f)
 
-                    // Relax the pinch-to-zoom limits to allow much smaller/larger zooming
-                    this.getScaleController()?.setMinScale(0.25f)
-                    this.getScaleController()?.setMaxScale(dynamicMaxScale)
-                    // Lower the sensitivity to make the zooming feel more natural (less jumpy)
-                    this.getScaleController()?.setSensitivity(0.1f)
+                    this.getScaleController()?.setMinScale(minScale)
+                    this.getScaleController()?.setMaxScale(maxScale)
+                    // Lower sensitivity to avoid jumpy pinch behaviour.
+                    this.getScaleController()?.setSensitivity(0.08f)
                     // Disable elasticity so it stops scaling immediately at the limit instead of
                     // "bouncing" through 0.0 scale and flipping
                     this.getScaleController()?.setElasticity(0.0f)
 
-                    this.localScale = Vector3(0.3f, 0.3f, 0.3f)
+                    this.localScale = Vector3(baseScale, baseScale, baseScale)
                     this.localRotation = Quaternion.identity()
 
                     // Shift the model down so its bottom face sits on the plane
                     // instead of floating (anchor is at ground; model pivot is at center)
-                    val yOffset = (size.y * 0.3f) / 2f
+                    val yOffset = (size.y * baseScale) / 2f
                     this.localPosition = Vector3(0f, yOffset, 0f)
                 }
 
