@@ -1751,8 +1751,11 @@ class ARScannerActivity : AppCompatActivity() {
     val targetSizeMeters = max(image.extentX, image.extentZ) * PAGE_FIT_RATIO
     val modelBounds = estimateModelBounds(nodeRenderable)
     val modelUnitSize = modelBounds.horizontalSize
-    val baseScale =
+    val fittedScale =
         (targetSizeMeters / modelUnitSize).coerceIn(MIN_MODEL_SCALE, MAX_MODEL_SCALE)
+    val modelScaleBoost = resolveModelScaleBoost()
+    val baseScale =
+        (fittedScale * modelScaleBoost).coerceIn(MIN_MODEL_SCALE, MAX_MODEL_SCALE)
     // Model faces the same direction as the printed image on the sheet.
     // The anchor node already inherits the image's world rotation from ARCore,
     // so the model's local yaw just needs the standard offset for the GLB facing direction.
@@ -1768,6 +1771,7 @@ class ARScannerActivity : AppCompatActivity() {
         "ARScannerActivity",
         "Model bounds size=(${modelBounds.sizeX}, ${modelBounds.sizeY}, ${modelBounds.sizeZ}) " +
             "center=(${modelBounds.centerX}, ${modelBounds.centerY}, ${modelBounds.centerZ}) " +
+            "fittedScale=$fittedScale boost=$modelScaleBoost " +
             "baseScale=$baseScale baseOffsetY=$baseSurfaceOffsetY rotatedCenter=$rotatedModelCenter",
     )
 
@@ -2021,6 +2025,19 @@ class ARScannerActivity : AppCompatActivity() {
         centerY = 0f,
         centerZ = 0f,
     )
+  }
+
+  private fun resolveModelScaleBoost(): Float {
+    val modelIdentifiers =
+        listOfNotNull(
+                modelName,
+                requestedModelAsset.takeIf { it.isNotBlank() },
+                intent?.getStringExtra(EXTRA_MODEL_FILE_PATH),
+            )
+            .joinToString(" ")
+            .lowercase()
+
+    return if (modelIdentifiers.contains("apple")) APPLE_MODEL_SCALE_BOOST else DEFAULT_MODEL_SCALE_BOOST
   }
 
   private fun addModelFillLight(parentNode: Node) {
@@ -2699,6 +2716,7 @@ class ARScannerActivity : AppCompatActivity() {
   // ══════════════════════════════════════════════════════════════════
 
   private fun enterFallbackMode() {
+    if (!ENABLE_NON_AR_FALLBACK_MODE) return
     if (isInFallbackMode) return
     val sceneView = arFragment.arSceneView ?: return
     val scene = sceneView.scene ?: return
@@ -5834,6 +5852,8 @@ class ARScannerActivity : AppCompatActivity() {
     private const val FALLBACK_GRACE_PERIOD_MS = 1200L
     private const val MIN_CONSECUTIVE_LOSS_UPDATES_FOR_FALLBACK = 2
     private const val FALLBACK_REENTRY_COOLDOWN_MS = 900L
+    // Temporary kill switch: keep scanner AR-only by disabling non-AR fallback screen.
+    private const val ENABLE_NON_AR_FALLBACK_MODE = false
     // Fallback mode: distance of background plane from camera (must cover entire FOV)
     private const val FALLBACK_BG_DISTANCE = 12f
     // Fallback mode: distance of 3D model from camera
@@ -5864,6 +5884,8 @@ class ARScannerActivity : AppCompatActivity() {
     private const val SURFACE_LIFT_EPSILON = 0.0015f
     private const val MIN_MODEL_SCALE = 0.02f
     private const val MAX_MODEL_SCALE = 0.25f
+    private const val DEFAULT_MODEL_SCALE_BOOST = 1f
+    private const val APPLE_MODEL_SCALE_BOOST = 6f
     private const val DIRECTIONAL_LIGHT_INTENSITY = 1800f  // was 1400 → brighter sun, better shadows
     private const val FILL_LIGHT_KEY_INTENSITY = 1500f    // was 1200 → brighter key light
     private const val FILL_LIGHT_BACK_INTENSITY = 1100f   // was 900 → reduce dark backside
