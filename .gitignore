@@ -32,9 +32,9 @@ local.properties
 *.hprof
 .cxx/
 *.keystore
-*.jks
+# *.jks
 !debug.keystore
-android/keystore.properties
+# android/keystore.properties
 .kotlin/
 
 # node.js
