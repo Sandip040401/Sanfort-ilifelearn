@@ -5,7 +5,6 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -29,9 +28,6 @@ import {
   Play,
   RefreshCcw,
   Search,
-  Sparkles,
-  TriangleAlert,
-  Trophy,
 } from 'lucide-react-native';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
 import { useScreenReady } from '@/hooks/useScreenReady';
@@ -49,9 +45,7 @@ import {
 } from './games.data';
 
 const H_PAD = scale(20);
-const CONTENT_CATEGORIES = GAME_CATEGORIES.filter(
-  (category): category is Exclude<GameCategory, 'All Games'> => category !== 'All Games',
-);
+const GRID_COLUMN_GAP = scale(12);
 
 type GamesNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<BottomTabParamList, 'Games'>,
@@ -216,17 +210,22 @@ function GamesScreenContent() {
   const { width } = useWindowDimensions();
   const navigation = useNavigation<GamesNavigationProp>();
   const screenReady = useScreenReady();
+  const categoryListRef = useRef<FlatList<GameCategory>>(null);
   const [selectedCategory, setSelectedCategory] = useState<GameCategory>('All Games');
   const [searchValue, setSearchValue] = useState('');
   const deferredSearchValue = useDeferredValue(searchValue);
   const isTablet = width >= 768;
   const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
+  const gridCardWidth = useMemo(
+    () => Math.max(scale(130), (width - (H_PAD * 2) - GRID_COLUMN_GAP) / 2),
+    [width],
+  );
   const queueVisualStyle = useMemo(
-    () => ({ width: isTablet ? scale(148) : scale(112) }),
+    () => ({ minHeight: isTablet ? verticalScale(116) : verticalScale(98) }),
     [isTablet],
   );
   const queueCardMinHeightStyle = useMemo(
-    () => ({ minHeight: isTablet ? verticalScale(182) : verticalScale(154) }),
+    () => ({ minHeight: isTablet ? verticalScale(266) : verticalScale(236) }),
     [isTablet],
   );
 
@@ -306,31 +305,6 @@ function GamesScreenContent() {
     [featuredGame, filteredGames],
   );
 
-  const categoryCounts = useMemo(
-    () =>
-      CONTENT_CATEGORIES.map(category => ({
-        category,
-        count: allGames.filter(game => game.category === category).length,
-      })),
-    [allGames],
-  );
-
-  const liveCount = useMemo(
-    () => allGames.filter(game => game.source === 'api').length,
-    [allGames],
-  );
-
-  const syncState = liveGamesQuery.isPending
-    ? { label: 'Syncing live catalog', tone: colors.info }
-    : liveGamesQuery.isError
-      ? { label: 'Fallback catalog active', tone: colors.warning }
-      : { label: 'Live catalog updated', tone: colors.success };
-  const topRefreshLabel =
-    liveGamesQuery.isPending || liveGamesQuery.isRefetching
-      ? 'Refreshing'
-      : liveGamesQuery.isError
-        ? 'Retry sync'
-        : 'Refresh catalog';
   const chipIdleStyle = useMemo(
     () => ({ backgroundColor: colors.surface, borderColor: colors.border }),
     [colors.border, colors.surface],
@@ -340,7 +314,37 @@ function GamesScreenContent() {
     [colors.textSecondary],
   );
 
+  const centerCategoryChip = (category: GameCategory, animated = true) => {
+    const index = GAME_CATEGORIES.indexOf(category);
+    if (index < 0) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      categoryListRef.current?.scrollToIndex({
+        index,
+        animated,
+        viewPosition: 0.5,
+      });
+    });
+  };
+
+  useEffect(() => {
+    centerCategoryChip(selectedCategory, false);
+  }, [selectedCategory]);
+
+  const handleCategoryScrollFailure = ({ index }: { index: number }) => {
+    setTimeout(() => {
+      categoryListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }, 120);
+  };
+
   const handleCategoryPress = (category: GameCategory) => {
+    centerCategoryChip(category);
     if (category === selectedCategory) {
       return;
     }
@@ -370,12 +374,20 @@ function GamesScreenContent() {
     return <GamesSkeleton />;
   }
 
-  const renderGameCard = ({ item }: { item: GameCatalogItem }) => {
+  const renderGameCard = ({ item, index }: { item: GameCatalogItem; index: number }) => {
     const meta = GAME_CATEGORY_META[item.category];
     const Icon = CATEGORY_ICONS[item.category];
 
     return (
-      <Pressable onPress={() => handleOpenGame(item)} style={styles.cardWrap}>
+      <Pressable
+        onPress={() => handleOpenGame(item)}
+        style={[
+          styles.cardWrap,
+          { width: gridCardWidth },
+          index % 2 === 0
+            ? { marginLeft: H_PAD, marginRight: GRID_COLUMN_GAP / 2 }
+            : { marginLeft: GRID_COLUMN_GAP / 2, marginRight: H_PAD },
+        ]}>
         <View
           style={[
             styles.queueCard,
@@ -445,6 +457,7 @@ function GamesScreenContent() {
 
       <FlatList
         data={gridGames}
+        numColumns={2}
         keyExtractor={item => item.id}
         renderItem={renderGameCard}
         showsVerticalScrollIndicator={false}
@@ -528,10 +541,11 @@ function GamesScreenContent() {
                       style={StyleSheet.absoluteFill} />
                     <View style={styles.featuredNoise} />
                     <View style={styles.featuredTopRow}>
-                      <View style={styles.featuredEyebrow}>
+                      {/* Featured launch badge hidden for now */}
+                      {/* <View style={styles.featuredEyebrow}>
                         <Gamepad2 size={moderateScale(14)} color="#fff" strokeWidth={2.2} />
                         <Text style={styles.featuredEyebrowText}>Featured Launch</Text>
-                      </View>
+                      </View> */}
                       <View style={styles.featuredIconBubble}>
                         <Text style={styles.featuredIconText}>
                           {featuredGame.icon || GAME_CATEGORY_META[featuredGame.category].icon}
@@ -574,11 +588,16 @@ function GamesScreenContent() {
                 </Text>
               </View>
 
-              <ScrollView
+              <FlatList
+                ref={categoryListRef}
+                data={GAME_CATEGORIES}
                 horizontal
+                keyExtractor={item => item}
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tabsContent}>
-                {GAME_CATEGORIES.map(category => {
+                contentContainerStyle={styles.tabsContent}
+                initialNumToRender={GAME_CATEGORIES.length}
+                onScrollToIndexFailed={handleCategoryScrollFailure}
+                renderItem={({ item: category }) => {
                   const active = selectedCategory === category;
                   const categoryMeta =
                     category === 'All Games' ? null : GAME_CATEGORY_META[category];
@@ -610,8 +629,8 @@ function GamesScreenContent() {
                       </Text>
                     </Pressable>
                   );
-                })}
-              </ScrollView>
+                }}
+              />
 
 
 
@@ -953,39 +972,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardWrap: {
-    marginHorizontal: H_PAD,
     marginBottom: verticalScale(14),
   },
   queueCard: {
-    flexDirection: 'row',
     overflow: 'hidden',
     borderWidth: 1,
     borderRadius: moderateScale(24),
   },
   queueVisual: {
-    paddingHorizontal: scale(14),
-    paddingTop: verticalScale(14),
-    paddingBottom: verticalScale(14),
+    paddingHorizontal: scale(12),
+    paddingTop: verticalScale(12),
+    paddingBottom: verticalScale(10),
     justifyContent: 'space-between',
   },
   queueVisualTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
   },
   queueVisualBottom: {
-    gap: verticalScale(4),
+    gap: verticalScale(3),
   },
   queueIconBubble: {
-    width: scale(42),
-    height: scale(42),
-    borderRadius: moderateScale(21),
+    width: scale(38),
+    height: scale(38),
+    borderRadius: moderateScale(19),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
   cardEmoji: {
-    fontSize: moderateScale(20),
+    fontSize: moderateScale(18),
   },
   queueMetaLabel: {
     fontSize: moderateScale(10),
@@ -996,62 +1013,62 @@ const styles = StyleSheet.create({
   },
   queueMetaTitle: {
     fontSize: moderateScale(11),
-    lineHeight: moderateScale(16),
+    lineHeight: moderateScale(15),
     fontWeight: '800',
     color: '#fff',
   },
   queueContent: {
     flex: 1,
-    paddingLeft: scale(16),
-    paddingRight: scale(34),
-    paddingTop: verticalScale(12),
+    paddingLeft: scale(12),
+    paddingRight: scale(12),
+    paddingTop: verticalScale(10),
     paddingBottom: verticalScale(12),
   },
   categoryBadge: {
     alignSelf: 'flex-start',
     borderWidth: 1,
     borderRadius: moderateScale(999),
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(5),
   },
   categoryBadgeText: {
     fontSize: moderateScale(10),
     fontWeight: '800',
   },
   queueTitle: {
-    marginTop: verticalScale(6),
-    fontSize: moderateScale(17),
-    lineHeight: moderateScale(22),
+    marginTop: verticalScale(7),
+    fontSize: moderateScale(15),
+    lineHeight: moderateScale(19),
     fontWeight: '900',
   },
   queueDesc: {
-    marginTop: verticalScale(4),
-    fontSize: moderateScale(12),
-    lineHeight: moderateScale(18),
-    minHeight: verticalScale(38),
+    marginTop: verticalScale(5),
+    fontSize: moderateScale(11),
+    lineHeight: moderateScale(15),
+    minHeight: verticalScale(32),
   },
   queueSkillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: scale(8),
-    marginTop: verticalScale(8),
+    gap: scale(6),
+    marginTop: verticalScale(7),
   },
   queueSkillPill: {
     borderRadius: moderateScale(999),
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(5),
   },
   queueSkillText: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(9),
     fontWeight: '800',
   },
   queuePlayCircle: {
     position: 'absolute',
-    top: verticalScale(14),
-    right: scale(14),
-    width: moderateScale(34),
-    height: moderateScale(34),
-    borderRadius: moderateScale(17),
+    top: verticalScale(10),
+    right: scale(10),
+    width: moderateScale(30),
+    height: moderateScale(30),
+    borderRadius: moderateScale(15),
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 2,

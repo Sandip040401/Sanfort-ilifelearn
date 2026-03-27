@@ -25,11 +25,11 @@ export function BottomTabs() {
         screenOptions={{headerShown: false}}
         tabBar={renderCustomTabBar}>
         <Tab.Screen name="Home"      component={HomeScreen} />
+        <Tab.Screen name="Themes"    component={BooksStack} />
         <Tab.Screen name="AR"        component={ARScreen} />
         <Tab.Screen name="WebVR"     component={WebVRStack} />
         <Tab.Screen name="Games"     component={GamesScreen} />
         <Tab.Screen name="ReadAloud" component={ReadAloudScreen} />
-        <Tab.Screen name="Themes"     component={BooksStack} />
         <Tab.Screen name="ARSheets"  component={ARSheetsScreen} />
       </Tab.Navigator>
     </TabBarScrollProvider>
