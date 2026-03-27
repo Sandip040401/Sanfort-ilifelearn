@@ -1,4 +1,4 @@
-import React, { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -61,604 +61,6 @@ const CATEGORY_ICONS = {
 
 function normalizeText(value: unknown) {
   return String(value ?? '').trim();
-}
-
-function inferCategory(raw: any): Exclude<GameCategory, 'All Games'> {
-  const haystack = [
-    raw?.category,
-    raw?.title,
-    raw?.name,
-    raw?.topicName,
-    ...(Array.isArray(raw?.skills) ? raw.skills : []),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  if (
-    haystack.includes('math') ||
-    haystack.includes('number') ||
-    haystack.includes('numeracy') ||
-    haystack.includes('count')
-  ) {
-    return 'Numeracy';
-  }
-
-  if (
-    haystack.includes('rhyme') ||
-    haystack.includes('story') ||
-    haystack.includes('poem')
-  ) {
-    return 'Rhymes and Stories';
-  }
-
-  if (
-    haystack.includes('science') ||
-    haystack.includes('animal') ||
-    haystack.includes('food') ||
-    haystack.includes('physics') ||
-    haystack.includes('nature')
-  ) {
-    return 'Science';
-  }
-
-  return 'Literacy';
-}
-
-function normalizeApiGames(rawGames: any[]): GameCatalogItem[] {
-  return rawGames.reduce<GameCatalogItem[]>((games, raw, index) => {
-    const title = normalizeText(raw?.title || raw?.name || `Game ${index + 1}`);
-    const url = normalizeText(raw?.url || raw?.gameUrl || raw?.link);
-
-    if (!url) {
-      return games;
-    }
-
-    const category = inferCategory(raw);
-    const skills = Array.isArray(raw?.skills)
-      ? raw.skills.map((skill: unknown) => normalizeText(skill)).filter(Boolean)
-      : [];
-    const shortSkills = skills.slice(0, 3);
-
-    games.push({
-      id: normalizeText(raw?.id || raw?._id || raw?.slug || `api-game-${index}`),
-      title,
-      category,
-      url,
-      icon: normalizeText(raw?.topicIcon || raw?.icon) || undefined,
-      thumbnail:
-        normalizeText(raw?.thumbnail || raw?.image || raw?.coverImage || raw?.previewImage) || undefined,
-      skills: shortSkills.length ? shortSkills : [category, 'Interactive'],
-      description:
-        normalizeText(raw?.description) ||
-        `${title} is ready for quick-play learning with ${category.toLowerCase()} activities.`,
-      source: 'api' as const,
-      difficulty: Number(raw?.difficulty) || 1,
-      difficultyLevel: normalizeText(raw?.difficultyLevel || 'Basic').replace(/^\w/, c => c.toUpperCase()),
-    });
-
-    return games;
-  }, []);
-}
-
-function mergeGames(liveGames: GameCatalogItem[]) {
-  const merged = new Map<string, GameCatalogItem>();
-
-  [...SCIENCE_FALLBACK_GAMES, ...liveGames].forEach(game => {
-    const key = normalizeText(game.url).toLowerCase() || normalizeText(game.id).toLowerCase();
-    if (!key) {
-      return;
-    }
-
-    const existing = merged.get(key);
-    if (!existing || existing.source === 'fallback') {
-      merged.set(key, game);
-    }
-  });
-
-  return [...merged.values()].sort((left, right) => {
-    if (left.category !== right.category) {
-      return GAME_CATEGORIES.indexOf(left.category) - GAME_CATEGORIES.indexOf(right.category);
-    }
-    return left.title.localeCompare(right.title);
-  });
-}
-
-function GamesSkeleton() {
-  return (
-    <View style={styles.skeletonRoot}>
-      <View style={styles.skeletonHero}>
-        <LinearGradient
-          colors={['#25135F', '#39187A', '#4C1D95', '#5C35CA', '#6C4CFF']}
-          locations={[0, 0.25, 0.5, 0.75, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill} />
-        <Skeleton width="40%" height={18} borderRadius={999} />
-        <Skeleton width="66%" height={34} borderRadius={16} style={styles.skeletonTopSpace} />
-        <Skeleton width="82%" height={16} borderRadius={8} style={styles.skeletonTopSpace} />
-        <View style={styles.skeletonStatsRow}>
-          <Skeleton width="30%" height={74} borderRadius={22} />
-          <Skeleton width="30%" height={74} borderRadius={22} />
-          <Skeleton width="30%" height={74} borderRadius={22} />
-        </View>
-        <Skeleton width="100%" height={54} borderRadius={20} style={styles.skeletonTopSpace} />
-      </View>
-
-      <View style={styles.skeletonContent}>
-        <Skeleton width="100%" height={178} borderRadius={28} />
-        <View style={styles.skeletonTabsRow}>
-          <Skeleton width={96} height={40} borderRadius={999} />
-          <Skeleton width={112} height={40} borderRadius={999} />
-          <Skeleton width={124} height={40} borderRadius={999} />
-        </View>
-        <View style={styles.skeletonGrid}>
-          <Skeleton width="48%" height={214} borderRadius={24} />
-          <Skeleton width="48%" height={214} borderRadius={24} />
-          <Skeleton width="48%" height={214} borderRadius={24} />
-          <Skeleton width="48%" height={214} borderRadius={24} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function GamesScreenContent() {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const { onScroll } = useTabBarHideOnScroll();
-  const { width } = useWindowDimensions();
-  const navigation = useNavigation<GamesNavigationProp>();
-  const screenReady = useScreenReady();
-  const categoryListRef = useRef<FlatList<GameCategory>>(null);
-  const [selectedCategory, setSelectedCategory] = useState<GameCategory>('All Games');
-  const [searchValue, setSearchValue] = useState('');
-  const deferredSearchValue = useDeferredValue(searchValue);
-  const isTablet = width >= 768;
-  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
-  const gridCardWidth = useMemo(
-    () => Math.max(scale(130), (width - (H_PAD * 2) - GRID_COLUMN_GAP) / 2),
-    [width],
-  );
-  const queueVisualStyle = useMemo(
-    () => ({ minHeight: isTablet ? verticalScale(116) : verticalScale(98) }),
-    [isTablet],
-  );
-  const queueCardMinHeightStyle = useMemo(
-    () => ({ minHeight: isTablet ? verticalScale(266) : verticalScale(236) }),
-    [isTablet],
-  );
-
-  const liveGamesQuery = useQuery({
-    queryKey: ['games-catalog'],
-    queryFn: async () => {
-      const response = await GamesService.getAllGames({ page: 1, limit: 200 });
-      const rawPayload = response.data as any;
-      const gamesArray =
-        rawPayload?.data?.data ||
-        rawPayload?.data ||
-        rawPayload?.games ||
-        [];
-      return normalizeApiGames(gamesArray);
-    },
-    staleTime: 1000 * 60 * 5,
-  });
-
-  const spinValue = useRef(new Animated.Value(0)).current;
-  const isRefreshing = liveGamesQuery.isPending || liveGamesQuery.isRefetching;
-
-  useEffect(() => {
-    if (isRefreshing) {
-      Animated.loop(
-        Animated.timing(spinValue, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ).start();
-    } else {
-      spinValue.stopAnimation();
-      spinValue.setValue(0);
-    }
-  }, [isRefreshing, spinValue]);
-
-  const spin = spinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  const allGames = useMemo(
-    () => mergeGames(liveGamesQuery.data ?? []),
-    [liveGamesQuery.data],
-  );
-  const trimmedSearch = deferredSearchValue.trim().toLowerCase();
-
-  const filteredGames = useMemo(() => {
-    return allGames.filter(game => {
-      const categoryPass =
-        selectedCategory === 'All Games' || game.category === selectedCategory;
-      const searchPass =
-        !trimmedSearch ||
-        game.title.toLowerCase().includes(trimmedSearch) ||
-        game.category.toLowerCase().includes(trimmedSearch) ||
-        game.description.toLowerCase().includes(trimmedSearch) ||
-        (game.skills || []).some(skill => skill.toLowerCase().includes(trimmedSearch));
-
-      return categoryPass && searchPass;
-    });
-  }, [allGames, selectedCategory, trimmedSearch]);
-
-  const featuredGame = useMemo(() => {
-    if (selectedCategory !== 'All Games' || trimmedSearch) {
-      return null;
-    }
-
-    return allGames[0] ?? null;
-  }, [allGames, selectedCategory, trimmedSearch]);
-
-  const gridGames = useMemo(
-    () =>
-      featuredGame
-        ? filteredGames.filter(game => game.id !== featuredGame.id)
-        : filteredGames,
-    [featuredGame, filteredGames],
-  );
-
-  const chipIdleStyle = useMemo(
-    () => ({ backgroundColor: colors.surface, borderColor: colors.border }),
-    [colors.border, colors.surface],
-  );
-  const chipTextIdleStyle = useMemo(
-    () => ({ color: colors.textSecondary }),
-    [colors.textSecondary],
-  );
-
-  const centerCategoryChip = (category: GameCategory, animated = true) => {
-    const index = GAME_CATEGORIES.indexOf(category);
-    if (index < 0) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      categoryListRef.current?.scrollToIndex({
-        index,
-        animated,
-        viewPosition: 0.5,
-      });
-    });
-  };
-
-  useEffect(() => {
-    centerCategoryChip(selectedCategory, false);
-  }, [selectedCategory]);
-
-  const handleCategoryScrollFailure = ({ index }: { index: number }) => {
-    setTimeout(() => {
-      categoryListRef.current?.scrollToIndex({
-        index,
-        animated: true,
-        viewPosition: 0.5,
-      });
-    }, 120);
-  };
-
-  const handleCategoryPress = (category: GameCategory) => {
-    centerCategoryChip(category);
-    if (category === selectedCategory) {
-      return;
-    }
-
-    startTransition(() => {
-      setSelectedCategory(category);
-    });
-  };
-
-  const handleOpenGame = (game: GameCatalogItem) => {
-    navigation.navigate('GamePlayer', {
-      gameId: game.id,
-      gameTitle: game.title,
-      gameUrl: game.url,
-    });
-  };
-
-  const handleRefresh = () => {
-    if (liveGamesQuery.isPending || liveGamesQuery.isRefetching) {
-      return;
-    }
-
-    liveGamesQuery.refetch();
-  };
-
-  if (!screenReady) {
-    return <GamesSkeleton />;
-  }
-
-  const renderGameCard = ({ item, index }: { item: GameCatalogItem; index: number }) => {
-    const meta = GAME_CATEGORY_META[item.category];
-    const Icon = CATEGORY_ICONS[item.category];
-
-    return (
-      <Pressable
-        onPress={() => handleOpenGame(item)}
-        style={[
-          styles.cardWrap,
-          { width: gridCardWidth },
-          index % 2 === 0
-            ? { marginLeft: H_PAD, marginRight: GRID_COLUMN_GAP / 2 }
-            : { marginLeft: GRID_COLUMN_GAP / 2, marginRight: H_PAD },
-        ]}>
-        <View
-          style={[
-            styles.queueCard,
-            queueCardMinHeightStyle,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-          ]}>
-          <View style={[styles.queueVisual, queueVisualStyle]}>
-            <LinearGradient
-              colors={meta.gradient}
-              locations={[0, 1]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill} />
-            <View style={styles.queueVisualTop}>
-              <View style={styles.queueIconBubble}>
-                {item.icon ? (
-                  <Text style={styles.cardEmoji}>{item.icon}</Text>
-                ) : (
-                  <Icon size={moderateScale(22)} color="#fff" strokeWidth={2} />
-                )}
-              </View>
-            </View>
-            <View style={styles.queueVisualBottom}>
-              <Text style={styles.queueMetaLabel}>Difficulty</Text>
-              <Text numberOfLines={2} style={styles.queueMetaTitle}>
-                {item.difficultyLevel || 'Basic'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.queueContent}>
-            <View style={[styles.categoryBadge, { backgroundColor: meta.accentSoft, borderColor: meta.border }]}>
-              <Text style={[styles.categoryBadgeText, { color: meta.text }]}>{item.category}</Text>
-            </View>
-
-            <Text numberOfLines={2} style={[styles.queueTitle, { color: colors.text }]}>
-              {item.title}
-            </Text>
-            <Text numberOfLines={3} style={[styles.queueDesc, { color: colors.textSecondary }]}>
-              {item.description}
-            </Text>
-
-            <View style={styles.queueSkillRow}>
-              {(item.skills || []).slice(0, 3).map(skill => (
-                <View key={`${item.id}-${skill}`} style={[styles.queueSkillPill, { backgroundColor: colors.primarySurface }]}>
-                  <Text style={[styles.queueSkillText, { color: colors.primaryDark }]}>{skill}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={[styles.queuePlayCircle, { backgroundColor: meta.accentSoft }]}>
-              <Play size={moderateScale(15)} color={meta.accent} fill={meta.accent} strokeWidth={0} />
-            </View>
-          </View>
-        </View>
-      </Pressable>
-    );
-  };
-
-  return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <StatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle="light-content"
-      />
-
-      <FlatList
-        data={gridGames}
-        numColumns={2}
-        keyExtractor={item => item.id}
-        renderItem={renderGameCard}
-        showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: bottomContentInset }}
-        refreshControl={
-          <RefreshControl
-            refreshing={liveGamesQuery.isRefetching}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary, colors.secondary]}
-            progressViewOffset={insets.top + verticalScale(8)}
-          />
-        }
-        ListHeaderComponent={
-          <>
-            <View style={[styles.hero, { paddingTop: insets.top + verticalScale(14) }]}>
-              <LinearGradient
-                colors={['#3D2799', '#5439CC', '#6C4CFF']}
-                locations={[0, 0.5, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill} />
-              <View style={styles.heroGlowOne} />
-              <View style={styles.heroGlowTwo} />
-
-              <View style={styles.heroTopRow}>
-                <Text style={styles.heroTitle}>Educational Games</Text>
-                <Pressable
-                  disabled={isRefreshing}
-                  onPress={handleRefresh}
-                  style={styles.refreshCircle}>
-                  <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                    <RefreshCcw size={moderateScale(16)} color="#fff" strokeWidth={2.4} />
-                  </Animated.View>
-                </Pressable>
-              </View>
-
-              <Text style={styles.heroSubtitle}>
-                Dive into fun and interactive learning games designed for all grades.
-              </Text>
-
-              <View style={[styles.heroCurve, { backgroundColor: colors.background }]} />
-            </View>
-
-            <View style={styles.shadowContainer}>
-              <View style={[styles.searchShell, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Search size={moderateScale(18)} color={colors.textSecondary} strokeWidth={2} />
-                <TextInput
-                  value={searchValue}
-                  onChangeText={setSearchValue}
-                  placeholder="Search missions, skills or categories"
-                  placeholderTextColor={colors.textSecondary + '80'}
-                  style={[styles.searchInput, { color: colors.text }]}
-                  returnKeyType="search"
-                />
-              </View>
-            </View>
-
-            <View style={styles.content}>
-              {liveGamesQuery.isError && (
-                <View style={[styles.noticeCard, { backgroundColor: colors.accentSurface, borderColor: colors.border }]}>
-                  <Text style={[styles.noticeTitle, { color: colors.text }]}>
-                    Live games couldn’t sync right now
-                  </Text>
-                  <Text style={[styles.noticeCopy, { color: colors.textSecondary }]}>
-                    Catalog stays usable through the fallback science collection while the API recovers.
-                  </Text>
-                </View>
-              )}
-
-              {featuredGame && (
-                <Pressable onPress={() => handleOpenGame(featuredGame)} style={styles.featuredWrap}>
-                  <View style={styles.featuredCard}>
-                    <LinearGradient
-                      colors={GAME_CATEGORY_META[featuredGame.category].gradient}
-                      locations={[0, 1]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFill} />
-                    <View style={styles.featuredNoise} />
-                    <View style={styles.featuredTopRow}>
-                      {/* Featured launch badge hidden for now */}
-                      {/* <View style={styles.featuredEyebrow}>
-                        <Gamepad2 size={moderateScale(14)} color="#fff" strokeWidth={2.2} />
-                        <Text style={styles.featuredEyebrowText}>Featured Launch</Text>
-                      </View> */}
-                      <View style={styles.featuredIconBubble}>
-                        <Text style={styles.featuredIconText}>
-                          {featuredGame.icon || GAME_CATEGORY_META[featuredGame.category].icon}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.featuredTitle}>{featuredGame.title}</Text>
-                    <Text style={styles.featuredCopy} numberOfLines={2}>
-                      {featuredGame.description}
-                    </Text>
-
-                    <View style={styles.featuredSkillRow}>
-                      {(featuredGame.skills || []).slice(0, 3).map(skill => (
-                        <View key={`${featuredGame.id}-${skill}`} style={styles.featuredSkillPill}>
-                          <Text style={styles.featuredSkillText}>{skill}</Text>
-                        </View>
-                      ))}
-                    </View>
-
-                    <View style={styles.featuredFooter}>
-                      <Text style={styles.featuredMeta}>{GAME_CATEGORY_META[featuredGame.category].chipLabel}</Text>
-                      <View style={styles.featuredPlay}>
-                        <Play size={moderateScale(16)} color="#0F172A" fill="#0F172A" strokeWidth={0} />
-                        <Text style={styles.featuredPlayText}>Play now</Text>
-                      </View>
-                    </View>
-                  </View>
-                </Pressable>
-              )}
-
-              <View style={styles.sectionRow}>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                  {trimmedSearch ? 'Search Results' : 'Collections'}
-                </Text>
-                <Text style={[styles.sectionMeta, { color: colors.textSecondary }]}>
-                  {trimmedSearch
-                    ? `${filteredGames.length} found for "${trimmedSearch}"`
-                    : `${selectedCategory === 'All Games' ? 'All' : selectedCategory} • ${filteredGames.length} missions`}
-                </Text>
-              </View>
-
-              <FlatList
-                ref={categoryListRef}
-                data={GAME_CATEGORIES}
-                horizontal
-                keyExtractor={item => item}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tabsContent}
-                initialNumToRender={GAME_CATEGORIES.length}
-                onScrollToIndexFailed={handleCategoryScrollFailure}
-                renderItem={({ item: category }) => {
-                  const active = selectedCategory === category;
-                  const categoryMeta =
-                    category === 'All Games' ? null : GAME_CATEGORY_META[category];
-
-                  return (
-                    <Pressable
-                      key={category}
-                      onPress={() => handleCategoryPress(category)}
-                      style={[
-                        styles.tabChip,
-                        active
-                          ? styles.tabChipActive
-                          : chipIdleStyle,
-                      ]}>
-                      {categoryMeta ? (
-                        <Text style={styles.tabChipEmoji}>{categoryMeta.icon}</Text>
-                      ) : (
-                        <Gamepad2 size={moderateScale(14)} color={active ? '#fff' : colors.textSecondary} strokeWidth={2} />
-                      )}
-                      <Text
-                        style={[
-                          styles.tabChipText,
-                          active ? styles.tabChipTextActive : chipTextIdleStyle,
-                        ]}>
-                        {category}
-                        <Text style={[styles.tabChipCount, { color: colors.textSecondary }, active && { color: 'rgba(255,255,255,0.88)' }]}>
-                          {' '}({allGames.filter(g => category === 'All Games' ? true : g.category === category).length})
-                        </Text>
-                      </Text>
-                    </Pressable>
-                  );
-                }}
-              />
-
-
-
-            </View>
-          </>
-        }
-        ListEmptyComponent={
-          <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.emptyIconWrap, { backgroundColor: colors.primarySurface }]}>
-              <Search size={moderateScale(24)} color={colors.primaryDark} strokeWidth={2.2} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No games matched</Text>
-            <Text style={[styles.emptyCopy, { color: colors.textSecondary }]}>
-              Try another keyword or switch to a different collection.
-            </Text>
-          </View>
-        }
-      />
-    </View>
-  );
-}
-
-export default function GamesScreen() {
-  return (
-    <ScreenErrorBoundary>
-      <GamesScreenContent />
-    </ScreenErrorBoundary>
-  );
 }
 
 const styles = StyleSheet.create({
@@ -912,9 +314,9 @@ const styles = StyleSheet.create({
   tabChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(8),
-    paddingHorizontal: scale(14),
-    paddingVertical: verticalScale(11),
+    gap: scale(6),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
     borderRadius: moderateScale(999),
     borderWidth: 1,
   },
@@ -923,10 +325,10 @@ const styles = StyleSheet.create({
     borderColor: '#0F172A',
   },
   tabChipEmoji: {
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(12),
   },
   tabChipText: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     fontWeight: '800',
   },
   tabChipTextActive: {
@@ -981,8 +383,8 @@ const styles = StyleSheet.create({
   },
   queueVisual: {
     paddingHorizontal: scale(12),
-    paddingTop: verticalScale(12),
-    paddingBottom: verticalScale(10),
+    paddingTop: verticalScale(8),
+    paddingBottom: verticalScale(8),
     justifyContent: 'space-between',
   },
   queueVisualTop: {
@@ -1005,14 +407,14 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(18),
   },
   queueMetaLabel: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(9),
     fontWeight: '800',
     color: 'rgba(255,255,255,0.62)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   queueMetaTitle: {
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(10),
     lineHeight: moderateScale(15),
     fontWeight: '800',
     color: '#fff',
@@ -1021,8 +423,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingLeft: scale(12),
     paddingRight: scale(12),
-    paddingTop: verticalScale(10),
-    paddingBottom: verticalScale(12),
+    paddingTop: verticalScale(8),
+    paddingBottom: verticalScale(10),
   },
   categoryBadge: {
     alignSelf: 'flex-start',
@@ -1032,18 +434,18 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(5),
   },
   categoryBadgeText: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(9),
     fontWeight: '800',
   },
   queueTitle: {
     marginTop: verticalScale(7),
-    fontSize: moderateScale(15),
+    fontSize: moderateScale(13),
     lineHeight: moderateScale(19),
     fontWeight: '900',
   },
   queueDesc: {
     marginTop: verticalScale(5),
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(10),
     lineHeight: moderateScale(15),
     minHeight: verticalScale(32),
   },
@@ -1170,3 +572,691 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(18),
   },
 });
+
+function inferCategory(raw: any): Exclude<GameCategory, 'All Games'> {
+  const haystack = [
+    raw?.category,
+    raw?.title,
+    raw?.name,
+    raw?.topicName,
+    ...(Array.isArray(raw?.skills) ? raw.skills : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (
+    haystack.includes('math') ||
+    haystack.includes('number') ||
+    haystack.includes('numeracy') ||
+    haystack.includes('count')
+  ) {
+    return 'Numeracy';
+  }
+
+  if (
+    haystack.includes('rhyme') ||
+    haystack.includes('story') ||
+    haystack.includes('poem')
+  ) {
+    return 'Rhymes and Stories';
+  }
+
+  if (
+    haystack.includes('science') ||
+    haystack.includes('animal') ||
+    haystack.includes('food') ||
+    haystack.includes('physics') ||
+    haystack.includes('nature')
+  ) {
+    return 'Science';
+  }
+
+  return 'Literacy';
+}
+
+function normalizeApiGames(rawGames: any[]): GameCatalogItem[] {
+  return rawGames.reduce<GameCatalogItem[]>((games, raw, index) => {
+    const title = normalizeText(raw?.title || raw?.name || `Game ${index + 1}`);
+    const url = normalizeText(raw?.url || raw?.gameUrl || raw?.link);
+
+    if (!url) {
+      return games;
+    }
+
+    const category = inferCategory(raw);
+    const skills = Array.isArray(raw?.skills)
+      ? raw.skills.map((skill: unknown) => normalizeText(skill)).filter(Boolean)
+      : [];
+    const shortSkills = skills.slice(0, 3);
+
+    games.push({
+      id: normalizeText(raw?.id || raw?._id || raw?.slug || `api-game-${index}`),
+      title,
+      category,
+      url,
+      icon: normalizeText(raw?.topicIcon || raw?.icon) || undefined,
+      thumbnail:
+        normalizeText(raw?.thumbnail || raw?.image || raw?.coverImage || raw?.previewImage) || undefined,
+      skills: shortSkills.length ? shortSkills : [category, 'Interactive'],
+      description:
+        normalizeText(raw?.description) ||
+        `${title} is ready for quick-play learning with ${category.toLowerCase()} activities.`,
+      source: 'api' as const,
+      difficulty: Number(raw?.difficulty) || 1,
+      difficultyLevel: normalizeText(raw?.difficultyLevel || 'Basic').replace(/^\w/, c => c.toUpperCase()),
+    });
+
+    return games;
+  }, []);
+}
+
+function mergeGames(liveGames: GameCatalogItem[]) {
+  const merged = new Map<string, GameCatalogItem>();
+
+  [...SCIENCE_FALLBACK_GAMES, ...liveGames].forEach(game => {
+    const key = normalizeText(game.url).toLowerCase() || normalizeText(game.id).toLowerCase();
+    if (!key) {
+      return;
+    }
+
+    const existing = merged.get(key);
+    if (!existing || existing.source === 'fallback') {
+      merged.set(key, game);
+    }
+  });
+
+  return [...merged.values()].sort((left, right) => {
+    if (left.category !== right.category) {
+      return GAME_CATEGORIES.indexOf(left.category) - GAME_CATEGORIES.indexOf(right.category);
+    }
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function GamesSkeleton() {
+  return (
+    <View style={styles.skeletonRoot}>
+      <View style={styles.skeletonHero}>
+        <LinearGradient
+          colors={['#25135F', '#39187A', '#4C1D95', '#5C35CA', '#6C4CFF']}
+          locations={[0, 0.25, 0.5, 0.75, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill} />
+        <Skeleton width="40%" height={18} borderRadius={999} />
+        <Skeleton width="66%" height={34} borderRadius={16} style={styles.skeletonTopSpace} />
+        <Skeleton width="82%" height={16} borderRadius={8} style={styles.skeletonTopSpace} />
+        <View style={styles.skeletonStatsRow}>
+          <Skeleton width="30%" height={74} borderRadius={22} />
+          <Skeleton width="30%" height={74} borderRadius={22} />
+          <Skeleton width="30%" height={74} borderRadius={22} />
+        </View>
+        <Skeleton width="100%" height={54} borderRadius={20} style={styles.skeletonTopSpace} />
+      </View>
+
+      <View style={styles.skeletonContent}>
+        <Skeleton width="100%" height={178} borderRadius={28} />
+        <View style={styles.skeletonTabsRow}>
+          <Skeleton width={96} height={40} borderRadius={999} />
+          <Skeleton width={112} height={40} borderRadius={999} />
+          <Skeleton width={124} height={40} borderRadius={999} />
+        </View>
+        <View style={styles.skeletonGrid}>
+          <Skeleton width="48%" height={214} borderRadius={24} />
+          <Skeleton width="48%" height={214} borderRadius={24} />
+          <Skeleton width="48%" height={214} borderRadius={24} />
+          <Skeleton width="48%" height={214} borderRadius={24} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const CategoryChip = React.memo(({
+  category,
+  active,
+  count,
+  meta,
+  onPress,
+  colors,
+  idleStyle,
+  textIdleStyle,
+}: {
+  category: string;
+  active: boolean;
+  count: number;
+  meta: any;
+  onPress: (category: any) => void;
+  colors: any;
+  idleStyle: any;
+  textIdleStyle: any;
+}) => {
+  return (
+    <Pressable
+      onPress={() => onPress(category as any)}
+      style={[
+        styles.tabChip,
+        active ? styles.tabChipActive : idleStyle,
+      ]}>
+      {meta ? (
+        <Text style={styles.tabChipEmoji}>{meta.icon}</Text>
+      ) : (
+        <Gamepad2 size={moderateScale(14)} color={active ? '#fff' : colors.textSecondary} strokeWidth={2} />
+      )}
+      <Text
+        style={[
+          styles.tabChipText,
+          active ? styles.tabChipTextActive : textIdleStyle,
+        ]}>
+        {category}
+        <Text style={[styles.tabChipCount, { color: colors.textSecondary }, active && { color: 'rgba(255,255,255,0.88)' }]}>
+          {' '}({count})
+        </Text>
+      </Text>
+    </Pressable>
+  );
+});
+
+const CategoryTabs = React.memo(({
+  selectedCategory,
+  onCategoryPress,
+  categoryCounts,
+  categoryListRef,
+  onScrollFailure,
+  colors,
+  idleStyle,
+  textIdleStyle,
+}: {
+  selectedCategory: string;
+  onCategoryPress: (category: any) => void;
+  categoryCounts: Record<string, number>;
+  categoryListRef: any;
+  onScrollFailure: any;
+  colors: any;
+  idleStyle: any;
+  textIdleStyle: any;
+}) => {
+  return (
+    <FlatList
+      ref={categoryListRef}
+      data={GAME_CATEGORIES}
+      horizontal
+      keyExtractor={item => item}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.tabsContent}
+      initialNumToRender={GAME_CATEGORIES.length}
+      onScrollToIndexFailed={onScrollFailure}
+      renderItem={({ item: category }) => {
+        const active = selectedCategory === category;
+        const categoryMeta =
+          category === 'All Games' ? null : GAME_CATEGORY_META[category];
+
+        return (
+          <CategoryChip
+            category={category}
+            active={active}
+            count={categoryCounts[category]}
+            meta={categoryMeta}
+            onPress={onCategoryPress}
+            colors={colors}
+            idleStyle={idleStyle}
+            textIdleStyle={textIdleStyle}
+          />
+        );
+      }}
+    />
+  );
+});
+
+const GameCard = React.memo(({
+  item,
+  index,
+  onPress,
+  width,
+  minHeight,
+  visualStyle,
+  colors,
+}: {
+  item: GameCatalogItem;
+  index: number;
+  onPress: (item: GameCatalogItem) => void;
+  width: number;
+  minHeight: any;
+  visualStyle: any;
+  colors: any;
+}) => {
+  const meta = GAME_CATEGORY_META[item.category];
+  const Icon = CATEGORY_ICONS[item.category];
+
+  return (
+    <Pressable
+      onPress={() => onPress(item)}
+      style={[
+        styles.cardWrap,
+        { width },
+        index % 2 === 0
+          ? { marginLeft: H_PAD, marginRight: GRID_COLUMN_GAP / 2 }
+          : { marginLeft: GRID_COLUMN_GAP / 2, marginRight: H_PAD },
+      ]}>
+      <View
+        style={[
+          styles.queueCard,
+          minHeight,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}>
+        <View style={[styles.queueVisual, visualStyle]}>
+          <LinearGradient
+            colors={meta.gradient}
+            locations={[0, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill} />
+          <View style={styles.queueVisualTop}>
+            <View style={styles.queueIconBubble}>
+              {item.icon ? (
+                <Text style={styles.cardEmoji}>{item.icon}</Text>
+              ) : (
+                <Icon size={moderateScale(22)} color="#fff" strokeWidth={2} />
+              )}
+            </View>
+          </View>
+          <View style={styles.queueVisualBottom}>
+            <Text style={styles.queueMetaLabel}>Difficulty</Text>
+            <Text numberOfLines={1} style={styles.queueMetaTitle}>
+              {item.difficultyLevel || 'Basic'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.queueContent}>
+          <View style={[styles.categoryBadge, { backgroundColor: meta.accentSoft, borderColor: meta.border }]}>
+            <Text style={[styles.categoryBadgeText, { color: meta.text }]}>{item.category}</Text>
+          </View>
+
+          <Text numberOfLines={1} style={[styles.queueTitle, { color: colors.text }]}>
+            {item.title}
+          </Text>
+          <Text numberOfLines={2} style={[styles.queueDesc, { color: colors.textSecondary }]}>
+            {item.description}
+          </Text>
+
+          <View style={[styles.queuePlayCircle, { backgroundColor: meta.accentSoft }]}>
+            <Play size={moderateScale(15)} color={meta.accent} fill={meta.accent} strokeWidth={0} />
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
+function GamesScreenContent() {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { onScroll } = useTabBarHideOnScroll();
+  const { width } = useWindowDimensions();
+  const navigation = useNavigation<GamesNavigationProp>();
+  const screenReady = useScreenReady();
+  const categoryListRef = useRef<FlatList<GameCategory>>(null);
+  const [selectedCategory, setSelectedCategory] = useState<GameCategory>('All Games');
+  const deferredCategory = useDeferredValue(selectedCategory);
+  const [searchValue, setSearchValue] = useState('');
+  const deferredSearchValue = useDeferredValue(searchValue);
+  const isTablet = width >= 768;
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
+  const gridCardWidth = useMemo(
+    () => Math.max(scale(130), (width - (H_PAD * 2) - GRID_COLUMN_GAP) / 2),
+    [width],
+  );
+  const queueVisualStyle = useMemo(
+    () => ({ minHeight: isTablet ? verticalScale(84) : verticalScale(60) }),
+    [isTablet],
+  );
+  const queueCardMinHeightStyle = useMemo(
+    () => ({ minHeight: isTablet ? verticalScale(220) : verticalScale(186) }),
+    [isTablet],
+  );
+
+  const liveGamesQuery = useQuery({
+    queryKey: ['games-catalog'],
+    queryFn: async () => {
+      const response = await GamesService.getAllGames({ page: 1, limit: 200 });
+      const rawPayload = response.data as any;
+      const gamesArray =
+        rawPayload?.data?.data ||
+        rawPayload?.data ||
+        rawPayload?.games ||
+        [];
+      return normalizeApiGames(gamesArray);
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const spinValue = useRef(new Animated.Value(0)).current;
+  const isRefreshing = liveGamesQuery.isPending || liveGamesQuery.isRefetching;
+
+  useEffect(() => {
+    if (isRefreshing) {
+      Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ).start();
+    } else {
+      spinValue.stopAnimation();
+      spinValue.setValue(0);
+    }
+  }, [isRefreshing, spinValue]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const allGames = useMemo(
+    () => mergeGames(liveGamesQuery.data ?? []),
+    [liveGamesQuery.data],
+  );
+
+  const categoryCounts = useMemo(() => {
+    return GAME_CATEGORIES.reduce((acc, cat) => {
+      acc[cat] = allGames.filter(g => cat === 'All Games' ? true : g.category === cat).length;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [allGames]);
+  const trimmedSearch = deferredSearchValue.trim().toLowerCase();
+
+  const filteredGames = useMemo(() => {
+    return allGames.filter(game => {
+      const categoryPass =
+        deferredCategory === 'All Games' || game.category === deferredCategory;
+      const searchPass =
+        !trimmedSearch ||
+        game.title.toLowerCase().includes(trimmedSearch) ||
+        game.category.toLowerCase().includes(trimmedSearch) ||
+        game.description.toLowerCase().includes(trimmedSearch) ||
+        (game.skills || []).some(skill => skill.toLowerCase().includes(trimmedSearch));
+
+      return categoryPass && searchPass;
+    });
+  }, [allGames, deferredCategory, trimmedSearch]);
+
+  const featuredGame = useMemo(() => {
+    if (selectedCategory !== 'All Games' || trimmedSearch) {
+      return null;
+    }
+
+    return allGames[0] ?? null;
+  }, [allGames, selectedCategory, trimmedSearch]);
+
+  const gridGames = useMemo(
+    () =>
+      featuredGame
+        ? filteredGames.filter(game => game.id !== featuredGame.id)
+        : filteredGames,
+    [featuredGame, filteredGames],
+  );
+
+  const chipIdleStyle = useMemo(
+    () => ({ backgroundColor: colors.surface, borderColor: colors.border }),
+    [colors.border, colors.surface],
+  );
+  const chipTextIdleStyle = useMemo(
+    () => ({ color: colors.textSecondary }),
+    [colors.textSecondary],
+  );
+
+  const centerCategoryChip = (category: GameCategory, animated = true) => {
+    const index = GAME_CATEGORIES.indexOf(category);
+    if (index < 0) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      categoryListRef.current?.scrollToIndex({
+        index,
+        animated,
+        viewPosition: 0.5,
+      });
+    });
+  };
+
+  useEffect(() => {
+    centerCategoryChip(selectedCategory, false);
+  }, [selectedCategory]);
+
+  const handleCategoryScrollFailure = useCallback(({ index }: { index: number }) => {
+    setTimeout(() => {
+      categoryListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }, 120);
+  }, []);
+
+  const handleCategoryPress = useCallback((category: GameCategory) => {
+    centerCategoryChip(category);
+    setSelectedCategory(prev => {
+      if (category === prev) {
+        return prev;
+      }
+      return category;
+    });
+  }, []);
+
+  const handleOpenGame = useCallback((game: GameCatalogItem) => {
+    navigation.navigate('GamePlayer', {
+      gameId: game.id,
+      gameTitle: game.title,
+      gameUrl: game.url,
+    });
+  }, [navigation]);
+
+  const handleRefresh = () => {
+    if (liveGamesQuery.isPending || liveGamesQuery.isRefetching) {
+      return;
+    }
+
+    liveGamesQuery.refetch();
+  };
+
+  const renderGameCard = useCallback(({ item, index }: { item: GameCatalogItem; index: number }) => (
+    <GameCard
+      item={item}
+      index={index}
+      onPress={handleOpenGame}
+      width={gridCardWidth}
+      minHeight={queueCardMinHeightStyle}
+      visualStyle={queueVisualStyle}
+      colors={colors}
+    />
+  ), [gridCardWidth, queueCardMinHeightStyle, queueVisualStyle, colors, handleOpenGame]);
+
+  if (!screenReady) {
+    return <GamesSkeleton />;
+  }
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle="light-content"
+      />
+
+      <FlatList
+        data={gridGames}
+        numColumns={2}
+        keyExtractor={item => item.id}
+        renderItem={renderGameCard}
+        showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: bottomContentInset }}
+        refreshControl={
+          <RefreshControl
+            refreshing={liveGamesQuery.isRefetching}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary, colors.secondary]}
+            progressViewOffset={insets.top + verticalScale(8)}
+          />
+        }
+        ListHeaderComponent={
+          <>
+            <View style={[styles.hero, { paddingTop: insets.top + verticalScale(14) }]}>
+              <LinearGradient
+                colors={['#3D2799', '#5439CC', '#6C4CFF']}
+                locations={[0, 0.5, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill} />
+              <View style={styles.heroGlowOne} />
+              <View style={styles.heroGlowTwo} />
+
+              <View style={styles.heroTopRow}>
+                <Text style={styles.heroTitle}>Educational Games</Text>
+                <Pressable
+                  disabled={isRefreshing}
+                  onPress={handleRefresh}
+                  style={styles.refreshCircle}>
+                  <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                    <RefreshCcw size={moderateScale(16)} color="#fff" strokeWidth={2.4} />
+                  </Animated.View>
+                </Pressable>
+              </View>
+
+              <Text style={styles.heroSubtitle}>
+                Dive into fun and interactive learning games designed for all grades.
+              </Text>
+
+              <View style={[styles.heroCurve, { backgroundColor: colors.background }]} />
+            </View>
+
+            <View style={styles.shadowContainer}>
+              <View style={[styles.searchShell, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Search size={moderateScale(18)} color={colors.textSecondary} strokeWidth={2} />
+                <TextInput
+                  value={searchValue}
+                  onChangeText={setSearchValue}
+                  placeholder="Search missions, skills or categories"
+                  placeholderTextColor={colors.textSecondary + '80'}
+                  style={[styles.searchInput, { color: colors.text }]}
+                  returnKeyType="search"
+                />
+              </View>
+            </View>
+
+            <View style={styles.content}>
+              {liveGamesQuery.isError && (
+                <View style={[styles.noticeCard, { backgroundColor: colors.accentSurface, borderColor: colors.border }]}>
+                  <Text style={[styles.noticeTitle, { color: colors.text }]}>
+                    Live games couldn’t sync right now
+                  </Text>
+                  <Text style={[styles.noticeCopy, { color: colors.textSecondary }]}>
+                    Catalog stays usable through the fallback science collection while the API recovers.
+                  </Text>
+                </View>
+              )}
+
+              {/* {featuredGame && (
+                <Pressable onPress={() => handleOpenGame(featuredGame)} style={styles.featuredWrap}>
+                  <View style={styles.featuredCard}>
+                    <LinearGradient
+                      colors={GAME_CATEGORY_META[featuredGame.category].gradient}
+                      locations={[0, 1]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill} />
+                    <View style={styles.featuredNoise} />
+                    <View style={styles.featuredTopRow}>
+
+                      <View style={styles.featuredEyebrow}>
+                        <Gamepad2 size={moderateScale(14)} color="#fff" strokeWidth={2.2} />
+                        <Text style={styles.featuredEyebrowText}>Featured Launch</Text>
+                      </View>
+                      <View style={styles.featuredIconBubble}>
+                        <Text style={styles.featuredIconText}>
+                          {featuredGame.icon || GAME_CATEGORY_META[featuredGame.category].icon}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.featuredTitle}>{featuredGame.title}</Text>
+                    <Text style={styles.featuredCopy} numberOfLines={2}>
+                      {featuredGame.description}
+                    </Text>
+
+                    <View style={styles.featuredSkillRow}>
+                      {(featuredGame.skills || []).slice(0, 3).map(skill => (
+                        <View key={`${featuredGame.id}-${skill}`} style={styles.featuredSkillPill}>
+                          <Text style={styles.featuredSkillText}>{skill}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={styles.featuredFooter}>
+                      <Text style={styles.featuredMeta}>{GAME_CATEGORY_META[featuredGame.category].chipLabel}</Text>
+                      <View style={styles.featuredPlay}>
+                        <Play size={moderateScale(16)} color="#0F172A" fill="#0F172A" strokeWidth={0} />
+                        <Text style={styles.featuredPlayText}>Play now</Text>
+                      </View>
+                    </View>
+                  </View>
+                </Pressable>
+              )} */}
+
+              <View style={styles.sectionRow}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  {trimmedSearch ? 'Search Results' : 'Collections'}
+                </Text>
+                <Text style={[styles.sectionMeta, { color: colors.textSecondary }]}>
+                  {trimmedSearch
+                    ? `${filteredGames.length} found for "${trimmedSearch}"`
+                    : `${selectedCategory === 'All Games' ? 'All' : selectedCategory} • ${filteredGames.length} missions`}
+                </Text>
+              </View>
+
+              <CategoryTabs
+                selectedCategory={selectedCategory}
+                onCategoryPress={handleCategoryPress}
+                categoryCounts={categoryCounts}
+                categoryListRef={categoryListRef}
+                onScrollFailure={handleCategoryScrollFailure}
+                colors={colors}
+                idleStyle={chipIdleStyle}
+                textIdleStyle={chipTextIdleStyle}
+              />
+
+
+
+            </View>
+          </>
+        }
+        ListEmptyComponent={
+          <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: colors.primarySurface }]}>
+              <Search size={moderateScale(24)} color={colors.primaryDark} strokeWidth={2.2} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No games matched</Text>
+            <Text style={[styles.emptyCopy, { color: colors.textSecondary }]}>
+              Try another keyword or switch to a different collection.
+            </Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+export default function GamesScreen() {
+  return (
+    <ScreenErrorBoundary>
+      <GamesScreenContent />
+    </ScreenErrorBoundary>
+  );
+}
