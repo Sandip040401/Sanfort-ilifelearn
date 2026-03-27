@@ -2614,7 +2614,7 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun ensureTrackedNodeAnimation(trackedNode: TrackedImageNode) {
-    if (!ENABLE_MODEL_ANIMATION || performanceProfile.tier != PerformanceTier.HIGH) {
+    if (!ENABLE_MODEL_ANIMATION) {
       trackedNode.animator?.cancel()
       trackedNode.animator = null
       trackedNode.animationPaused = false
@@ -2658,22 +2658,13 @@ class ARScannerActivity : AppCompatActivity() {
   }
 
   private fun applyAnimationPerformanceRelief(nowMs: Long) {
-    // During relief windows, pause animations to prioritize tracking + texture processing smoothness.
+    // Keep skeletal animation always alive. Only optional float bob can be paused in relief windows.
     if (!ENABLE_MODEL_ANIMATION || trackedNodes.isEmpty()) {
       return
     }
     val pauseAnimations = nowMs < performanceReliefUntilMs
     trackedNodes.values.forEach { trackedNode ->
-      val animator = trackedNode.animator
-      if (animator != null) {
-        if (pauseAnimations && !trackedNode.animationPaused) {
-          runCatching { animator.pause() }
-          trackedNode.animationPaused = true
-        } else if (!pauseAnimations && trackedNode.animationPaused) {
-          runCatching { animator.resume() }
-          trackedNode.animationPaused = false
-        }
-      }
+      trackedNode.animationPaused = false
       val floatAnim = trackedNode.floatAnimator
       if (floatAnim != null) {
         if (pauseAnimations && !trackedNode.floatAnimatorPaused) {
@@ -5945,7 +5936,7 @@ class ARScannerActivity : AppCompatActivity() {
     private const val LOCAL_SKETCH_MAX_CHANGE_RATIO = 0.45f
     private const val GRID_CELL_CHANGE_DELTA = 34
     private const val TEXTURE_STATS_GRID = 8  // was 6 → finer grid for better color change detection
-    private const val ENABLE_MODEL_ANIMATION = false
+    private const val ENABLE_MODEL_ANIMATION = true
     private const val ENABLE_SOLID_TINT_FALLBACK = false
     private const val HIGH_FRAME_WORK_DURATION_MS = 12L
     private const val PERFORMANCE_RELIEF_WINDOW_MS = 1400L
