@@ -129,11 +129,11 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
         <Animated.View style={[StyleSheet.absoluteFill, styles.iconLayer, activeIconOpacity]}>
           {Icon && (
             <Icon
-              size={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
-              width={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
-              height={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              size={route.name === 'Games' ? 28 : ['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              width={route.name === 'Games' ? 28 : ['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              height={route.name === 'Games' ? 28 : ['AR', 'WebVR'].includes(route.name) ? 26 : 22}
               color={primaryColor}
-              strokeWidth={route.name === 'AR' ? 3.2 : 1.4}
+              strokeWidth={route.name === 'AR' ? 3.2 : route.name === 'Games' ? 1.8 : 1.4}
             />
           )}
         </Animated.View>
@@ -141,11 +141,11 @@ function TabItem({ route, isFocused, onPress, onLongPress, primaryColor, inactiv
         <Animated.View style={[StyleSheet.absoluteFill, styles.iconLayer, inactiveIconOpacity]}>
           {Icon && (
             <Icon
-              size={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
-              width={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
-              height={['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              size={route.name === 'Games' ? 28 : ['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              width={route.name === 'Games' ? 28 : ['AR', 'WebVR'].includes(route.name) ? 26 : 22}
+              height={route.name === 'Games' ? 28 : ['AR', 'WebVR'].includes(route.name) ? 26 : 22}
               color={inactiveColor}
-              strokeWidth={route.name === 'AR' ? 2.5 : 1.2}
+              strokeWidth={route.name === 'AR' ? 2.5 : route.name === 'Games' ? 1.4 : 1.2}
             />
           )}
         </Animated.View>
