@@ -98,12 +98,12 @@ export function buildARViewerHtml(modelFileUrl: string) {
   const groundMat = new THREE.ShadowMaterial({ opacity: 0.3 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -1.4;
+  ground.position.y = 0;
   ground.receiveShadow = true;
   scene.add(ground);
 
   const grid = new THREE.GridHelper(20, 20, 0x0ea5a4, 0x063047);
-  grid.position.y = -1.4;
+  grid.position.y = 0;
   grid.material.opacity = 0.3;
   grid.material.transparent = true;
   scene.add(grid);
@@ -190,7 +190,7 @@ export function buildARViewerHtml(modelFileUrl: string) {
 
           sceneGroup.position.x = -center.x * scale;
           sceneGroup.position.z = -center.z * scale;
-          sceneGroup.position.y = -1.4 - (box.min.y * scale);
+          sceneGroup.position.y = -(box.min.y * scale);
           
           sceneGroup.traverse((child) => {
             if (child.isMesh) {

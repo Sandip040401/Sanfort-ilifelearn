@@ -105,6 +105,7 @@ class ARActivity : AppCompatActivity() {
     private var paintedRenderableTemplate: ModelRenderable? = null
     private var realRenderableTemplate: ModelRenderable? = null
     private var renderableSwapInFlight = false
+    private var lastMaxDimension: Float = 0f
 
     // Ordering constants (matching ModelViewer.tsx)
     private val LANGUAGE_ORDER =
@@ -763,13 +764,53 @@ class ARActivity : AppCompatActivity() {
         runCatching { node.renderable = renderable }
         currentRenderable = renderable
         currentInstance = node.renderableInstance
+        
+        // Update allAnimations for the new instance
+        val instance = currentInstance
+        val count = instance?.animationCount ?: 0
+        if (count > 0) {
+            allAnimations = (0 until count).map { i ->
+                val anim = instance!!.getAnimation(i)
+                AnimationEntry(
+                        i,
+                        anim.name.takeIf { it.isNotBlank() } ?: "Anim ${i + 1}",
+                        anim.duration
+                )
+            }
+        }
+        
         cacheMaterialSnapshot(renderable, currentInstance)
+        reapplyTransform(node, renderable)
+        restartCurrentAnimation()
+    }
+
+    private fun reapplyTransform(node: TransformableNode, renderable: ModelRenderable) {
+        val collisionShape = renderable.collisionShape as? com.google.ar.sceneform.collision.Box
+        val size = collisionShape?.size ?: Vector3(1f, 1f, 1f)
+        val maxDim = maxOf(size.x, maxOf(size.y, size.z)).coerceAtLeast(0.01f)
+
+        // Adjust scale if units/size changed significantly between models
+        if (lastMaxDimension > 0f && abs(maxDim - lastMaxDimension) > 0.01f) {
+            val ratio = lastMaxDimension / maxDim
+            val oldScale = node.localScale
+            node.localScale = Vector3(oldScale.x * ratio, oldScale.y * ratio, oldScale.z * ratio)
+        }
+        lastMaxDimension = maxDim
+
+        // Re-apply grounding (Y offset) based on the new renderable size and current scale
+        val currentScale = node.localScale.x
+        val centerOffset = collisionShape?.center?.y ?: 0f
+        val yOffset = (size.y / 2f - centerOffset) * currentScale
+        
+        val currentPos = node.localPosition
+        node.localPosition = Vector3(currentPos.x, yOffset, currentPos.z)
     }
 
     private fun cacheMaterialSnapshot(renderable: ModelRenderable, instance: RenderableInstance?) {
         val instanceCount = instance?.materialsCount ?: 0
         val instanceMaterials = MutableList<Material?>(instanceCount) { null }
         for (i in 0 until instanceCount) {
+            // No need to copy again if we're just storing the original state
             instanceMaterials[i] = runCatching { instance?.getMaterial(i)?.makeCopy() }.getOrNull()
         }
 
@@ -796,6 +837,8 @@ class ARActivity : AppCompatActivity() {
             currentRenderable = templateCopy
             currentInstance = node.renderableInstance
             cacheMaterialSnapshot(templateCopy, currentInstance)
+            reapplyTransform(node, templateCopy)
+            restartCurrentAnimation()
             return
         }
 
@@ -806,20 +849,23 @@ class ARActivity : AppCompatActivity() {
         val instanceCount = instance?.materialsCount ?: 0
         for (i in 0 until instanceCount) {
             val original = snapshot.instanceMaterials.getOrNull(i) ?: continue
-            runCatching { instance?.setMaterial(i, original.makeCopy()) }
+            // We can reuse the original material if we don't plan to modify it further here
+            runCatching { instance?.setMaterial(i, original) }
         }
 
         val submeshCount = renderable.submeshCount
         for (i in 0 until submeshCount) {
             val original = snapshot.submeshMaterials.getOrNull(i) ?: continue
-            runCatching { renderable.setMaterial(i, original.makeCopy()) }
+            runCatching { renderable.setMaterial(i, original) }
         }
 
         snapshot.rootMaterial?.let { root ->
-            runCatching { renderable.material = root.makeCopy() }
+            runCatching { renderable.material = root }
         }
         runCatching { node.renderable = renderable }
         currentInstance = node.renderableInstance
+        reapplyTransform(node, renderable)
+        restartCurrentAnimation()
     }
 
     private fun applyFlatColorMaterials() {
@@ -830,23 +876,24 @@ class ARActivity : AppCompatActivity() {
         val solidTexture = flatColorTexture
         if (baseMaterial != null && solidTexture != null) {
             val applyWith = { targetMaterial: Material ->
+                val sharedMat = targetMaterial.makeCopy()
+                configureFlatMaterial(sharedMat, solidTexture)
+                
                 val submeshCount = renderable.submeshCount
                 for (i in 0 until submeshCount) {
-                    val mat = targetMaterial.makeCopy()
-                    configureFlatMaterial(mat, solidTexture)
-                    runCatching { renderable.setMaterial(i, mat) }
+                    runCatching { renderable.setMaterial(i, sharedMat) }
                 }
 
                 val instanceCount = instance?.materialsCount ?: 0
                 for (i in 0 until instanceCount) {
-                    val mat = targetMaterial.makeCopy()
-                    configureFlatMaterial(mat, solidTexture)
-                    runCatching { instance?.setMaterial(i, mat) }
+                    runCatching { instance?.setMaterial(i, sharedMat) }
                 }
 
-                runCatching { renderable.material = targetMaterial.makeCopy() }
+                runCatching { renderable.material = sharedMat }
                 runCatching { activeTransformNode?.renderable = renderable }
                 currentInstance = activeTransformNode?.renderableInstance ?: currentInstance
+                activeTransformNode?.let { reapplyTransform(it, renderable) }
+                restartCurrentAnimation()
             }
             applyWith(baseMaterial)
             return
@@ -1805,6 +1852,8 @@ class ARActivity : AppCompatActivity() {
 
                         if (!showRealTexture) applyFlatColorMaterials()
                         
+                        activeTransformNode?.let { reapplyTransform(it, renderable) }
+
                         val instance = activeTransformNode?.renderableInstance
                         val count = instance?.animationCount ?: 0
                         allAnimations = (0 until count).map { i ->
@@ -1891,12 +1940,14 @@ class ARActivity : AppCompatActivity() {
                     // "bouncing" through 0.0 scale and flipping
                     this.getScaleController()?.setElasticity(0.0f)
 
+                    lastMaxDimension = maxDimension
                     this.localScale = Vector3(baseScale, baseScale, baseScale)
                     this.localRotation = Quaternion.identity()
 
-                    // Shift the model down so its bottom face sits on the plane
-                    // instead of floating (anchor is at ground; model pivot is at center)
-                    val yOffset = (size.y * baseScale) / 2f
+                    // Shift the model so its bottom face sits on the plane
+                    // instead of floating (anchor is at ground)
+                    val centerOffset = (renderable.collisionShape as? com.google.ar.sceneform.collision.Box)?.center?.y ?: 0f
+                    val yOffset = (size.y / 2f - centerOffset) * baseScale
                     this.localPosition = Vector3(0f, yOffset, 0f)
                 }
 
@@ -1983,6 +2034,16 @@ class ARActivity : AppCompatActivity() {
             }
             activeAnimators.add(animator)
         }
+    }
+
+    private fun restartCurrentAnimation() {
+        val animEntry = if (modelType == "multiple-animation-execution") {
+            allAnimations.getOrNull(0) // Just to trigger the execution block
+        } else {
+            allAnimations.find { it.name == selectedAnimationName } ?: allAnimations.getOrNull(0)
+        }
+        
+        animEntry?.let { playAnimation(it) }
     }
 
     private fun sendAnimationList(names: List<String>) {
