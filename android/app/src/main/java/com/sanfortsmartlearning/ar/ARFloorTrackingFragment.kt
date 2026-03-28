@@ -17,7 +17,8 @@ class ARFloorTrackingFragment : ArFragment() {
                     updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                     planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
+                    // Disable instant placement to avoid pose corrections that look like model drift.
+                    instantPlacementMode = Config.InstantPlacementMode.DISABLED
                     depthMode =
                             if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                                 Config.DepthMode.AUTOMATIC

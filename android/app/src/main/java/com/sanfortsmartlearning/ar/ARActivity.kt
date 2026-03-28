@@ -34,9 +34,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.google.ar.core.HitResult
-import com.google.ar.core.DepthPoint
 import com.google.ar.core.Plane
-import com.google.ar.core.Point
 import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.AnchorNode
 import com.google.ar.sceneform.Node
@@ -1602,9 +1600,7 @@ class ARActivity : AppCompatActivity() {
             height: Float,
             samples: List<Pair<Float, Float>>,
     ): HitResult? {
-        var bestDepth: AutoPlacementCandidate? = null
         var bestPlane: AutoPlacementCandidate? = null
-        var bestPoint: AutoPlacementCandidate? = null
 
         for ((nx, ny) in samples) {
             val screenX = width * nx
@@ -1619,20 +1615,6 @@ class ARActivity : AppCompatActivity() {
                 val closePenalty = if (distance < 0.60f) (0.60f - distance) * 2.3f else 0f
 
                 when (val trackable = hit.trackable) {
-                    is DepthPoint -> {
-                        if (trackable.trackingState != TrackingState.TRACKING) {
-                            return@forEach
-                        }
-                        val upAlignment = getHitUpAlignment(hit)
-                        if (upAlignment < autoPlacementMinUpAlignment) {
-                            return@forEach
-                        }
-                        // Strong preference for depth hits: works better on plain tables.
-                        val score = distance + centerScore * 2.4f + closePenalty - 0.15f
-                        if (bestDepth == null || score < bestDepth!!.score) {
-                            bestDepth = AutoPlacementCandidate(hit, score)
-                        }
-                    }
                     is Plane -> {
                         if (trackable.trackingState != TrackingState.TRACKING ||
                                         !trackable.isPoseInPolygon(hit.hitPose)
@@ -1649,27 +1631,12 @@ class ARActivity : AppCompatActivity() {
                             bestPlane = AutoPlacementCandidate(hit, score)
                         }
                     }
-                    is Point -> {
-                        if (trackable.trackingState != TrackingState.TRACKING ||
-                                        trackable.orientationMode !=
-                                                Point.OrientationMode.ESTIMATED_SURFACE_NORMAL
-                        ) {
-                            return@forEach
-                        }
-                        val upAlignment = getHitUpAlignment(hit)
-                        if (upAlignment < autoPlacementMinUpAlignment) {
-                            return@forEach
-                        }
-                        val score = distance + centerScore * 2.8f + closePenalty + 0.9f
-                        if (bestPoint == null || score < bestPoint!!.score) {
-                            bestPoint = AutoPlacementCandidate(hit, score)
-                        }
-                    }
                 }
             }
         }
 
-        return bestDepth?.hitResult ?: bestPlane?.hitResult ?: bestPoint?.hitResult
+        // Stable placement only: reject depth/point anchors to prevent model drifting.
+        return bestPlane?.hitResult
     }
 
     private fun getHitUpAlignment(hitResult: HitResult): Float {
