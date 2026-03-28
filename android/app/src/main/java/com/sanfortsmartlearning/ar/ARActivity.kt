@@ -664,7 +664,7 @@ class ARActivity : AppCompatActivity() {
             }
         }
 
-        if (!hideColorMode) {
+        if (!hideColorMode && !originalModelPath.isNullOrBlank()) {
             val textureBtn = FrameLayout(this).apply {
                 val p = if (landscape) dp(8) else dp(10)
                 setPadding(p, p, p, p)
