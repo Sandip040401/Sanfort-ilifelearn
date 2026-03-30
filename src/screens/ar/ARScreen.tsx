@@ -1013,6 +1013,8 @@ function ARModelOptionsSheet({
   const { isLandscape } = useResponsiveLayout();
   const normalizedEnvironment = normalizeEnvName(environmentName || '').toLowerCase();
   const isMyBodyEnvironment = normalizedEnvironment === 'my body';
+  const isNumbersEnvironment = normalizedEnvironment === 'numbers';
+  const onlyShowPlaceButton = isMyBodyEnvironment || isNumbersEnvironment;
 
   const buttons = [
     {
@@ -1042,7 +1044,7 @@ function ARModelOptionsSheet({
       onPress: onScan,
       image: require('@/assets/images/ar_modes/Scan.webp'),
     },
-  ].filter(button => !isMyBodyEnvironment || button.id === 'place');
+  ].filter(button => !onlyShowPlaceButton || button.id === 'place');
 
   if (isLandscape) {
     // ── Landscape: compact horizontal 3-column layout ──
