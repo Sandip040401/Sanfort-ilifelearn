@@ -314,7 +314,8 @@ export default function ARViewerScreen() {
       const response = await ARService.getAllModels();
       return response.modals || [];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
+    refetchInterval: 30000,
   });
 
   const foldersQuery = useQuery({
@@ -323,14 +324,16 @@ export default function ARViewerScreen() {
       const response = await ARService.getFolders();
       return response.data?.data?.data || [];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
+    refetchInterval: 30000,
   });
 
   const audioQuery = useQuery({
     queryKey: ['ar-model-audios', modelId],
     queryFn: () => ARService.getModelAudios(modelId),
     enabled: !!modelId,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
+    refetchInterval: 30000,
   });
 
   const models = useMemo(() => (modelsQuery.data || []) as ARModel[], [modelsQuery.data]);

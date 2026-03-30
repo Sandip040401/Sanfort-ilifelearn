@@ -693,6 +693,7 @@ function ARScreenContent() {
   const [scanningModel, setScanningModel] = useState<ARModel | null>(null);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   const [selectedModelForOptions, setSelectedModelForOptions] = useState<ARModel | null>(null);
+  const [manualRefresh, setManualRefresh] = useState(false);
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const { isLandscape } = useResponsiveLayout();
   const snapPoints = useMemo(() => [isLandscape ? '92%' : '62%'], [isLandscape]);
@@ -721,7 +722,8 @@ function ARScreenContent() {
       const response = await ARService.getAllModels();
       return response.modals || [];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
+    refetchInterval: 30000,
   });
 
   const foldersQuery = useQuery({
@@ -730,7 +732,8 @@ function ARScreenContent() {
       const response = await ARService.getFolders();
       return response.data?.data?.data || [];
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
+    refetchInterval: 30000,
   });
 
   const models = useMemo(() => (modelsQuery.data || []) as ARModel[], [modelsQuery.data]);
@@ -758,7 +761,7 @@ function ARScreenContent() {
   }, [selectedEnvironmentId]);
 
   const loading = !screenReady || modelsQuery.isPending || foldersQuery.isPending;
-  const refreshing = modelsQuery.isRefetching || foldersQuery.isRefetching;
+  const refreshing = manualRefresh;
   const hasError = modelsQuery.isError || foldersQuery.isError;
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
   const bottomInset = tabBarHeight + verticalScale(12);
@@ -801,9 +804,10 @@ function ARScreenContent() {
     }
   }, [environments, selectedEnvironmentId]);
 
-  const refreshAll = () => {
-    modelsQuery.refetch();
-    foldersQuery.refetch();
+  const refreshAll = async () => {
+    setManualRefresh(true);
+    await Promise.all([modelsQuery.refetch(), foldersQuery.refetch()]);
+    setManualRefresh(false);
   };
 
   const handleOpenModel = (

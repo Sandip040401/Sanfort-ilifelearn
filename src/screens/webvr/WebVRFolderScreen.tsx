@@ -22,6 +22,7 @@ import {useTheme} from '@/theme';
 import {Skeleton} from '@/components/ui';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
+import {useQuery} from '@tanstack/react-query';
 import {WebVRService} from '@/services/webvr.service';
 import type {WebVRAsset} from '@/components/WebVRViewerModal';
 import type {WebVRStackParamList} from '@/types';
@@ -255,52 +256,43 @@ export default function WebVRFolderScreen() {
   const insets = useSafeAreaInsets();
   const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation();
+  const [manualRefresh, setManualRefresh] = useState(false);
+  const mountedRef = useRef(true);
   const route = useRoute<RouteParams>();
   const {folderId, folderName, gradientColors} = route.params;
   const {width: screenWidth} = useWindowDimensions();
   const isTablet = screenWidth >= 768;
   const contentMaxWidth = isTablet ? Math.min(screenWidth * 0.85, 720) : undefined;
 
-  const [topics, setTopics] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const topicsQuery = useQuery({
+    queryKey: ['webvr-topics', folderId],
+    queryFn: async () => {
+      const response = await WebVRService.getContent(folderId);
+      const data = response?.data?.data || response?.data || {};
+      return data.topics || [];
+    },
+    staleTime: 0,
+    refetchInterval: 30000,
+  });
+
+  const topics = useMemo(() => topicsQuery.data || [], [topicsQuery.data]);
+  const loading = topicsQuery.isPending;
+  const error = topicsQuery.isError;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<WebVRAsset | null>(null);
   const [warmupAsset, setWarmupAsset] = useState<WebVRAsset | null>(null);
   const [modalEverOpened, setModalEverOpened] = useState(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
 
   const [bg1, bg2] = gradientColors || ['#0EA5E9', '#38BDF8'];
   const gradientArr = useMemo(() => [bg1, bg2], [bg1, bg2]);
+  const refreshing = manualRefresh;
 
   const fetchTopics = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(false);
-      const response = await WebVRService.getContent(folderId);
-      if (!mountedRef.current) return;
-      const data = response?.data?.data || response?.data || {};
-      setTopics(data.topics || []);
-    } catch {
-      if (!mountedRef.current) return;
-      setError(true);
-    } finally {
-      if (!mountedRef.current) return;
-      setLoading(false);
-    }
-  }, [folderId]);
-
-  // Deferred fetch after navigation animation
-  useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
-      fetchTopics();
-    });
-    return () => task.cancel();
-  }, [fetchTopics]);
+    setManualRefresh(true);
+    await topicsQuery.refetch();
+    setManualRefresh(false);
+  }, [topicsQuery]);
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
@@ -330,7 +322,7 @@ export default function WebVRFolderScreen() {
   const filteredTopics = useMemo(() => {
     if (!searchQuery.trim()) return topics;
     const q = searchQuery.toLowerCase().trim();
-    return topics.filter(t =>
+    return topics.filter((t: any) =>
       t.title?.toLowerCase().includes(q) ||
       t.description?.toLowerCase().includes(q)
     );
@@ -448,7 +440,7 @@ export default function WebVRFolderScreen() {
             Check your connection and try again
           </Text>
           <TouchableOpacity
-            onPress={fetchTopics}
+            onPress={() => topicsQuery.refetch()}
             style={[styles.retryBtn, {backgroundColor: bg1}]}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
@@ -488,6 +480,8 @@ export default function WebVRFolderScreen() {
           windowSize={7}
           removeClippedSubviews={Platform.OS === 'android'}
           updateCellsBatchingPeriod={50}
+          onRefresh={fetchTopics}
+          refreshing={refreshing}
         />
       </>)}
 

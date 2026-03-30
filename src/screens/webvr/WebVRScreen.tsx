@@ -21,6 +21,7 @@ import {useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
 import {useTheme} from '@/theme';
 import {ScreenErrorBoundary, Skeleton} from '@/components/ui';
+import {useQuery} from '@tanstack/react-query';
 import {WebVRService} from '@/services/webvr.service';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {useTabBarScroll} from '@/navigation/TabBarScrollContext';
@@ -288,42 +289,29 @@ function WebVRContent() {
 
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
 
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const mountedRef = useRef(true);
+  const [manualRefresh, setManualRefresh] = useState(false);
 
-  useEffect(() => {
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  const fetchFolders = useCallback(async (isRefresh = false) => {
-    try {
-      if (isRefresh) setRefreshing(true);
-      else setLoading(true);
-      setError(false);
-
+  const foldersQuery = useQuery({
+    queryKey: ['webvr-folders'],
+    queryFn: async () => {
       const response = await WebVRService.getFolders();
-      if (!mountedRef.current) return;
-      setFolders(parseFolders(response));
-    } catch {
-      if (!mountedRef.current) return;
-      setError(true);
-    } finally {
-      if (!mountedRef.current) return;
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+      return parseFolders(response);
+    },
+    staleTime: 0,
+    refetchInterval: 30000,
+  });
 
-  // Deferred fetch after screen transition animation completes
-  useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
-      fetchFolders();
-    });
-    return () => task.cancel();
-  }, [fetchFolders]);
+  const folders = useMemo(() => foldersQuery.data || [], [foldersQuery.data]);
+  const loading = foldersQuery.isPending;
+  const error = foldersQuery.isError;
+  const refreshing = manualRefresh;
+
+  const handleRefresh = useCallback(async () => {
+    setManualRefresh(true);
+    await foldersQuery.refetch();
+    setManualRefresh(false);
+  }, [foldersQuery]);
+  const handleRetry = useCallback(() => foldersQuery.refetch(), [foldersQuery]);
 
   // Stable callbacks
   const handleFolderPress = useCallback(
@@ -337,8 +325,6 @@ function WebVRContent() {
     [navigation],
   );
 
-  const handleRefresh = useCallback(() => fetchFolders(true), [fetchFolders]);
-  const handleRetry = useCallback(() => fetchFolders(), [fetchFolders]);
 
   const { numColumns, cardWidth } = useWebVRLayout();
 
