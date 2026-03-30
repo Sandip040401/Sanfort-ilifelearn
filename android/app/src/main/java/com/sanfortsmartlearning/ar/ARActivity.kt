@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -40,6 +41,7 @@ import com.google.ar.sceneform.AnchorNode
 import com.google.ar.sceneform.Node
 import com.google.ar.sceneform.Scene
 import com.google.ar.sceneform.animation.ModelAnimator
+import com.google.ar.sceneform.collision.Box
 import com.google.ar.sceneform.math.Quaternion
 import com.google.ar.sceneform.math.Vector3
 import com.google.ar.sceneform.rendering.Color as SfColor
@@ -161,6 +163,13 @@ class ARActivity : AppCompatActivity() {
     private var safeAreaTop = 0
     private var autoPlacementListenerAttached = false
     private var lastAutoPlacementAttemptTimeMs = 0L
+    private var moveTouchListenerAttached = false
+    private var activeMovePointerId = MotionEvent.INVALID_POINTER_ID
+    private var isManualMoveArmed = false
+    private var isManualMoveInProgress = false
+    private var dragStartX = 0f
+    private var dragStartY = 0f
+    private var lastDragHitResult: HitResult? = null
 
     // Floor scanning overlay
     private var scanningOverlay: LinearLayout? = null
@@ -169,6 +178,9 @@ class ARActivity : AppCompatActivity() {
     private val minScanDisplayTimeMs = 1800L  // Show grid for at least 1.8s before auto-placing
     private val autoPlacementListener = Scene.OnUpdateListener {
         attemptAutoPlacementOnFloor()
+    }
+    private val modelMoveTouchListener = Scene.OnPeekTouchListener { _, motionEvent ->
+        handleManualMoveTouch(motionEvent)
     }
     private data class AutoPlacementCandidate(
             val hitResult: HitResult,
@@ -421,9 +433,11 @@ class ARActivity : AppCompatActivity() {
         buildScanningOverlay(decor)
 
         setupTapListener()
+        attachManualMoveTouchListener()
         preloadModelRenderable()
         rootLayout.post {
             attachAutoPlacementListener()
+            attachManualMoveTouchListener()
             // Make plane renderer visible so floor grid is clear during scanning
             try {
                 arFragment.arSceneView?.planeRenderer?.let { renderer ->
@@ -461,11 +475,15 @@ class ARActivity : AppCompatActivity() {
         if (preloadedRenderableTemplate == null && !isRenderablePreloadInFlight) {
             preloadModelRenderable()
         }
-        rootLayout.post { attachAutoPlacementListener() }
+        rootLayout.post {
+            attachAutoPlacementListener()
+            attachManualMoveTouchListener()
+        }
     }
 
     override fun onDestroy() {
         detachAutoPlacementListener()
+        detachManualMoveTouchListener()
         super.onDestroy()
         ARActivityHolder.activity = null
         preloadedRenderableTemplate = null
@@ -851,6 +869,7 @@ class ARActivity : AppCompatActivity() {
     private fun applyRenderableTemplate(node: TransformableNode, sourceRenderable: ModelRenderable) {
         val renderable = runCatching { sourceRenderable.makeCopy() }.getOrNull() ?: sourceRenderable
         runCatching { node.renderable = renderable }
+        ensureStableCollisionShape(node, renderable)
         currentRenderable = renderable
         currentInstance = node.renderableInstance
         
@@ -874,8 +893,8 @@ class ARActivity : AppCompatActivity() {
     }
 
     private fun reapplyTransform(node: TransformableNode, renderable: ModelRenderable) {
-        val collisionShape = renderable.collisionShape as? com.google.ar.sceneform.collision.Box
-        val size = collisionShape?.size ?: Vector3(1f, 1f, 1f)
+        val collisionShape = resolveRenderableCollisionBox(renderable)
+        val size = collisionShape.size
         val maxDim = maxOf(size.x, maxOf(size.y, size.z)).coerceAtLeast(0.01f)
 
         // Adjust scale if units/size changed significantly between models
@@ -893,6 +912,46 @@ class ARActivity : AppCompatActivity() {
         
         val currentPos = node.localPosition
         node.localPosition = Vector3(currentPos.x, yOffset, currentPos.z)
+    }
+
+    private fun resolveRenderableCollisionBox(renderable: ModelRenderable): Box {
+        val sourceBox = renderable.collisionShape as? Box
+        val rawSize = sourceBox?.size
+
+        val baseX = sanitizeCollisionAxis(rawSize?.x)
+        val baseY = sanitizeCollisionAxis(rawSize?.y)
+        val baseZ = sanitizeCollisionAxis(rawSize?.z)
+        val maxDim = maxOf(baseX, maxOf(baseY, baseZ)).coerceAtLeast(0.12f)
+        val minAxis = (maxDim * 0.12f).coerceAtLeast(0.08f)
+
+        val size = Vector3(
+                baseX.coerceAtLeast(minAxis),
+                baseY.coerceAtLeast(minAxis),
+                baseZ.coerceAtLeast(minAxis)
+        )
+        val center = sourceBox?.center?.let(::sanitizeCollisionCenter) ?: Vector3.zero()
+        return Box(size, center)
+    }
+
+    private fun sanitizeCollisionAxis(value: Float?): Float {
+        if (value == null || !value.isFinite()) {
+            return 1f
+        }
+        return abs(value).coerceAtLeast(0.001f)
+    }
+
+    private fun sanitizeCollisionCenter(center: Vector3): Vector3 {
+        return Vector3(
+                center.x.takeIf { it.isFinite() } ?: 0f,
+                center.y.takeIf { it.isFinite() } ?: 0f,
+                center.z.takeIf { it.isFinite() } ?: 0f
+        )
+    }
+
+    private fun ensureStableCollisionShape(node: Node, renderable: ModelRenderable): Box {
+        val collisionBox = resolveRenderableCollisionBox(renderable)
+        node.collisionShape = collisionBox.makeCopy()
+        return collisionBox
     }
 
     private fun cacheMaterialSnapshot(renderable: ModelRenderable, instance: RenderableInstance?) {
@@ -923,6 +982,7 @@ class ARActivity : AppCompatActivity() {
         val templateCopy = runCatching { paintedRenderableTemplate?.makeCopy() }.getOrNull()
         if (templateCopy != null) {
             runCatching { node.renderable = templateCopy }
+            ensureStableCollisionShape(node, templateCopy)
             currentRenderable = templateCopy
             currentInstance = node.renderableInstance
             cacheMaterialSnapshot(templateCopy, currentInstance)
@@ -952,6 +1012,7 @@ class ARActivity : AppCompatActivity() {
             runCatching { renderable.material = root }
         }
         runCatching { node.renderable = renderable }
+        ensureStableCollisionShape(node, renderable)
         currentInstance = node.renderableInstance
         reapplyTransform(node, renderable)
         restartCurrentAnimation()
@@ -980,6 +1041,7 @@ class ARActivity : AppCompatActivity() {
 
                 runCatching { renderable.material = sharedMat }
                 runCatching { activeTransformNode?.renderable = renderable }
+                activeTransformNode?.let { ensureStableCollisionShape(it, renderable) }
                 currentInstance = activeTransformNode?.renderableInstance ?: currentInstance
                 activeTransformNode?.let { reapplyTransform(it, renderable) }
                 restartCurrentAnimation()
@@ -1365,7 +1427,7 @@ class ARActivity : AppCompatActivity() {
                 inner.addView(createToggleRow("Gesture Mode", isGestureEnabled) { enabled ->
                     isGestureEnabled = enabled
                     activeTransformNode?.let { node ->
-                        node.translationController.isEnabled = enabled
+                        node.translationController.isEnabled = false
                         node.rotationController.isEnabled = enabled
                         node.scaleController.isEnabled = enabled
                     }
@@ -1625,6 +1687,150 @@ class ARActivity : AppCompatActivity() {
         }
         arFragment.arSceneView?.scene?.removeOnUpdateListener(autoPlacementListener)
         autoPlacementListenerAttached = false
+    }
+
+    private fun attachManualMoveTouchListener() {
+        if (moveTouchListenerAttached) {
+            return
+        }
+        val scene = arFragment.arSceneView?.scene ?: return
+        scene.addOnPeekTouchListener(modelMoveTouchListener)
+        moveTouchListenerAttached = true
+    }
+
+    private fun detachManualMoveTouchListener() {
+        if (!moveTouchListenerAttached || !::arFragment.isInitialized) {
+            return
+        }
+        arFragment.arSceneView?.scene?.removeOnPeekTouchListener(modelMoveTouchListener)
+        moveTouchListenerAttached = false
+        resetManualMoveState()
+    }
+
+    private fun manualMoveTouchSlopPx(): Float = resources.displayMetrics.density * 12f
+
+    private fun handleManualMoveTouch(motionEvent: MotionEvent): Boolean {
+        if (activeTransformNode == null || !isGestureEnabled || isModelLoading) {
+            if (motionEvent.actionMasked == MotionEvent.ACTION_UP ||
+                            motionEvent.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                resetManualMoveState()
+            }
+            return false
+        }
+
+        when (motionEvent.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                activeMovePointerId = motionEvent.getPointerId(0)
+                dragStartX = motionEvent.x
+                dragStartY = motionEvent.y
+                isManualMoveArmed = true
+                isManualMoveInProgress = false
+                lastDragHitResult = null
+            }
+
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                resetManualMoveState()
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (!isManualMoveArmed || motionEvent.pointerCount != 1) {
+                    return false
+                }
+                val pointerIndex = motionEvent.findPointerIndex(activeMovePointerId)
+                if (pointerIndex < 0) {
+                    resetManualMoveState()
+                    return false
+                }
+
+                val x = motionEvent.getX(pointerIndex)
+                val y = motionEvent.getY(pointerIndex)
+                val dragDistance = maxOf(abs(x - dragStartX), abs(y - dragStartY))
+                if (!isManualMoveInProgress && dragDistance < manualMoveTouchSlopPx()) {
+                    return false
+                }
+
+                val hitResult = findManualMoveHit(x, y) ?: return isManualMoveInProgress
+                isManualMoveInProgress = true
+                lastDragHitResult = hitResult
+                moveModelToHit(hitResult)
+                return true
+            }
+
+            MotionEvent.ACTION_POINTER_UP -> {
+                val pointerId = motionEvent.getPointerId(motionEvent.actionIndex)
+                if (pointerId == activeMovePointerId) {
+                    return finishManualMove()
+                }
+            }
+
+            MotionEvent.ACTION_UP -> {
+                return finishManualMove()
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                val handled = isManualMoveInProgress
+                resetManualMoveState()
+                return handled
+            }
+        }
+        return false
+    }
+
+    private fun finishManualMove(): Boolean {
+        val handled = isManualMoveInProgress
+        if (handled) {
+            lastDragHitResult?.let { reanchorModelToHit(it) }
+        }
+        resetManualMoveState()
+        return handled
+    }
+
+    private fun resetManualMoveState() {
+        activeMovePointerId = MotionEvent.INVALID_POINTER_ID
+        isManualMoveArmed = false
+        isManualMoveInProgress = false
+        lastDragHitResult = null
+    }
+
+    private fun findManualMoveHit(screenX: Float, screenY: Float): HitResult? {
+        val frame = arFragment.arSceneView?.arFrame ?: return null
+        frame.hitTest(screenX, screenY).forEach { hit ->
+            val plane = hit.trackable as? Plane ?: return@forEach
+            if (plane.trackingState != TrackingState.TRACKING || !plane.isPoseInPolygon(hit.hitPose)) {
+                return@forEach
+            }
+            if (plane.type != Plane.Type.HORIZONTAL_UPWARD_FACING) {
+                return@forEach
+            }
+            return hit
+        }
+        return null
+    }
+
+    private fun moveModelToHit(hitResult: HitResult) {
+        val node = activeTransformNode ?: return
+        val collisionShape = currentRenderable?.let { resolveRenderableCollisionBox(it) } ?: return
+        val currentScale = node.localScale.x
+        val yOffset = (collisionShape.size.y / 2f - collisionShape.center.y) * currentScale
+        val pose = hitResult.hitPose
+        node.worldPosition = Vector3(pose.tx(), pose.ty() + yOffset, pose.tz())
+    }
+
+    private fun reanchorModelToHit(hitResult: HitResult) {
+        val anchorNode = activeAnchorNode ?: return
+        val node = activeTransformNode ?: return
+        val newAnchor = runCatching { hitResult.createAnchor() }.getOrNull() ?: return
+        val collisionShape = currentRenderable?.let { resolveRenderableCollisionBox(it) }
+        val currentScale = node.localScale.x
+        val yOffset =
+                collisionShape?.let { (it.size.y / 2f - it.center.y) * currentScale }
+                        ?: node.localPosition.y
+
+        runCatching { anchorNode.anchor?.detach() }
+        anchorNode.anchor = newAnchor
+        node.localPosition = Vector3(0f, yOffset, 0f)
+        node.select()
     }
 
     private fun attemptAutoPlacementOnFloor() {
@@ -1958,6 +2164,7 @@ class ARActivity : AppCompatActivity() {
 
                         try {
                             activeTransformNode?.renderable = renderable
+                            activeTransformNode?.let { ensureStableCollisionShape(it, renderable) }
                         } catch (e: Exception) {
                             android.util.Log.e("ARActivity", "Failed to set part renderable", e)
                             android.widget.Toast.makeText(this@ARActivity, "Failed to load part", android.widget.Toast.LENGTH_SHORT).show()
@@ -2022,13 +2229,12 @@ class ARActivity : AppCompatActivity() {
         val node =
                 TransformableNode(arFragment.transformationSystem).apply {
                     this.renderable = renderable
+                    val collisionShape = ensureStableCollisionShape(this, renderable)
                     this.setParent(anchorNode)
                     this.select()
 
                     // Calculate the model's actual physical dimension
-                    val collisionShape =
-                            renderable.collisionShape as? com.google.ar.sceneform.collision.Box
-                    val size = collisionShape?.size ?: Vector3(1f, 1f, 1f)
+                    val size = collisionShape.size
                     val maxDimension = maxOf(size.x, maxOf(size.y, size.z)).coerceAtLeast(0.01f)
                     val targetLongestSideMeters = resolvePlacementTargetLongestSideMeters(hitResult)
                     val profileMultiplier = resolveModelScaleProfileMultiplier(maxDimension)
@@ -2057,6 +2263,9 @@ class ARActivity : AppCompatActivity() {
                     this.getScaleController()?.setSensitivity(0.35f)
                     // Small elasticity for natural feel at limits
                     this.getScaleController()?.setElasticity(0.05f)
+                    this.translationController.isEnabled = false
+                    this.rotationController.isEnabled = isGestureEnabled
+                    this.scaleController.isEnabled = isGestureEnabled
 
                     lastMaxDimension = maxDimension
                     this.localScale = Vector3(baseScale, baseScale, baseScale)
@@ -2064,7 +2273,7 @@ class ARActivity : AppCompatActivity() {
 
                     // Shift the model so its bottom face sits on the plane
                     // instead of floating (anchor is at ground)
-                    val centerOffset = (renderable.collisionShape as? com.google.ar.sceneform.collision.Box)?.center?.y ?: 0f
+                    val centerOffset = collisionShape.center.y
                     val yOffset = (size.y / 2f - centerOffset) * baseScale
                     this.localPosition = Vector3(0f, yOffset, 0f)
                 }
