@@ -585,64 +585,59 @@ class ARActivity : AppCompatActivity() {
 
     private fun buildScanningOverlay(parent: FrameLayout) {
         val overlay = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             tag = "scanning_overlay"
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#CC000000"))
+                cornerRadius = dp(25).toFloat()
+            }
+            setPadding(dp(20), dp(12), dp(20), dp(12))
 
             // Pulsing dot indicator
             val dot = View(this@ARActivity).apply {
-                val size = dp(14)
+                val size = dp(10)
                 layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                    bottomMargin = dp(12)
+                    rightMargin = dp(10)
                 }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(Color.parseColor("#00E5CC"))
                 }
-                // Pulse animation
-                alpha = 1f
                 val pulseAnim = android.animation.ObjectAnimator.ofFloat(this, "alpha", 1f, 0.3f, 1f)
                 pulseAnim.duration = 1200
                 pulseAnim.repeatCount = android.animation.ValueAnimator.INFINITE
                 pulseAnim.start()
-
-                val scaleXAnim = android.animation.ObjectAnimator.ofFloat(this, "scaleX", 1f, 1.4f, 1f)
-                scaleXAnim.duration = 1200
-                scaleXAnim.repeatCount = android.animation.ValueAnimator.INFINITE
-                scaleXAnim.start()
-
-                val scaleYAnim = android.animation.ObjectAnimator.ofFloat(this, "scaleY", 1f, 1.4f, 1f)
-                scaleYAnim.duration = 1200
-                scaleYAnim.repeatCount = android.animation.ValueAnimator.INFINITE
-                scaleYAnim.start()
             }
             scanningDot = dot
             addView(dot)
 
-            // Scanning instruction text
-            addView(TextView(this@ARActivity).apply {
-                text = "Scanning floor..."
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                setTypeface(null, Typeface.BOLD)
-                setShadowLayer(6f, 0f, 2f, Color.parseColor("#AA000000"))
-                gravity = Gravity.CENTER
-            })
+            // Text container
+            val textContainer = LinearLayout(this@ARActivity).apply {
+                orientation = LinearLayout.VERTICAL
 
-            addView(TextView(this@ARActivity).apply {
-                text = "Move your phone slowly around the floor"
-                setTextColor(Color.parseColor("#CCFFFFFF"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                gravity = Gravity.CENTER
-                val params = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-                params.topMargin = dp(6)
-                layoutParams = params
-                setShadowLayer(4f, 0f, 1f, Color.parseColor("#88000000"))
-            })
+                addView(TextView(this@ARActivity).apply {
+                    text = "Scanning floor..."
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    setTypeface(null, Typeface.BOLD)
+                })
+
+                addView(TextView(this@ARActivity).apply {
+                    text = "Move your phone slowly"
+                    setTextColor(Color.parseColor("#AAFFFFFF"))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    val params = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+                    params.topMargin = dp(2)
+                    layoutParams = params
+                })
+            }
+            addView(textContainer)
         }
 
-        val lp = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-            gravity = Gravity.CENTER
+        val lp = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            bottomMargin = dp(90)
         }
         parent.addView(overlay, lp)
         scanningOverlay = overlay
@@ -1667,20 +1662,24 @@ class ARActivity : AppCompatActivity() {
             // Update overlay text to show floor detected
             runOnUiThread {
                 scanningOverlay?.let { overlay ->
-                    val textViews = (0 until (overlay as ViewGroup).childCount)
-                        .map { overlay.getChildAt(it) }
-                        .filterIsInstance<TextView>()
-                    if (textViews.isNotEmpty()) {
-                        textViews[0].text = "Floor detected!"
-                        textViews[0].setTextColor(Color.parseColor("#00E5CC"))
+                    // Find the text container (second child after the dot)
+                    val textContainer = (overlay as ViewGroup).let { vg ->
+                        (0 until vg.childCount)
+                            .map { vg.getChildAt(it) }
+                            .filterIsInstance<LinearLayout>()
+                            .firstOrNull()
                     }
-                    if (textViews.size > 1) {
-                        textViews[1].text = "Placing 3D model..."
-                    }
-                    // Change dot color to green
-                    scanningDot?.background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#00E5CC"))
+                    textContainer?.let { tc ->
+                        val textViews = (0 until tc.childCount)
+                            .map { tc.getChildAt(it) }
+                            .filterIsInstance<TextView>()
+                        if (textViews.isNotEmpty()) {
+                            textViews[0].text = "Floor detected!"
+                            textViews[0].setTextColor(Color.parseColor("#00E5CC"))
+                        }
+                        if (textViews.size > 1) {
+                            textViews[1].text = "Placing 3D model..."
+                        }
                     }
                 }
             }
@@ -1882,7 +1881,15 @@ class ARActivity : AppCompatActivity() {
         preloadedRenderableTemplate?.let { cached ->
             val renderableForPlacement =
                     runCatching { cached.makeCopy() }.getOrNull() ?: cached
-            placeModel(hitResult, renderableForPlacement)
+            // makeCopy can succeed but the copy may fail when creating a Filament instance,
+            // so wrap placement in try-catch and fall back to a fresh model load.
+            try {
+                placeModel(hitResult, renderableForPlacement)
+            } catch (e: Exception) {
+                android.util.Log.w("ARActivity", "Copied renderable failed, loading fresh model", e)
+                preloadedRenderableTemplate = null
+                loadFreshModel(hitResult)
+            }
             return
         }
 
@@ -1890,6 +1897,10 @@ class ARActivity : AppCompatActivity() {
             return
         }
 
+        loadFreshModel(hitResult)
+    }
+
+    private fun loadFreshModel(hitResult: HitResult) {
         val path = modelPath ?: return
         isModelLoading = true
         ModelRenderable.builder()
@@ -1902,8 +1913,18 @@ class ARActivity : AppCompatActivity() {
                         isModelLoading = false
                         configureRenderableForScene(renderable)
                         preloadedRenderableTemplate =
-                                runCatching { renderable.makeCopy() }.getOrNull() ?: renderable
-                        placeModel(hitResult, renderable)
+                                runCatching { renderable.makeCopy() }.getOrNull()
+                        try {
+                            placeModel(hitResult, renderable)
+                        } catch (e: Exception) {
+                            android.util.Log.e("ARActivity", "Fresh renderable also failed", e)
+                            android.widget.Toast.makeText(
+                                            this,
+                                            "Failed to place 3D model",
+                                            android.widget.Toast.LENGTH_SHORT
+                                    )
+                                    .show()
+                        }
                     }
                 }
                 .exceptionally { error ->
@@ -1924,27 +1945,30 @@ class ARActivity : AppCompatActivity() {
     private fun reloadModelForPart() {
         val path = modelPath ?: return
         isModelLoading = true
+        android.util.Log.d("ARActivity", "reloadModelForPart: $path")
         ModelRenderable.builder()
-                .setSource(this, Uri.parse(path))
+                .setSource(this, buildModelUri(path))
                 .setIsFilamentGltf(true)
                 .setAsyncLoadEnabled(true)
                 .build()
                 .thenAccept { renderable ->
                     runOnUiThread {
                         isModelLoading = false
-                        renderable.isShadowCaster = true
-                        renderable.isShadowReceiver = true
-                        for (i in 0 until renderable.submeshCount) {
-                            runCatching { renderable.getMaterial(i).setFloat("reflectance", 0.4f) }
+                        configureRenderableForScene(renderable)
+
+                        try {
+                            activeTransformNode?.renderable = renderable
+                        } catch (e: Exception) {
+                            android.util.Log.e("ARActivity", "Failed to set part renderable", e)
+                            android.widget.Toast.makeText(this@ARActivity, "Failed to load part", android.widget.Toast.LENGTH_SHORT).show()
+                            return@runOnUiThread
                         }
-                        
-                        activeTransformNode?.renderable = renderable
                         currentRenderable = renderable
                         currentInstance = activeTransformNode?.renderableInstance
                         cacheMaterialSnapshot(renderable, currentInstance)
 
                         if (!showRealTexture) applyFlatColorMaterials()
-                        
+
                         activeTransformNode?.let { reapplyTransform(it, renderable) }
 
                         val instance = activeTransformNode?.renderableInstance
@@ -1967,6 +1991,7 @@ class ARActivity : AppCompatActivity() {
                 .exceptionally { error ->
                     runOnUiThread {
                         isModelLoading = false
+                        android.util.Log.e("ARActivity", "Part load failed: $path", error)
                         android.widget.Toast.makeText(this@ARActivity, "Failed to load part", android.widget.Toast.LENGTH_SHORT).show()
                     }
                     null
@@ -2028,11 +2053,10 @@ class ARActivity : AppCompatActivity() {
 
                     this.getScaleController()?.setMinScale(minScale)
                     this.getScaleController()?.setMaxScale(maxScale)
-                    // Lower sensitivity to avoid jumpy pinch behaviour.
-                    this.getScaleController()?.setSensitivity(0.08f)
-                    // Disable elasticity so it stops scaling immediately at the limit instead of
-                    // "bouncing" through 0.0 scale and flipping
-                    this.getScaleController()?.setElasticity(0.0f)
+                    // Moderate sensitivity for smooth pinch zoom.
+                    this.getScaleController()?.setSensitivity(0.35f)
+                    // Small elasticity for natural feel at limits
+                    this.getScaleController()?.setElasticity(0.05f)
 
                     lastMaxDimension = maxDimension
                     this.localScale = Vector3(baseScale, baseScale, baseScale)
