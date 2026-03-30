@@ -161,6 +161,12 @@ class ARActivity : AppCompatActivity() {
     private var safeAreaTop = 0
     private var autoPlacementListenerAttached = false
     private var lastAutoPlacementAttemptTimeMs = 0L
+
+    // Floor scanning overlay
+    private var scanningOverlay: LinearLayout? = null
+    private var scanningDot: View? = null
+    private var firstPlaneDetectedTimeMs = 0L
+    private val minScanDisplayTimeMs = 1800L  // Show grid for at least 1.8s before auto-placing
     private val autoPlacementListener = Scene.OnUpdateListener {
         attemptAutoPlacementOnFloor()
     }
@@ -412,9 +418,22 @@ class ARActivity : AppCompatActivity() {
         // Separate modals are now Dialog based, requested by user
         // buildDrawer(decor) -- Removed shared drawer
 
+        buildScanningOverlay(decor)
+
         setupTapListener()
         preloadModelRenderable()
-        rootLayout.post { attachAutoPlacementListener() }
+        rootLayout.post {
+            attachAutoPlacementListener()
+            // Make plane renderer visible so floor grid is clear during scanning
+            try {
+                arFragment.arSceneView?.planeRenderer?.let { renderer ->
+                    renderer.isVisible = true
+                    renderer.isEnabled = true
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         prepareAudio()
     }
 
@@ -562,6 +581,83 @@ class ARActivity : AppCompatActivity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         parent.addView(logo)
+    }
+
+    private fun buildScanningOverlay(parent: FrameLayout) {
+        val overlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            tag = "scanning_overlay"
+
+            // Pulsing dot indicator
+            val dot = View(this@ARActivity).apply {
+                val size = dp(14)
+                layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                    bottomMargin = dp(12)
+                }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#00E5CC"))
+                }
+                // Pulse animation
+                alpha = 1f
+                val pulseAnim = android.animation.ObjectAnimator.ofFloat(this, "alpha", 1f, 0.3f, 1f)
+                pulseAnim.duration = 1200
+                pulseAnim.repeatCount = android.animation.ValueAnimator.INFINITE
+                pulseAnim.start()
+
+                val scaleXAnim = android.animation.ObjectAnimator.ofFloat(this, "scaleX", 1f, 1.4f, 1f)
+                scaleXAnim.duration = 1200
+                scaleXAnim.repeatCount = android.animation.ValueAnimator.INFINITE
+                scaleXAnim.start()
+
+                val scaleYAnim = android.animation.ObjectAnimator.ofFloat(this, "scaleY", 1f, 1.4f, 1f)
+                scaleYAnim.duration = 1200
+                scaleYAnim.repeatCount = android.animation.ValueAnimator.INFINITE
+                scaleYAnim.start()
+            }
+            scanningDot = dot
+            addView(dot)
+
+            // Scanning instruction text
+            addView(TextView(this@ARActivity).apply {
+                text = "Scanning floor..."
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setTypeface(null, Typeface.BOLD)
+                setShadowLayer(6f, 0f, 2f, Color.parseColor("#AA000000"))
+                gravity = Gravity.CENTER
+            })
+
+            addView(TextView(this@ARActivity).apply {
+                text = "Move your phone slowly around the floor"
+                setTextColor(Color.parseColor("#CCFFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                gravity = Gravity.CENTER
+                val params = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+                params.topMargin = dp(6)
+                layoutParams = params
+                setShadowLayer(4f, 0f, 1f, Color.parseColor("#88000000"))
+            })
+        }
+
+        val lp = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER
+        }
+        parent.addView(overlay, lp)
+        scanningOverlay = overlay
+    }
+
+    private fun hideScanningOverlay() {
+        scanningOverlay?.let { overlay ->
+            overlay.animate()
+                .alpha(0f)
+                .setDuration(400)
+                .withEndAction {
+                    overlay.visibility = View.GONE
+                }
+                .start()
+        }
     }
 
     private fun refreshBottomBarContent() {
@@ -1565,6 +1661,36 @@ class ARActivity : AppCompatActivity() {
 
         val hitResult = findBestAutoPlacementHit(frame, width, height) ?: return
 
+        // Track when floor was first detected — show grid for a minimum time
+        if (firstPlaneDetectedTimeMs == 0L) {
+            firstPlaneDetectedTimeMs = now
+            // Update overlay text to show floor detected
+            runOnUiThread {
+                scanningOverlay?.let { overlay ->
+                    val textViews = (0 until (overlay as ViewGroup).childCount)
+                        .map { overlay.getChildAt(it) }
+                        .filterIsInstance<TextView>()
+                    if (textViews.isNotEmpty()) {
+                        textViews[0].text = "Floor detected!"
+                        textViews[0].setTextColor(Color.parseColor("#00E5CC"))
+                    }
+                    if (textViews.size > 1) {
+                        textViews[1].text = "Placing 3D model..."
+                    }
+                    // Change dot color to green
+                    scanningDot?.background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#00E5CC"))
+                    }
+                }
+            }
+        }
+
+        // Wait for minimum scan display time so user sees the grid
+        if (now - firstPlaneDetectedTimeMs < minScanDisplayTimeMs) {
+            return
+        }
+
         loadAndPlaceModel(hitResult)
     }
 
@@ -1849,7 +1975,8 @@ class ARActivity : AppCompatActivity() {
 
     private fun placeModel(hitResult: com.google.ar.core.HitResult, renderable: ModelRenderable) {
         detachAutoPlacementListener()
-        // Hide AR surface scanning dots once placed for a cleaner view
+        // Hide scanning overlay and AR surface scanning dots once placed for a cleaner view
+        hideScanningOverlay()
         arFragment.arSceneView.planeRenderer.setVisible(false)
         runCatching {
             arFragment.instructionsController.setEnabled(
