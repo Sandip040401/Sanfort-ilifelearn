@@ -85,6 +85,14 @@ data class AudioEntry(
         val audioUrl: String
 )
 
+data class PartEntry(
+    val id: String,
+    val name: String,
+    val url: String,
+    val audioUrl: String?,
+    val audios: List<AudioEntry> = emptyList()
+)
+
 data class AnimationEntry(
     val index: Int,
     val name: String,
@@ -150,7 +158,6 @@ class ARActivity : AppCompatActivity() {
 
     // Custom Types handling
     private var modelType: String? = null
-    private data class PartEntry(val id: String, val name: String, val url: String, val audioUrl: String?)
     private var modelParts: List<PartEntry> = emptyList()
     private var currentPartId: String? = null
     private val activeAnimators = mutableListOf<android.animation.ObjectAnimator>()
@@ -258,7 +265,26 @@ class ARActivity : AppCompatActivity() {
                 val list = mutableListOf<PartEntry>()
                 for(i in 0 until arr.length()){
                     val obj = arr.getJSONObject(i)
-                    list.add(PartEntry(obj.optString("id"), obj.optString("name"), obj.optString("url"), obj.optString("audioUrl")))
+                    val partAudios = mutableListOf<AudioEntry>()
+                    val audiosArr = obj.optJSONArray("audios")
+                    if (audiosArr != null) {
+                        for (j in 0 until audiosArr.length()) {
+                            val a = audiosArr.getJSONObject(j)
+                            partAudios.add(AudioEntry(
+                                gridfsId = a.optString("gridfsId"),
+                                language = a.optString("language"),
+                                level = a.optString("level"),
+                                audioUrl = a.optString("audioUrl")
+                            ))
+                        }
+                    }
+                    list.add(PartEntry(
+                        obj.optString("id"), 
+                        obj.optString("name"), 
+                        obj.optString("url"), 
+                        obj.optString("audioUrl"),
+                        partAudios
+                    ))
                 }
                 modelParts = list
                 if (modelParts.isNotEmpty()) {
@@ -1629,14 +1655,16 @@ class ARActivity : AppCompatActivity() {
             val scroll = ScrollView(this@ARActivity)
             val inner = LinearLayout(this@ARActivity).apply { orientation = LinearLayout.VERTICAL }
             
-            // Level
-            inner.addView(createLabel("Level"))
+            // Level - Only show if there is more than one option
             val levels = getDistinctOrderedLevels()
-            inner.addView(createSpinnerPill(levels, selectedLevel ?: "Select Level") {
-                selectedLevel = it
-                reloadAudio()
-                showAudioModal() // Refresh
-            })
+            if (levels.size > 1) {
+                inner.addView(createLabel("Level"))
+                inner.addView(createSpinnerPill(levels, selectedLevel ?: "Select Level") {
+                    selectedLevel = it
+                    reloadAudio()
+                    showAudioModal() // Refresh
+                })
+            }
 
             // Language
             inner.addView(createLabel("Language"))
@@ -1762,15 +1790,43 @@ class ARActivity : AppCompatActivity() {
             if (modelType == "multiple-glb" && modelParts.isNotEmpty()) {
                 inner.addView(createLabel("Change Part"))
                 val partNames = modelParts.map { it.name }
-                val currentPartName = modelParts.find { it.id == currentPartId }?.name ?: partNames[0]
-                inner.addView(createSpinnerPill(partNames, currentPartName) { name ->
+                val currentPart = modelParts.find { it.id == currentPartId } ?: modelParts[0]
+                inner.addView(createSpinnerPill(partNames, currentPart.name) { name ->
                     val selectedPart = modelParts.find { it.name == name }
                     if (selectedPart != null && selectedPart.id != currentPartId) {
                         currentPartId = selectedPart.id
                         modelPath = selectedPart.url
+                        
+                        // Default language/level to first available for new part
+                        if (selectedPart.audios.isNotEmpty()) {
+                            selectedLanguage = selectedPart.audios[0].language
+                            selectedLevel = selectedPart.audios[0].level
+                        }
+                        
                         reloadModelForPart()
+                        showAnimationModal() // Refresh
                     }
                 })
+
+                if (currentPart.audios.isNotEmpty()) {
+                    inner.addView(createLabel("Part Language"))
+                    val langs = currentPart.audios.map { it.language }.distinct().sorted()
+                    inner.addView(createSpinnerPill(langs, selectedLanguage ?: langs[0]) { lang ->
+                        selectedLanguage = lang
+                        val partLevels = currentPart.audios.filter { it.language == lang }.map { it.level }.distinct()
+                        selectedLevel = partLevels.firstOrNull() ?: ""
+                        reloadAudio()
+                        showAnimationModal()
+                    })
+
+                    inner.addView(createLabel("Part Level"))
+                    val levels = currentPart.audios.filter { it.language == selectedLanguage }.map { it.level }.distinct()
+                    inner.addView(createSpinnerPill(levels, selectedLevel ?: levels.firstOrNull() ?: "") { level ->
+                        selectedLevel = level
+                        reloadAudio()
+                        showAnimationModal()
+                    })
+                }
             } else {
                 inner.addView(createToggleRow("Gesture Mode", isGestureEnabled) { enabled ->
                     isGestureEnabled = enabled
@@ -1796,14 +1852,29 @@ class ARActivity : AppCompatActivity() {
 
                 val isPaused = activeAnimators.isNotEmpty() && activeAnimators.all { it.isPaused }
                 inner.addView(Button(this@ARActivity).apply {
-                    text = if (isPaused) "Resume Animation" else "Pause Animation"
+                    text = if (isPaused) "Resume Both" else "Pause Both"
                     background = roundedRectDrawable(if (isPaused) "#00C096" else "#FF4B4B", dp(12))
                     setTextColor(Color.WHITE)
                     setOnClickListener {
+                        val nextPaused = !isPaused
+                        // Sync Animation
                         activeAnimators.forEach {
-                            if (it.isPaused) it.resume() else it.pause()
+                            if (nextPaused) it.pause() else it.resume()
+                        }
+                        // Sync Audio
+                        if (nextPaused) {
+                            if (isAudioPlaying) {
+                                mediaPlayer?.pause()
+                                isAudioPlaying = false
+                            }
+                        } else {
+                            if (!isAudioPlaying) {
+                                mediaPlayer?.start()
+                                isAudioPlaying = true
+                            }
                         }
                         showAnimationModal()
+                        refreshBottomBarContent()
                     }
                 }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { 
                     setMargins(0, dp(16), 0, 0)
@@ -2537,7 +2608,8 @@ class ARActivity : AppCompatActivity() {
                             )
                         }
 
-                        if (allAnimations.isNotEmpty()) playAnimation(allAnimations[0])
+                        // Do not call playAnimation(allAnimations[0]) here.
+                        // It will be called by reloadAudio() once the audio is ready or determined to be null.
                         reloadAudio()
                         refreshBottomBarContent()
                         animationDialog?.dismiss()
@@ -2671,8 +2743,8 @@ class ARActivity : AppCompatActivity() {
         // Show capture button now that model is placed
         showCaptureButton()
 
-        // Auto play first animation and audio
-        if (allAnimations.isNotEmpty()) playAnimation(allAnimations[0])
+        // Do not call playAnimation(allAnimations[0]) here.
+        // It will be called by reloadAudio() once the audio is ready.
         reloadAudio()
         refreshBottomBarContent()
     }
@@ -2745,8 +2817,21 @@ class ARActivity : AppCompatActivity() {
 
     private fun currentAudioUrl(): String? {
         if (modelType == "multiple-glb") {
-            val part = modelParts.firstOrNull { it.id == currentPartId }
-            return part?.audioUrl?.ifBlank { null }
+            val part = modelParts.find { it.id == currentPartId } ?: return null
+            if (part.audios.isNotEmpty()) {
+                val lang = selectedLanguage
+                val level = selectedLevel
+                val entry = part.audios.firstOrNull { it.language == lang && it.level == level }
+                    ?: part.audios.firstOrNull { it.language == lang }
+                    ?: part.audios[0]
+                
+                // Sync internal selectors if this was a fallback
+                selectedLanguage = entry.language
+                selectedLevel = entry.level
+                
+                return entry.audioUrl.ifBlank { null }
+            }
+            return part.audioUrl?.ifBlank { null }
         }
         val lang = selectedLanguage ?: return null
         val level = selectedLevel ?: return null
@@ -2770,7 +2855,12 @@ class ARActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
 
-        url ?: return
+        // If there is no audio, just start the animation normally
+        if (url == null) {
+            restartCurrentAnimation()
+            return
+        }
+
         try {
             mediaPlayer =
                     MediaPlayer().apply {
@@ -2783,18 +2873,28 @@ class ARActivity : AppCompatActivity() {
                             if (activeAnchorNode != null) {
                                 it.start()
                                 isAudioPlaying = true
+                                // Sync: Restart animation from beginning exactly when audio starts
+                                restartCurrentAnimation()
+                                // Ensure animations are running and not paused
+                                activeAnimators.forEach { anim ->
+                                    if (anim.isPaused) anim.resume()
+                                }
                                 refreshBottomBarContent()
                             }
                         }
                         setOnCompletionListener {
                             if (!isLooping) {
                                 isAudioPlaying = false
+                                // Also pause animation if audio finishes (non-looping case)
+                                activeAnimators.forEach { it.pause() }
                                 refreshBottomBarContent()
                             }
                         }
                     }
         } catch (e: Exception) {
             e.printStackTrace()
+            // Fallback: start animation if audio fails
+            restartCurrentAnimation()
         }
     }
 
@@ -2806,9 +2906,13 @@ class ARActivity : AppCompatActivity() {
         if (isAudioPlaying) {
             player.pause()
             isAudioPlaying = false
+            // Sync: Pause animations
+            activeAnimators.forEach { it.pause() }
         } else {
             player.start()
             isAudioPlaying = true
+            // Sync: Resume animations
+            activeAnimators.forEach { it.resume() }
         }
         refreshBottomBarContent()
     }

@@ -402,11 +402,18 @@ export default function ARViewerScreen() {
           ? rawFile 
           : `${ARService.getModelFileUrl(getModelStableId(currentModel))}?part=${encodeURIComponent(rawFile.split('/').pop() || '')}`;
 
+        // Find part-specific audio in the new audios array
+        let audioUrl = p.url || p.audioUrl || (p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null);
+        if (!audioUrl && p.audios && Array.isArray(p.audios) && p.audios.length > 0) {
+          // Default to first available audio for the part if no selection is available
+          audioUrl = p.audios[0].url || (p.audios[0].gridfsId ? ARService.getAudioStreamUrlById(p.audios[0].gridfsId) : null);
+        }
+
         return [{
           id: p.partId || p._id,
           name: p.name,
           url: partUrl,
-          audioUrl: p.url || p.audioUrl || (p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null)
+          audioUrl: audioUrl
         }];
       });
       
@@ -459,9 +466,24 @@ export default function ARViewerScreen() {
   }, [assetSearchTerm, currentEnvModels]);
 
   useEffect(() => {
-    const list = ((currentModel as any)?.audios || (audioQuery.data as any)?.audios || []) as ARAudioTrack[];
+    const m = currentModel as any;
+    if (!m) {
+      setAvailableAudios([]);
+      return;
+    }
+
+    if (m.type === 'multiple-glb' && selectedPartId) {
+      const parts = m.parts || [];
+      const selectedPart = parts.find((p: any) => (p.partId || p._id) === selectedPartId);
+      if (selectedPart && Array.isArray(selectedPart.audios)) {
+        setAvailableAudios(selectedPart.audios);
+        return;
+      }
+    }
+
+    const list = (m.audios || (audioQuery.data as any)?.audios || []) as ARAudioTrack[];
     setAvailableAudios(list);
-  }, [currentModel, audioQuery.data]);
+  }, [currentModel, audioQuery.data, selectedPartId]);
 
   const uniqueLanguages = useMemo(
     () => sortLanguages([...new Set(availableAudios.map(audio => audio.language))]),
@@ -534,8 +556,8 @@ export default function ARViewerScreen() {
     const isSpecialType = (currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb';
     if (isSpecialType) {
       setAutoRotate(false);
-      setAudioPlaying(true);
-      setAudioSyncPending(true);
+      setAudioPlaying(isPlaying);
+      setAudioSyncPending(isPlaying);
       sendToWebView({ type: 'toggleRotate', value: false });
       if ((currentModel as any)?.type === 'multiple-animation-execution') {
         sendToWebView({ type: 'playAllAnimations', value: isPlaying });
@@ -619,7 +641,18 @@ export default function ARViewerScreen() {
     if (isMultiGlb && selectedPartId) {
       const parts = (currentModel as any)?.parts || [];
       const part = parts.find((p: any) => (p.partId || p._id) === selectedPartId);
-      const url = part?.url || part?.audioUrl || (part?.audio?.gridfsId ? ARService.getAudioStreamUrlById(part.audio.gridfsId) : null);
+      
+      let url = part?.url || part?.audioUrl || (part?.audio?.gridfsId ? ARService.getAudioStreamUrlById(part.audio.gridfsId) : null);
+      
+      // Handle the new nested audios array structure with language/level filtering
+      if (part?.audios && Array.isArray(part.audios) && part.audios.length > 0) {
+        const matchingAudio = part.audios.find((a: any) => 
+          a.language === selectedLanguage && a.level === selectedLevel
+        ) || part.audios[0];
+        
+        url = matchingAudio.url || (matchingAudio.gridfsId ? ARService.getAudioStreamUrlById(matchingAudio.gridfsId) : null);
+      }
+
       if (url) {
         return {
           uri: url,
@@ -810,6 +843,16 @@ export default function ARViewerScreen() {
     const next = !audioPlaying;
     setAudioPlaying(next);
     setAudioSyncPending(next);
+    
+    // Sync Animation: pause/resume animation when audio is toggled
+    const isSpecial = (currentModel as any)?.type === 'multiple-animation-execution' || (currentModel as any)?.type === 'multiple-glb';
+    if (isSpecial) {
+      setIsPlaying(next);
+      sendToWebView({ type: 'togglePlay', value: next });
+    } else {
+      // For standard models, if we pause audio, we pause animation too
+      sendToWebView({ type: 'togglePlay', value: next });
+    }
   };
 
   const handleLanguageChange = (language: string) => {
@@ -818,10 +861,38 @@ export default function ARViewerScreen() {
       [...new Set(availableAudios.filter(audio => audio.language === language).map(audio => audio.level))],
     );
     setSelectedLevel(nextLevels[0] || '');
+    
+    // Auto-restart and sync
+    setAudioPlaying(true);
+    setAudioSyncPending(true);
+    setIsPlaying(true);
+    
+    // Robust restart of animation in WebView
+    sendToWebView({ type: 'togglePlay', value: false });
+    setTimeout(() => {
+      sendToWebView({ type: 'togglePlay', value: true });
+      if ((currentModel as any)?.type === 'multiple-animation-execution') {
+        sendToWebView({ type: 'playAllAnimations' });
+      }
+    }, 150);
   };
 
   const handleLevelChange = (level: string) => {
     setSelectedLevel(level);
+    
+    // Auto-restart and sync
+    setAudioPlaying(true);
+    setAudioSyncPending(true);
+    setIsPlaying(true);
+
+    // Robust restart of animation in WebView
+    sendToWebView({ type: 'togglePlay', value: false });
+    setTimeout(() => {
+      sendToWebView({ type: 'togglePlay', value: true });
+      if ((currentModel as any)?.type === 'multiple-animation-execution') {
+        sendToWebView({ type: 'playAllAnimations' });
+      }
+    }, 150);
   };
 
   const handleExportedGLB = async (base64: string) => {
@@ -1291,6 +1362,11 @@ export default function ARViewerScreen() {
                         key={pid}
                         onPress={() => {
                           setSelectedPartId(pid);
+                          // Ensure audio playing restarts for new part
+                          if ((currentModel as any)?.type === 'multiple-glb') {
+                            setAudioPlaying(true);
+                            setAudioSyncPending(true);
+                          }
                         }}
                         style={[
                           styles.choiceChip,
@@ -1333,6 +1409,9 @@ export default function ARViewerScreen() {
                       const next = !isPlaying;
                       setIsPlaying(next);
                       sendToWebView({ type: 'togglePlay', value: next });
+                      // Sync audio
+                      setAudioPlaying(next);
+                      if (next) setAudioSyncPending(true);
                     }}
                   >
                     {isPlaying ? <Pause size={moderateScale(28)} color="#fff" /> : <Play size={moderateScale(28)} color="#fff" />}
@@ -1368,7 +1447,7 @@ export default function ARViewerScreen() {
                     </View>
                   </>
                 )}
-                {!!uniqueLevels.length && (
+                {uniqueLevels.length > 1 && (
                   <>
                     <Text style={styles.controlSubLabel}>Level</Text>
                     <View style={[styles.chipRow, styles.sheetRow]}>
