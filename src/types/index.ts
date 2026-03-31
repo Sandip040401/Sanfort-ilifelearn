@@ -89,10 +89,13 @@ export interface ARModel {
   file?:        string;
   fileUrl?:     string;
   previewImage?: string;
+  preview_image?: string; // New underscore field
   previewUrl?:  string;
+  thumbnail?:   string; // New field
   icon?:        string;
   level?:       string | number;
   difficulty?:  string | number;
+  folder?:      string; // New ID field
 }
 
 export interface ARFolder {
@@ -103,6 +106,7 @@ export interface ARFolder {
   name?:       string;
   description?: string;
   imgURL?:     string;
+  icon?:       string;
   gradient?:   string;
 }
 
@@ -114,6 +118,13 @@ export interface ARFoldersResponse {
   data: {
     data: ARFolder[];
   };
+  folders?: ARFolder[]; // Supporting direct folders property
+}
+
+export interface ARModalsUserResponse {
+  success: boolean;
+  categories: string[];
+  arModals: ARModel[];
 }
 
 export interface ARAudioTrack {
@@ -123,6 +134,7 @@ export interface ARAudioTrack {
   level:      string;
   filename?:  string;
   audioName?: string;
+  url?:       string;
 }
 
 export interface ARAudioResponse {

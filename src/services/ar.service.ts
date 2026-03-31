@@ -4,6 +4,7 @@ import type {
   ARAudioResponse,
   ARFoldersResponse,
   ARModelsResponse,
+  ARModalsUserResponse,
 } from '@/types';
 
 const AR_MODELS_BASE = `${API_BASE_URL}${Endpoints.arModels}`;
@@ -38,4 +39,17 @@ export const ARService = {
 
   getFolders: () =>
     apiClient.get<ARFoldersResponse>(Endpoints.arFolders),
+
+  getALLArModals: (gradeId?: string) =>
+    apiClient.get<ARModalsUserResponse>(Endpoints.arModalsUserAll, {params: {gradeId}}),
+
+  getUserArModalById: (id: string) =>
+    apiClient.get(Endpoints.arModalUserById(id)),
+
+  getAllArFolders: (gradeId?: string) =>
+    apiClient.get(Endpoints.arFoldersUserAll, {params: {gradeId}}),
 };
+
+export const getALLArModals = (gradeId?: string) => ARService.getALLArModals(gradeId);
+export const getUserArModalById = ARService.getUserArModalById;
+export const getAllArFolders = (gradeId?: string) => ARService.getAllArFolders(gradeId);

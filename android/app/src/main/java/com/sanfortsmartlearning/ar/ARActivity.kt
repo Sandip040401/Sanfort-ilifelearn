@@ -2750,9 +2750,12 @@ class ARActivity : AppCompatActivity() {
         }
         val lang = selectedLanguage ?: return null
         val level = selectedLevel ?: return null
-        val entry =
-                allAudios.firstOrNull { it.language == lang && it.level == level } ?: return null
-        return entry.audioUrl.ifBlank { null }
+        val entry = allAudios.firstOrNull { 
+            it.language.equals(lang, ignoreCase = true) && 
+            it.level.equals(level, ignoreCase = true) 
+        } ?: allAudios.firstOrNull { it.language.equals(lang, ignoreCase = true) }
+        
+        return entry?.audioUrl?.ifBlank { null }
     }
 
     private fun prepareAudio() {
@@ -2761,8 +2764,8 @@ class ARActivity : AppCompatActivity() {
 
     private fun reloadAudio() {
         val url = currentAudioUrl()
+        Log.d("ARActivity", "Reloading audio: $url")
 
-        // Stop existing player
         if (isAudioPlaying) {
             mediaPlayer?.pause()
             isAudioPlaying = false
@@ -2770,31 +2773,39 @@ class ARActivity : AppCompatActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
 
-        url ?: return
+        if (url.isNullOrBlank()) {
+            Log.d("ARActivity", "No valid URL for current selection")
+            return
+        }
+
         try {
-            mediaPlayer =
-                    MediaPlayer().apply {
-                        setDataSource(url)
-                        if (modelType == "multiple-animation-execution" || modelType == "multiple-glb") {
-                            isLooping = true
-                        }
-                        prepareAsync()
-                        setOnPreparedListener {
-                            if (activeAnchorNode != null) {
-                                it.start()
-                                isAudioPlaying = true
-                                refreshBottomBarContent()
-                            }
-                        }
-                        setOnCompletionListener {
-                            if (!isLooping) {
-                                isAudioPlaying = false
-                                refreshBottomBarContent()
-                            }
-                        }
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(url)
+                if (modelType == "multiple-animation-execution" || modelType == "multiple-glb") {
+                    isLooping = true
+                }
+                prepareAsync()
+                setOnPreparedListener { mp ->
+                    Log.d("ARActivity", "MediaPlayer prepared")
+                    if (activeAnchorNode != null) {
+                        mp.start()
+                        isAudioPlaying = true
+                        refreshBottomBarContent()
                     }
+                }
+                setOnErrorListener { _, what, extra ->
+                    Log.e("ARActivity", "MediaPlayer Error: $what, $extra")
+                    false
+                }
+                setOnCompletionListener {
+                    if (!isLooping) {
+                        isAudioPlaying = false
+                        refreshBottomBarContent()
+                    }
+                }
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("ARActivity", "Error setting up MediaPlayer", e)
         }
     }
 

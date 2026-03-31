@@ -53,6 +53,20 @@ export function buildARViewerHtml(modelFileUrl: string) {
   const paintIndicator = document.getElementById('paintIndicator');
   function postMsg(obj) { try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e) {} }
 
+  // Console Proxy for debugging
+  (function() {
+    var oldLog = console.log;
+    var oldError = console.error;
+    console.log = function() {
+      postMsg({ type: 'log', data: Array.from(arguments).map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') });
+      oldLog.apply(console, arguments);
+    };
+    console.error = function() {
+      postMsg({ type: 'log', data: 'ERROR: ' + Array.from(arguments).map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') });
+      oldError.apply(console, arguments);
+    };
+  })();
+
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(2, 2, 5);
@@ -171,6 +185,7 @@ export function buildARViewerHtml(modelFileUrl: string) {
 
   const loadedModelsMap = new Map();
   const loader = new GLTFLoader();
+  loader.setCrossOrigin('anonymous');
 
   Promise.all(modelsToLoad.map(modelInfo => {
     return new Promise((resolve, reject) => {
@@ -222,7 +237,9 @@ export function buildARViewerHtml(modelFileUrl: string) {
           }
         },
         (error) => {
-          reject(error);
+          console.error('Loader Error for ' + modelInfo.url, error.toString(), JSON.stringify(error));
+          const errString = error.message || String(error) || 'Unknown fetch error';
+          reject({ message: errString + ' (' + modelInfo.id + ')', url: modelInfo.url });
         }
       );
     });
@@ -235,7 +252,7 @@ export function buildARViewerHtml(modelFileUrl: string) {
       window.switchModelPart(modelsToLoad[0].id);
     }
   }).catch((error) => {
-    status.textContent = 'Failed to load model(s)';
+    status.textContent = 'Failed to load: ' + (error.url ? error.url.split('/').pop() : 'model');
     postMsg({ type: 'error', message: error.message || 'Load error' });
   });
 

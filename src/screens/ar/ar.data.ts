@@ -300,7 +300,7 @@ function createEnvironmentView(
     folderName: folder?.folderName || canonicalName,
     createdAt: folder?.createdAt,
     updatedAt: folder?.updatedAt,
-    imgURL: folder?.imgURL,
+    imgURL: folder?.imgURL || folder?.icon,
     gradient: folder?.gradient,
     ...folder,
     name: overrides?.name || meta?.name || canonicalName,
@@ -375,6 +375,10 @@ export function doesModelMatchEnvironment(model: ARModel, environment: AREnviron
     return false;
   }
   if (environment.matchMode === 'all') {
+    return true;
+  }
+
+  if (model.folder && model.folder === environment._id) {
     return true;
   }
 

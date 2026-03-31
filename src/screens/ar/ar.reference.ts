@@ -51,7 +51,17 @@ export function normalizeReferenceForDisplay(value: string) {
 
 export function getReferenceImageSource(model?: ARModel | null) {
   if (!model) return null;
-  const previewValue = (model as any).preview_image || model.previewImage;
+  const previewValue = 
+    (model as any).thumbnail || 
+    (model as any).preview_image || 
+    model.previewImage || 
+    (model as any).preview_url ||
+    (model as any).thumbnailUrl;
+
+  if (previewValue && String(previewValue).startsWith('http')) {
+    return String(previewValue);
+  }
+
   if (previewValue) {
     return resolvePreviewReference(model, String(previewValue));
   }

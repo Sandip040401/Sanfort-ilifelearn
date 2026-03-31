@@ -42,7 +42,8 @@ import ARIcon from '@/components/icons/ARIcon';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
 import ARInstructionModal from '@/components/ARInstructionModal';
 import { useScreenReady } from '@/hooks/useScreenReady';
-import { ARService } from '@/services';
+import { ARService, BooksService } from '@/services';
+import { useAuth } from '@/store';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
 import type {
@@ -152,18 +153,18 @@ const ENVIRONMENTS: ReadonlyArray<{
   description: string;
   image: any;
 }> = [
-  { name: 'Phonics Fun', gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words', image: require('@/assets/images/environments/ar/phonics.webp') },
-  { name: 'Numbers', gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers', image: require('@/assets/images/environments/ar/numbers.webp') },
-  { name: 'My Body', gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts', image: require('@/assets/images/environments/ar/my-body.webp') },
-  { name: 'Underwater World', gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths', image: require('@/assets/images/environments/ar/underwater.webp') },
-  { name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats', image: require('@/assets/images/environments/ar/fruits-vegetables.webp') },
-  { name: 'Wild Animals', gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild', image: require('@/assets/images/environments/ar/wild-animals.webp') },
-  { name: 'Amphibians', gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more', image: require('@/assets/images/environments/ar/amphibians.webp') },
-  { name: 'Farm Animals', gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm', image: require('@/assets/images/environments/ar/farm-animals.webp') },
-  { name: 'Transportation', gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!', image: require('@/assets/images/environments/ar/transportation.webp') },
-  { name: 'Space Adventure', gradient: ['#4F46E5', '#818CF8'], description: 'Planets, stars, and astronauts', image: require('@/assets/images/environments/ar/space.webp') },
-  { name: 'Extinct Animals', gradient: ['#94A3B8', '#CBD5E1'], description: 'Discover animals from the past', image: require('@/assets/images/environments/ar/extinct-animals.webp') },
-];
+    { name: 'Phonics Fun', gradient: ['#FF6B6B', '#FF8E8E'], description: 'Learn sounds and letters with playful words', image: require('@/assets/images/environments/ar/phonics.webp') },
+    { name: 'Numbers', gradient: ['#4ECDC4', '#6CD9D6'], description: 'Count and play with numbers', image: require('@/assets/images/environments/ar/numbers.webp') },
+    { name: 'My Body', gradient: ['#E8A2AF', '#F0B8C7'], description: 'Discover your amazing body parts', image: require('@/assets/images/environments/ar/my-body.webp') },
+    { name: 'Underwater World', gradient: ['#3A8DFF', '#45B7D1'], description: 'Dive into the ocean depths', image: require('@/assets/images/environments/ar/underwater.webp') },
+    { name: 'Fruits & Vegetables', gradient: ['#F97316', '#FBBF24'], description: 'Healthy and colorful treats', image: require('@/assets/images/environments/ar/fruits-vegetables.webp') },
+    { name: 'Wild Animals', gradient: ['#84CC16', '#BEF264'], description: 'Meet amazing creatures of the wild', image: require('@/assets/images/environments/ar/wild-animals.webp') },
+    { name: 'Amphibians', gradient: ['#10B981', '#6EE7B7'], description: 'Learn about frogs, toads, and more', image: require('@/assets/images/environments/ar/amphibians.webp') },
+    { name: 'Farm Animals', gradient: ['#F59E0B', '#FCD34D'], description: 'Discover life on the farm', image: require('@/assets/images/environments/ar/farm-animals.webp') },
+    { name: 'Transportation', gradient: ['#6366F1', '#A5B4FC'], description: 'Cars, planes, and everything that moves!', image: require('@/assets/images/environments/ar/transportation.webp') },
+    { name: 'Space Adventure', gradient: ['#4F46E5', '#818CF8'], description: 'Planets, stars, and astronauts', image: require('@/assets/images/environments/ar/space.webp') },
+    { name: 'Extinct Animals', gradient: ['#94A3B8', '#CBD5E1'], description: 'Discover animals from the past', image: require('@/assets/images/environments/ar/extinct-animals.webp') },
+  ];
 
 const ENV_MAP = new Map(ENVIRONMENTS.map(e => [e.name, e]));
 
@@ -193,19 +194,18 @@ const HEADER_RAINBOW_COLORS = ['#FF6B6B', '#FF8557', '#FF9F43', '#87A274', '#3DA
 const HEADER_MODELS_COLORS = ['#DA70D6', '#A35EEA', '#6C4CFF', '#5B6EEC', '#4A90D9'] as const;
 
 function getPreviewUri(model: ARModel) {
-  const modelId = model._id || model.id || (model as any).id;
-
-  // 1. Prioritize Thumbnail route from API
-  if (modelId) {
-    return ARService.getThumbnailImageUrl(String(modelId));
+  // 1. Prioritize direct URLs from backend response if available
+  const directThumbnail = model.thumbnail || (model as any).thumbnail_url || model.preview_image;
+  if (directThumbnail) {
+    const raw = String(directThumbnail);
+    if (raw.startsWith('http')) return raw;
   }
 
-  // 2. Fallbacks to model data properties
-  const thumbnail = (model as any).thumbnail || (model as any).thumbnail_url || (model as any).preview_image;
-  if (thumbnail) {
-    const raw = String(thumbnail);
-    if (raw.startsWith('http')) return raw;
-    return normalizeReferenceSource(raw);
+  const modelId = model._id || model.id || (model as any).id;
+
+  // 2. Generate Thumbnail route from API as fallback
+  if (modelId) {
+    return ARService.getThumbnailImageUrl(String(modelId));
   }
 
   if (model.previewUrl) return model.previewUrl;
@@ -380,6 +380,9 @@ function EnvironmentGallery({
     const envMatch = ENV_MAP.get(normalizedName);
     const cardColors = getEnvironmentColors(item);
 
+    const remoteImageUri = item.imgURL;
+    const imageSource = remoteImageUri ? { uri: remoteImageUri } : envMatch?.image;
+
     return (
       <Animated.View
         entering={getGalleryCardEntering(index)}
@@ -389,9 +392,9 @@ function EnvironmentGallery({
           onPress={() => onEnvironmentSelect(item)}
           style={[styles.worldCardWrap, { width: cardWidth }]}>
           <View style={styles.worldCard}>
-            {envMatch?.image && (
+            {imageSource && (
               <Image
-                source={envMatch.image}
+                source={imageSource}
                 style={styles.worldCardImage}
                 resizeMode="cover"
               />
@@ -461,9 +464,9 @@ function ModelPreviewImage({
   fallbackIcon,
   style,
   resizeMode = 'contain'
-}: { 
-  thumbnailUri?: string | null; 
-  previewUri?: string | null; 
+}: {
+  thumbnailUri?: string | null;
+  previewUri?: string | null;
   fallbackIcon: string;
   style: any;
   resizeMode?: 'contain' | 'cover' | 'stretch' | 'center';
@@ -563,21 +566,21 @@ function ModelGallery({
       </View>
 
       <View style={[styles.searchContainer, searchContainerThemeStyle]}>
-            <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
-            <TextInput
-              style={[styles.searchInput, { color: colors.text }]}
-              placeholder="Search models..."
-              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
-              value={searchQuery}
-              onChangeText={onSearchChange}
-              autoCorrect={false}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => onSearchChange('')}>
-                <X size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
-              </TouchableOpacity>
-            )}
-          </View>
+        <Search size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Search models..."
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'}
+          value={searchQuery}
+          onChangeText={onSearchChange}
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => onSearchChange('')}>
+            <X size={moderateScale(18)} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {!models.length ? (
         <View style={styles.emptyState}>
@@ -594,14 +597,14 @@ function ModelGallery({
           </TouchableOpacity>
         </View>
       ) : (
-      
-          
-          <View style={styles.modelsGridHeader}>
-            <Text style={[styles.modelsCountText, { color: colors.textSecondary }]}>
-              <Text style={[styles.modelsCountStrong, { color: colors.text }]}>{models.length}</Text> models available
-            </Text>
-          </View>
-     
+
+
+        <View style={styles.modelsGridHeader}>
+          <Text style={[styles.modelsCountText, { color: colors.textSecondary }]}>
+            <Text style={[styles.modelsCountStrong, { color: colors.text }]}>{models.length}</Text> models available
+          </Text>
+        </View>
+
       )}
     </>
   ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchContainerThemeStyle, searchQuery, onSearchChange]);
@@ -682,6 +685,7 @@ function ModelGallery({
 
 function ARScreenContent() {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<ARNavigationProp>();
   const screenReady = useScreenReady();
@@ -716,22 +720,60 @@ function ARScreenContent() {
     }, []),
   );
 
+
+
+  const [userGradeId, setUserGradeId] = useState<string | undefined>();
+  const [gradeResuming, setGradeResuming] = useState(true);
+
+  // Use the same grade-matching logic as in BooksScreen
+  useEffect(() => {
+    const fetchGradeId = async () => {
+      try {
+        const response = await BooksService.getAllGrades();
+        const resData = response.data as any;
+        if (resData.success) {
+          const targetGradeName = (user?.gradeName || 'SAN Toddler').trim().toLowerCase();
+          
+          // Match by name similar to BooksScreen logic
+          const match = resData.grades.find((g: any) => {
+            const baseName = g.category.split(' (')[0].trim().toLowerCase();
+            return baseName === targetGradeName;
+          });
+
+          if (match) {
+            setUserGradeId(match._id);
+            console.log('Detected User gradeId:', match._id, 'for', targetGradeName);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to resolve gradeId for AR:', err);
+      } finally {
+        setGradeResuming(false);
+      }
+    };
+    fetchGradeId();
+  }, [user?.gradeName]);
+
   const modelsQuery = useQuery({
-    queryKey: ['ar-models'],
+    queryKey: ['ar-models', userGradeId],
     queryFn: async () => {
-      const response = await ARService.getAllModels();
-      return response.modals || [];
+      const response = await ARService.getALLArModals(userGradeId);
+      return response.data?.arModals || [];
     },
+    enabled: !!userGradeId || !gradeResuming,
     staleTime: 0,
     refetchInterval: 30000,
   });
 
+
   const foldersQuery = useQuery({
-    queryKey: ['ar-folders'],
+    queryKey: ['ar-folders', userGradeId],
     queryFn: async () => {
-      const response = await ARService.getFolders();
-      return response.data?.data?.data || [];
+      const response = await ARService.getAllArFolders(userGradeId);
+      console.log('API Response for All Folders:', response.data);
+      return response.data?.folders || [];
     },
+    enabled: !!userGradeId || !gradeResuming,
     staleTime: 0,
     refetchInterval: 30000,
   });
@@ -872,20 +914,33 @@ function ARScreenContent() {
         return;
       }
 
-      const modelFileUrl = ARService.getModelFileUrl(modelId);
-      const referenceImageUrl =
-        getReferenceImageSource(model) || ARService.getPreviewImageUrl(modelId);
+      // Prioritize direct file URL
+      const modelFileUrl = (model as any).file && String((model as any).file).startsWith('http')
+        ? (model as any).file
+        : ARService.getModelFileUrl(modelId);
 
-      // Fetch audios for this model
+      // Prioritize direct preview/thumbnail
+      const referenceImageUrl = (model as any).preview_image || (model as any).thumbnail || getReferenceImageSource(model) || ARService.getPreviewImageUrl(modelId);
+
+      // Fetch audios for this model or use pre-loaded ones (prioritizing direct URLs)
       let audiosJson: string | undefined;
       try {
-        const audiosResponse = await ARService.getModelAudios(modelId);
-        if (audiosResponse.audios?.length) {
-          const audiosWithUrls = audiosResponse.audios.map(a => ({
+        const modelAudios = (model as any).audios || [];
+        if (modelAudios.length > 0) {
+          const mapped = modelAudios.map((a: any) => ({
             ...a,
-            audioUrl: ARService.getAudioStreamUrlById(a.gridfsId),
+            audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null)
           }));
-          audiosJson = JSON.stringify(audiosWithUrls);
+          audiosJson = JSON.stringify(mapped);
+        } else {
+          const audiosResponse = await ARService.getModelAudios(modelId);
+          if (audiosResponse.audios?.length) {
+            const audiosWithUrls = audiosResponse.audios.map(a => ({
+              ...a,
+              audioUrl: a.url || ARService.getAudioStreamUrlById(a.gridfsId),
+            }));
+            audiosJson = JSON.stringify(audiosWithUrls);
+          }
         }
       } catch {
         // Audio fetch failed — scanner will work without audio
@@ -1382,11 +1437,11 @@ const styles = StyleSheet.create({
     ...(isAndroid
       ? androidCardBorder
       : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: verticalScale(4) },
-          shadowOpacity: 0.15,
-          shadowRadius: moderateScale(8),
-        }),
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: verticalScale(4) },
+        shadowOpacity: 0.15,
+        shadowRadius: moderateScale(8),
+      }),
   },
   worldCard: {
     height: verticalScale(150),
@@ -1466,11 +1521,11 @@ const styles = StyleSheet.create({
     ...(isAndroid
       ? androidCardBorder
       : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: verticalScale(4) },
-          shadowOpacity: 0.2,
-          shadowRadius: moderateScale(12),
-        }),
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: verticalScale(4) },
+        shadowOpacity: 0.2,
+        shadowRadius: moderateScale(12),
+      }),
   },
   modelsHero: {
     borderRadius: moderateScale(20),
@@ -1553,11 +1608,11 @@ const styles = StyleSheet.create({
     ...(isAndroid
       ? androidCardBorder
       : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: verticalScale(3) },
-          shadowOpacity: 0.15,
-          shadowRadius: moderateScale(8),
-        }),
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: verticalScale(3) },
+        shadowOpacity: 0.15,
+        shadowRadius: moderateScale(8),
+      }),
   },
   modelGradient: {
     padding: moderateScale(8),

@@ -58,7 +58,9 @@ import {
   getModelStableId,
   sortLanguages,
   sortLevels,
+  mergeEnvironmentFolders,
 } from './ar.data';
+import { BooksService } from '@/services';
 import { buildARViewerHtml, buildColorSheetHtml } from './arViewerHtml';
 import { openModelInAR, openModelInARFromBase64 } from './nativeAR';
 import {
@@ -262,6 +264,28 @@ export default function ARViewerScreen() {
   const [audioSyncPending, setAudioSyncPending] = useState(false);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const [userGradeId, setUserGradeId] = useState<string | undefined>();
+  const [gradeResuming, setGradeResuming] = useState(true);
+
+  // Sync grade ID for the side-menu and dynamic loading
+  useEffect(() => {
+    const fetchGradeId = async () => {
+      try {
+        const response = await BooksService.getAllGrades();
+        const resData = response.data as any;
+        if (resData.success) {
+          const targetGradeName = (user?.gradeName || 'SAN Toddler').trim().toLowerCase();
+          const match = resData.grades.find((g: any) => g.category.split(' (')[0].trim().toLowerCase() === targetGradeName);
+          if (match) setUserGradeId(match._id);
+        }
+      } catch (err) {
+        console.error('Failed to resolve gradeId in Viewer:', err);
+      } finally {
+        setGradeResuming(false);
+      }
+    };
+    fetchGradeId();
+  }, [user?.gradeName]);
 
   // ── Responsive: tablet + landscape detection ──
   const { width: winW, height: winH } = useWindowDimensions();
@@ -311,13 +335,25 @@ export default function ARViewerScreen() {
   }, [audioPlaying]);
 
   const modelsQuery = useQuery({
-    queryKey: ['ar-models'],
+    queryKey: ['ar-models', userGradeId],
     queryFn: async () => {
-      const response = await ARService.getAllModels();
-      return response.modals || [];
+      const response = await ARService.getALLArModals(userGradeId);
+      return response.data?.arModals || [];
     },
+    enabled: !!userGradeId || !gradeResuming,
     staleTime: 0,
     refetchInterval: 30000,
+  });
+
+  const modelDetailQuery = useQuery({
+    queryKey: ['ar-model-detail', modelId],
+    queryFn: async () => {
+      const response = await ARService.getUserArModalById(modelId);
+      console.log('response\n', JSON.stringify(response.data, null, 2));
+      return response.data?.modal || response.data?.arModal || (response.data as any);
+    },
+    enabled: !!modelId,
+    staleTime: 0,
   });
 
   const foldersQuery = useQuery({
@@ -344,34 +380,46 @@ export default function ARViewerScreen() {
     [foldersQuery.data, models],
   );
 
-  const currentModel = useMemo(
-    () => models.find(model => getModelStableId(model) === modelId) || null,
-    [modelId, models],
-  );
+  const currentModel = useMemo(() => {
+    const detailModel = modelDetailQuery.data;
+    if (detailModel && getModelStableId(detailModel) === modelId) {
+      return detailModel;
+    }
+    return models.find(model => getModelStableId(model) === modelId) || null;
+  }, [modelId, models, modelDetailQuery.data]);
 
   const modelUrl = useMemo(() => {
     if (!currentModel) return '';
     const m = currentModel as any;
+
     if (m.type === 'multiple-glb' && m.parts && m.parts.length > 0) {
-      const baseUrl = ARService.getModelFileUrl(getModelStableId(currentModel));
       const partsConfig = m.parts.flatMap((p: any) => {
         const rawFile = typeof p?.file === 'string' ? p.file : '';
-        const filename = rawFile.split('/').pop();
-        if (!filename) {
-          return [];
-        }
+        if (!rawFile) return [];
+        
+        // If part file is an absolute URL, use it directly
+        const partUrl = rawFile.startsWith('http') 
+          ? rawFile 
+          : `${ARService.getModelFileUrl(getModelStableId(currentModel))}?part=${encodeURIComponent(rawFile.split('/').pop() || '')}`;
+
         return [{
-          id: p.partId,
+          id: p.partId || p._id,
           name: p.name,
-          url: `${baseUrl}?part=${encodeURIComponent(filename)}`,
-          audioUrl: p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null
+          url: partUrl,
+          audioUrl: p.url || p.audioUrl || (p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null)
         }];
       });
-      if (!partsConfig.length) {
-        return baseUrl;
+      
+      if (partsConfig.length > 0) {
+        return JSON.stringify(partsConfig);
       }
-      return JSON.stringify(partsConfig);
     }
+
+    // Prioritize direct file URL for single models
+    if (m.file && String(m.file).startsWith('http')) {
+      return String(m.file);
+    }
+
     return ARService.getModelFileUrl(getModelStableId(currentModel));
   }, [currentModel]);
 
@@ -411,8 +459,9 @@ export default function ARViewerScreen() {
   }, [assetSearchTerm, currentEnvModels]);
 
   useEffect(() => {
-    setAvailableAudios((audioQuery.data?.audios || []) as ARAudioTrack[]);
-  }, [audioQuery.data?.audios]);
+    const list = ((currentModel as any)?.audios || (audioQuery.data as any)?.audios || []) as ARAudioTrack[];
+    setAvailableAudios(list);
+  }, [currentModel, audioQuery.data]);
 
   const uniqueLanguages = useMemo(
     () => sortLanguages([...new Set(availableAudios.map(audio => audio.language))]),
@@ -493,7 +542,7 @@ export default function ARViewerScreen() {
       } else if ((currentModel as any)?.type === 'multiple-glb' && !selectedPartId) {
         const parts = (currentModel as any).parts || [];
         if (parts.length > 0) {
-          setSelectedPartId(parts[0].partId);
+          setSelectedPartId(parts[0].partId || parts[0]._id);
         }
       }
     } else {
@@ -569,28 +618,28 @@ export default function ARViewerScreen() {
     const isMultiGlb = (currentModel as any)?.type === 'multiple-glb';
     if (isMultiGlb && selectedPartId) {
       const parts = (currentModel as any)?.parts || [];
-      const part = parts.find((p: any) => p.partId === selectedPartId);
-      if (part?.audio?.gridfsId) {
-        const uri = ARService.getAudioStreamUrlById(part.audio.gridfsId);
-        return uri ? {
-          uri,
+      const part = parts.find((p: any) => (p.partId || p._id) === selectedPartId);
+      const url = part?.url || part?.audioUrl || (part?.audio?.gridfsId ? ARService.getAudioStreamUrlById(part.audio.gridfsId) : null);
+      if (url) {
+        return {
+          uri: url,
           shouldCache: true,
           minLoadRetryCount: 3,
           bufferConfig: AUDIO_BUFFER_CONFIG,
-        } : undefined;
+        };
       }
     }
-    if (!selectedAudio?.gridfsId) {
+    const url = selectedAudio?.url || (selectedAudio?.gridfsId ? ARService.getAudioStreamUrlById(selectedAudio.gridfsId) : null);
+    if (!url) {
       return undefined;
     }
-    const uri = ARService.getAudioStreamUrlById(selectedAudio.gridfsId) || '';
-    return uri ? {
-      uri,
+    return {
+      uri: url,
       shouldCache: true,
       minLoadRetryCount: 3,
       bufferConfig: AUDIO_BUFFER_CONFIG,
-    } : undefined;
-  }, [currentModel, selectedPartId, selectedAudio?.gridfsId]);
+    };
+  }, [currentModel, selectedPartId, selectedAudio]);
 
   const currentLighting =
     LIGHTING_OPTIONS.find(item => item.name === environment) || LIGHTING_OPTIONS[0];
@@ -740,6 +789,10 @@ export default function ARViewerScreen() {
         setLoadingModel(false);
         setIsExporting(false);
       }
+      if (data.type === 'log') {
+        console.log('[AR-Viewer-Log]', data);
+        return;
+      }
     } catch { }
   };
 
@@ -786,6 +839,7 @@ export default function ARViewerScreen() {
           gridfsId: audio.gridfsId,
           language: audio.language,
           level: audio.level,
+          audioUrl: (audio as any).url || (audio as any).audioUrl || (audio.gridfsId ? ARService.getAudioStreamUrlById(audio.gridfsId) : null)
         })),
         animations,
         modelType: (currentModel as any)?.type,
@@ -820,6 +874,7 @@ export default function ARViewerScreen() {
         gridfsId: audio.gridfsId,
         language: audio.language,
         level: audio.level,
+        audioUrl: (audio as any).url || (audio as any).audioUrl || (audio.gridfsId ? ARService.getAudioStreamUrlById(audio.gridfsId) : null)
       })),
       animations,
       modelType: (currentModel as any)?.type,
@@ -905,8 +960,9 @@ export default function ARViewerScreen() {
       <View style={[styles.viewerShell, { marginTop: webViewTop, marginBottom: bottomBarHeight }]}>
         <WebView
           ref={webViewRef}
-          source={{ html: viewerHtml, baseUrl: 'https://learn-api.eduzon.ai' }}
+          source={{ html: viewerHtml, baseUrl: Platform.OS === 'android' ? 'file:///android_asset/' : 'https://learn.sanfortschools.com' }}
           style={styles.webView}
+          userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
           originWhitelist={['*']}
           javaScriptEnabled
           domStorageEnabled
@@ -1081,8 +1137,8 @@ export default function ARViewerScreen() {
                   {filteredEnvModels.map(model => {
                     const isSelected = getModelStableId(model) === modelId;
                     const assetModelId = model._id || model.id || (model as any).id;
-                    const thumbnailUri = assetModelId ? ARService.getThumbnailImageUrl(String(assetModelId)) : null;
-                    const previewUri = assetModelId ? ARService.getPreviewImageUrl(String(assetModelId)) : null;
+                    const thumbnailUri = model.thumbnail || (model as any).thumbnail_url || model.preview_image || (assetModelId ? ARService.getThumbnailImageUrl(String(assetModelId)) : null);
+                    const previewUri = model.preview_image || model.previewUrl || model.previewImage || (assetModelId ? ARService.getPreviewImageUrl(String(assetModelId)) : null);
 
                     return (
                       <TouchableOpacity
@@ -1228,19 +1284,22 @@ export default function ARViewerScreen() {
               {/* Multiple GLB: Part Selection */}
               {(currentModel as any)?.type === 'multiple-glb' && (
                 <View style={[styles.chipRow, styles.sheetRow, { paddingBottom: verticalScale(16) }]}>
-                  {((currentModel as any).parts || []).map((part: any) => (
-                    <TouchableOpacity
-                      key={part.partId}
-                      onPress={() => {
-                        setSelectedPartId(part.partId);
-                      }}
-                      style={[
-                        styles.choiceChip,
-                        (selectedPartId === part.partId || (!selectedPartId && part.partId === (currentModel as any).parts[0]?.partId)) && styles.choiceChipTeal,
-                      ]}>
-                      <Text style={styles.choiceChipText}>{part.name}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {((currentModel as any).parts || []).map((part: any) => {
+                    const pid = part.partId || part._id;
+                    return (
+                      <TouchableOpacity
+                        key={pid}
+                        onPress={() => {
+                          setSelectedPartId(pid);
+                        }}
+                        style={[
+                          styles.choiceChip,
+                          (selectedPartId === pid || (!selectedPartId && pid === ((currentModel as any).parts[0]?.partId || (currentModel as any).parts[0]?._id))) && styles.choiceChipTeal,
+                        ]}>
+                        <Text style={styles.choiceChipText}>{part.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
 
