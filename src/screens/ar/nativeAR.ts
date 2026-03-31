@@ -8,10 +8,12 @@ export interface NativeARAudio {
   audioUrl: string;
 }
 
-function buildAudiosJson(audios?: Array<{gridfsId: string; language: string; level: string}>) {
-  const audiosWithUrl: NativeARAudio[] | undefined = audios?.map(audio => ({
-    ...audio,
-    audioUrl: ARService.getAudioStreamUrlById(audio.gridfsId),
+function buildAudiosJson(audios?: Array<{gridfsId: string; language: string; level: string; url?: string}>) {
+  const audiosWithUrl = audios?.map(audio => ({
+    gridfsId: audio.gridfsId,
+    language: audio.language,
+    level: audio.level,
+    audioUrl: audio.url || ARService.getAudioStreamUrlById(audio.gridfsId),
   }));
   return audiosWithUrl ? JSON.stringify(audiosWithUrl) : null;
 }
@@ -23,7 +25,7 @@ function getSceneViewerIntent(modelUrl: string, modelName: string) {
 export async function openModelInAR(params: {
   modelUrl: string;
   modelName: string;
-  audios?: Array<{gridfsId: string; language: string; level: string}>;
+  audios?: Array<{gridfsId: string; language: string; level: string; url?: string}>;
   animations?: string[];
   modelType?: string;
   hideColorMode?: boolean;
@@ -62,7 +64,7 @@ export async function openModelInARFromBase64(params: {
   modelBase64: string;
   modelName: string;
   originalModelUrl?: string;
-  audios?: Array<{gridfsId: string; language: string; level: string}>;
+  audios?: Array<{gridfsId: string; language: string; level: string; url?: string}>;
   animations?: string[];
   modelType?: string;
   hideColorMode?: boolean;

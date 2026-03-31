@@ -839,7 +839,7 @@ export default function ARViewerScreen() {
           gridfsId: audio.gridfsId,
           language: audio.language,
           level: audio.level,
-          audioUrl: (audio as any).url || (audio as any).audioUrl || (audio.gridfsId ? ARService.getAudioStreamUrlById(audio.gridfsId) : null)
+          url: audio.url,
         })),
         animations,
         modelType: (currentModel as any)?.type,
@@ -874,7 +874,7 @@ export default function ARViewerScreen() {
         gridfsId: audio.gridfsId,
         language: audio.language,
         level: audio.level,
-        audioUrl: (audio as any).url || (audio as any).audioUrl || (audio.gridfsId ? ARService.getAudioStreamUrlById(audio.gridfsId) : null)
+        url: audio.url,
       })),
       animations,
       modelType: (currentModel as any)?.type,
