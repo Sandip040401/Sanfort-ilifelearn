@@ -14,6 +14,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useAuth } from '@/store';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -219,6 +220,7 @@ export default function ARViewerScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<ARViewerNavigationProp>();
   const route = useRoute<ARViewerRouteProp>();
+  const { user } = useAuth();
   const { modelId, environmentId, openPainter = false, initialPaintMode = 'model' } = route.params;
 
   const webViewRef = useRef<WebView>(null);
@@ -788,6 +790,7 @@ export default function ARViewerScreen() {
         animations,
         modelType: (currentModel as any)?.type,
         hideColorMode,
+        childName: user?.name,
       });
     } catch (error: any) {
       setViewerError(error?.message || 'Unable to export custom AR model');
@@ -821,6 +824,7 @@ export default function ARViewerScreen() {
       animations,
       modelType: (currentModel as any)?.type,
       hideColorMode,
+      childName: user?.name,
     });
   };
 

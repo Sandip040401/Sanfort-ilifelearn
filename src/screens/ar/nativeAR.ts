@@ -27,8 +27,9 @@ export async function openModelInAR(params: {
   animations?: string[];
   modelType?: string;
   hideColorMode?: boolean;
+  childName?: string;
 }) {
-  const {modelUrl, modelName, audios, animations, modelType, hideColorMode} = params;
+  const {modelUrl, modelName, audios, animations, modelType, hideColorMode, childName} = params;
 
   if (Platform.OS === 'android' && NativeModules.ARNativeModule?.openAR) {
     NativeModules.ARNativeModule.openAR(
@@ -38,6 +39,7 @@ export async function openModelInAR(params: {
       animations?.length ? JSON.stringify(animations) : null,
       modelType || null,
       hideColorMode === true,
+      childName || null,
     );
     return;
   }
@@ -64,8 +66,9 @@ export async function openModelInARFromBase64(params: {
   animations?: string[];
   modelType?: string;
   hideColorMode?: boolean;
+  childName?: string;
 }) {
-  const {modelBase64, modelName, originalModelUrl, audios, animations, modelType, hideColorMode} = params;
+  const {modelBase64, modelName, originalModelUrl, audios, animations, modelType, hideColorMode, childName} = params;
 
   if (Platform.OS === 'android' && NativeModules.ARNativeModule?.openARFromBase64) {
     await NativeModules.ARNativeModule.openARFromBase64(
@@ -76,6 +79,7 @@ export async function openModelInARFromBase64(params: {
       animations?.length ? JSON.stringify(animations) : null,
       modelType || null,
       hideColorMode === true,
+      childName || null,
     );
     return;
   }

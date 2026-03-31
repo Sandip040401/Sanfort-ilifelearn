@@ -1,17 +1,33 @@
 package com.sanfortsmartlearning.ar
 
 import android.app.Dialog
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.content.ContentValues
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.MediaActionSound
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.provider.MediaStore
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -53,6 +69,9 @@ import com.google.ar.sceneform.rendering.RenderableInstance
 import com.google.ar.sceneform.rendering.Texture
 import com.google.ar.sceneform.ux.*
 import org.json.JSONArray
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.tan
 
@@ -78,6 +97,7 @@ class ARActivity : AppCompatActivity() {
     private var modelPath: String? = null
     private var originalModelPath: String? = null
     private var modelName: String? = null
+    private var childName: String? = null
 
     // Audio list passed from RN
     private var allAudios: List<AudioEntry> = emptyList()
@@ -171,6 +191,10 @@ class ARActivity : AppCompatActivity() {
     private var dragStartY = 0f
     private var lastDragHitResult: HitResult? = null
 
+    // Capture button (visible after model placed)
+    private var captureBtn: FrameLayout? = null
+    private var shutterSound: MediaActionSound? = null
+
     // Floor scanning overlay
     private var scanningOverlay: LinearLayout? = null
     private var scanningDot: View? = null
@@ -221,8 +245,12 @@ class ARActivity : AppCompatActivity() {
         modelPath = intent.getStringExtra("modelPath")
         originalModelPath = intent.getStringExtra("originalModelPath")
         modelName = intent.getStringExtra("modelName") ?: "3D Model"
+        childName = intent.getStringExtra("childName")
         modelType = intent.getStringExtra("modelType")
         hideColorMode = intent.getBooleanExtra("hideColorMode", false)
+        shutterSound = MediaActionSound().apply {
+            load(MediaActionSound.SHUTTER_CLICK)
+        }
 
         if (modelType == "multiple-glb" && !modelPath.isNullOrBlank()) {
             try {
@@ -431,6 +459,7 @@ class ARActivity : AppCompatActivity() {
         // buildDrawer(decor) -- Removed shared drawer
 
         buildScanningOverlay(decor)
+        buildCaptureButton(decor)
 
         setupTapListener()
         attachManualMoveTouchListener()
@@ -489,6 +518,8 @@ class ARActivity : AppCompatActivity() {
         preloadedRenderableTemplate = null
         mediaPlayer?.release()
         mediaPlayer = null
+        shutterSound?.release()
+        shutterSound = null
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -599,6 +630,323 @@ class ARActivity : AppCompatActivity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         parent.addView(logo)
+    }
+
+    private fun buildCaptureButton(parent: FrameLayout) {
+        val landscape = isLandscape()
+        val btnSize = dp(56)
+        val btn = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#FFFFFF"))
+            }
+            // Inner circle border effect
+            val innerCircle = View(this@ARActivity).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(dp(3), Color.parseColor("#333333"))
+                    setColor(Color.TRANSPARENT)
+                }
+                layoutParams = FrameLayout.LayoutParams(btnSize - dp(8), btnSize - dp(8)).apply {
+                    gravity = Gravity.CENTER
+                }
+            }
+            addView(innerCircle)
+
+            val cameraIcon = ImageView(this@ARActivity).apply {
+                setImageResource(android.R.drawable.ic_menu_camera)
+                setColorFilter(Color.parseColor("#4A4A4A"))
+                alpha = 0.9f
+                layoutParams = FrameLayout.LayoutParams(dp(18), dp(18)).apply {
+                    gravity = Gravity.CENTER
+                }
+                contentDescription = "Capture photo"
+            }
+            addView(cameraIcon)
+
+            setOnClickListener { captureARScene() }
+            visibility = View.GONE // Hidden until model is placed
+        }
+        val lp = FrameLayout.LayoutParams(btnSize, btnSize).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            bottomMargin = if (landscape) dp(96) else dp(108)
+        }
+        parent.addView(btn, lp)
+        captureBtn = btn
+    }
+
+    private fun showCaptureButton() {
+        captureBtn?.visibility = View.VISIBLE
+    }
+
+    private fun captureARScene() {
+        val sceneView = arFragment.arSceneView ?: return
+        captureBtn?.isEnabled = false
+        playCaptureSfx()
+
+        // Show colorful capture animation IMMEDIATELY so kids see a fun feedback
+        val decor = window.decorView as FrameLayout
+        showCaptureAnimation(decor)
+
+        // PixelCopy captures only the SurfaceView (camera + 3D model), not UI overlays
+        // So no need to hide anything - the animation overlay won't appear in the capture
+        val bitmap = Bitmap.createBitmap(sceneView.width, sceneView.height, Bitmap.Config.ARGB_8888)
+        PixelCopy.request(sceneView, bitmap, { result ->
+            if (result == PixelCopy.SUCCESS) {
+                val stampedBitmap = stampWatermark(bitmap)
+                saveToGallery(stampedBitmap)
+                if (stampedBitmap != bitmap) bitmap.recycle()
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this, "Capture failed, please try again", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }, Handler(Looper.getMainLooper()))
+    }
+
+    private fun playCaptureSfx() {
+        runCatching {
+            shutterSound?.play(MediaActionSound.SHUTTER_CLICK)
+        }
+    }
+
+    private fun showCaptureAnimation(parent: FrameLayout) {
+        // ── Phase 1: Colorful gradient flash (like a camera shutter) ──
+        val flashOverlay = View(this).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    Color.parseColor("#FF6B6B"),  // Red-pink
+                    Color.parseColor("#FFD93D"),  // Yellow
+                    Color.parseColor("#6BCB77"),  // Green
+                    Color.parseColor("#4D96FF"),  // Blue
+                    Color.parseColor("#C77DFF"),  // Purple
+                )
+            )
+            alpha = 0f
+        }
+        parent.addView(flashOverlay, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+
+        // ── Camera shutter circle (white ring that shrinks inward like a real shutter) ──
+        val shutterRing = View(this).apply {
+            val ringSize = dp(200)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(6), Color.WHITE)
+                setColor(Color.TRANSPARENT)
+            }
+            alpha = 0f
+            scaleX = 2.5f
+            scaleY = 2.5f
+            layoutParams = FrameLayout.LayoutParams(dp(200), dp(200)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        parent.addView(shutterRing)
+
+        // ── Camera emoji ──
+        val cameraText = TextView(this).apply {
+            text = "\uD83D\uDCF8"  // camera with flash
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 64f)
+            gravity = Gravity.CENTER
+            alpha = 0f
+            scaleX = 0.3f
+            scaleY = 0.3f
+        }
+        parent.addView(cameraText, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT).apply {
+            gravity = Gravity.CENTER
+        })
+
+        // ── "Captured!" text ──
+        val capturedText = TextView(this).apply {
+            text = "Captured! \u2728"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setShadowLayer(12f, 0f, 3f, Color.parseColor("#88000000"))
+            alpha = 0f
+            translationY = dp(70).toFloat()
+        }
+        parent.addView(capturedText, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT).apply {
+            gravity = Gravity.CENTER
+        })
+
+        val handler = Handler(Looper.getMainLooper())
+
+        // Phase 1: Quick bright gradient flash (0 -> 0.85 in 80ms) — simulates camera flash
+        val flashIn = ObjectAnimator.ofFloat(flashOverlay, "alpha", 0f, 0.85f).apply { duration = 80 }
+        val flashOut = ObjectAnimator.ofFloat(flashOverlay, "alpha", 0.85f, 0.45f).apply { duration = 200; startDelay = 80 }
+
+        // Phase 2: Shutter ring contracts inward
+        val ringAlpha = ObjectAnimator.ofFloat(shutterRing, "alpha", 0f, 1f).apply { duration = 100 }
+        val ringScaleX = ObjectAnimator.ofFloat(shutterRing, "scaleX", 2.5f, 0.8f).apply { duration = 300 }
+        val ringScaleY = ObjectAnimator.ofFloat(shutterRing, "scaleY", 2.5f, 0.8f).apply { duration = 300 }
+        val ringFade = ObjectAnimator.ofFloat(shutterRing, "alpha", 1f, 0f).apply { duration = 150; startDelay = 300 }
+
+        // Phase 3: Camera emoji pop
+        val camAlpha = ObjectAnimator.ofFloat(cameraText, "alpha", 0f, 1f).apply { duration = 120; startDelay = 200 }
+        val camScaleX = ObjectAnimator.ofFloat(cameraText, "scaleX", 0.3f, 1.2f, 1f).apply { duration = 350; startDelay = 200 }
+        val camScaleY = ObjectAnimator.ofFloat(cameraText, "scaleY", 0.3f, 1.2f, 1f).apply { duration = 350; startDelay = 200 }
+
+        // Phase 4: "Captured!" text slides up
+        val textAlpha = ObjectAnimator.ofFloat(capturedText, "alpha", 0f, 1f).apply { duration = 200; startDelay = 350 }
+        val textSlide = ObjectAnimator.ofFloat(capturedText, "translationY", dp(70).toFloat(), 0f).apply { duration = 300; startDelay = 350 }
+
+        val animSet = AnimatorSet()
+        animSet.playTogether(flashIn, flashOut, ringAlpha, ringScaleX, ringScaleY, ringFade, camAlpha, camScaleX, camScaleY, textAlpha, textSlide)
+        animSet.start()
+
+        // Phase 5: Fade all out
+        handler.postDelayed({
+            val fadeFlash = ObjectAnimator.ofFloat(flashOverlay, "alpha", flashOverlay.alpha, 0f).apply { duration = 250 }
+            val fadeCam = ObjectAnimator.ofFloat(cameraText, "alpha", 1f, 0f).apply { duration = 250 }
+            val fadeText = ObjectAnimator.ofFloat(capturedText, "alpha", 1f, 0f).apply { duration = 250 }
+            val fadeSet = AnimatorSet()
+            fadeSet.playTogether(fadeFlash, fadeCam, fadeText)
+            fadeSet.start()
+
+            handler.postDelayed({
+                parent.removeView(flashOverlay)
+                parent.removeView(shutterRing)
+                parent.removeView(cameraText)
+                parent.removeView(capturedText)
+                captureBtn?.isEnabled = true
+            }, 300)
+        }, 900)
+    }
+
+    private fun stampWatermark(original: Bitmap): Bitmap {
+        val result = original.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        val imgW = result.width.toFloat()
+        val imgH = result.height.toFloat()
+        val scaleFactor = imgW / 1080f  // normalize to 1080p reference
+
+        // ── 1. Sanfort logo — bottom-right ──
+        val logoResId = resources.getIdentifier("sanfort_logo", "drawable", packageName)
+        val logoBitmap = if (logoResId != 0) BitmapFactory.decodeResource(resources, logoResId) else null
+        val logoPadding = (24 * scaleFactor).toInt()
+
+        if (logoBitmap != null) {
+            val logoW = (imgW * 0.18f).toInt()
+            val logoH = (logoW.toFloat() / logoBitmap.width * logoBitmap.height).toInt()
+            val logoLeft = result.width - logoW - logoPadding
+            val logoTop = result.height - logoH - logoPadding
+
+            // Semi-transparent rounded background
+            val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; alpha = 200 }
+            val pad = (8 * scaleFactor)
+            canvas.drawRoundRect(
+                logoLeft - pad, logoTop - pad,
+                logoLeft + logoW + pad, logoTop + logoH + pad,
+                12 * scaleFactor, 12 * scaleFactor, bgPaint
+            )
+            canvas.drawBitmap(logoBitmap, null, Rect(logoLeft, logoTop, logoLeft + logoW, logoTop + logoH), Paint(Paint.FILTER_BITMAP_FLAG))
+            logoBitmap.recycle()
+        }
+
+        // ── 2. Bottom-left: child name + date/time ──
+        val textPadding = (20 * scaleFactor)
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK; alpha = 100
+        }
+
+        // Date & Time
+        val dateFormat = SimpleDateFormat("dd MMM yyyy  •  hh:mm a", Locale.getDefault())
+        val dateTimeStr = dateFormat.format(Date())
+
+        // Child name
+        val rawDisplayName = childName?.takeIf { it.isNotBlank() } ?: modelName ?: ""
+        val displayName = formatDisplayName(rawDisplayName)
+
+        val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 42f * scaleFactor
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setShadowLayer(6f * scaleFactor, 0f, 2f * scaleFactor, Color.parseColor("#AA000000"))
+        }
+        val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#E0FFFFFF")
+            textSize = 30f * scaleFactor
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            setShadowLayer(4f * scaleFactor, 0f, 1f * scaleFactor, Color.parseColor("#AA000000"))
+        }
+
+        val lineSpacing = 8f * scaleFactor
+        val nameHeight = namePaint.fontMetrics.let { it.descent - it.ascent }
+        val dateHeight = datePaint.fontMetrics.let { it.descent - it.ascent }
+        val totalTextH = nameHeight + lineSpacing + dateHeight
+        val textBlockBottom = imgH - textPadding
+
+        // Rounded background behind text
+        val nameWidth = namePaint.measureText(displayName)
+        val dateWidth = datePaint.measureText(dateTimeStr)
+        val maxTextWidth = maxOf(nameWidth, dateWidth)
+        val bgLeft = textPadding - 12 * scaleFactor
+        val bgTop = textBlockBottom - totalTextH - 12 * scaleFactor
+        val bgRight = textPadding + maxTextWidth + 12 * scaleFactor
+        val bgBottom = textBlockBottom + 12 * scaleFactor
+        canvas.drawRoundRect(bgLeft, bgTop, bgRight, bgBottom, 12 * scaleFactor, 12 * scaleFactor, shadowPaint)
+
+        // Draw child name
+        val nameY = textBlockBottom - dateHeight - lineSpacing
+        canvas.drawText(displayName, textPadding, nameY, namePaint)
+
+        // Draw date/time
+        val dateY = textBlockBottom
+        canvas.drawText(dateTimeStr, textPadding, dateY, datePaint)
+
+        return result
+    }
+
+    private fun formatDisplayName(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return value
+
+        return trimmed
+            .lowercase(Locale.getDefault())
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { part ->
+                part.replaceFirstChar { ch ->
+                    if (ch.isLowerCase()) ch.titlecase(Locale.getDefault()) else ch.toString()
+                }
+            }
+    }
+
+    private fun saveToGallery(bitmap: Bitmap) {
+        try {
+            val filename = "AR_${modelName ?: "Capture"}_${System.currentTimeMillis()}.png"
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/iLifeLearn AR")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    contentResolver.update(uri, contentValues, null, null)
+                }
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this, "Could not save photo", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            runOnUiThread {
+                Toast.makeText(this, "Error saving photo", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun buildScanningOverlay(parent: FrameLayout) {
@@ -2319,6 +2667,9 @@ class ARActivity : AppCompatActivity() {
                 lastSelectTime = now
             }
         }
+
+        // Show capture button now that model is placed
+        showCaptureButton()
 
         // Auto play first animation and audio
         if (allAnimations.isNotEmpty()) playAnimation(allAnimations[0])

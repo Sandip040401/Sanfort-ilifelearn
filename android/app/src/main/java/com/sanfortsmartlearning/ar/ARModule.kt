@@ -31,7 +31,8 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             audiosJson: String?,
             animationsJson: String?,
             modelType: String?,
-            hideColorMode: Boolean?
+            hideColorMode: Boolean?,
+            childName: String?
     ) {
         Thread {
             val resolvedModelPath =
@@ -48,6 +49,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                 if (!animationsJson.isNullOrBlank()) putExtra("animationsJson", animationsJson)
                 if (!modelType.isNullOrBlank()) putExtra("modelType", modelType)
                 if (hideColorMode == true) putExtra("hideColorMode", true)
+                if (!childName.isNullOrBlank()) putExtra("childName", childName)
             }
             launchIntent(intent)
         }.start()
@@ -67,6 +69,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             animationsJson: String?,
             modelType: String?,
             hideColorMode: Boolean?,
+            childName: String?,
             promise: Promise
     ) {
         try {
@@ -82,6 +85,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
             if (!animationsJson.isNullOrBlank()) intent.putExtra("animationsJson", animationsJson)
             if (!modelType.isNullOrBlank()) intent.putExtra("modelType", modelType)
             if (hideColorMode == true) intent.putExtra("hideColorMode", true)
+            if (!childName.isNullOrBlank()) intent.putExtra("childName", childName)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             reactContext.startActivity(intent)
             promise.resolve(output.absolutePath)
