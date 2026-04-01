@@ -11,6 +11,7 @@ import {
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import {
   BookOpen,
+  Box,
   ChevronRight,
   FileText,
   Images,
@@ -68,25 +69,29 @@ const getKeywordStyles = (keyword: string = '') => {
   }
 };
 
+type ConceptsTabProps = {
+  data: ConceptsResponse;
+  subjectColor: string;
+  bottomInset: number;
+  headerContent?: React.ReactNode;
+  tabBarContent?: React.ReactNode;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onSelectTopic: (topic: FlatTopic) => void;
+  filterPrefix?: string;
+};
+
 export default function ConceptsTab({
   data,
   subjectColor,
   bottomInset,
   headerContent,
+  tabBarContent,
   refreshing,
   onRefresh,
   onSelectTopic,
-  filterPrefix,
-}: {
-  data: ConceptsResponse;
-  subjectColor: string;
-  bottomInset: number;
-  headerContent?: React.ReactNode;
-  refreshing: boolean;
-  onRefresh: () => void;
-  onSelectTopic: (topic: FlatTopic) => void;
-  filterPrefix?: string;
-}) {
+  filterPrefix = 'Vol',
+}: ConceptsTabProps) {
   const { colors, isDark } = useTheme();
   const { onScroll } = useTabBarHideOnScroll();
   const [selectedVolume, setSelectedVolume] = useState<'all' | number>('all');
@@ -177,6 +182,7 @@ export default function ConceptsTab({
       ListHeaderComponent={
         <View style={styles.listHeader}>
           {headerContent}
+          {tabBarContent}
           <View style={styles.sectionBlock}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Concepts & Topics
@@ -282,7 +288,7 @@ export default function ConceptsTab({
                 {item.title}
               </Text>
               
-              {(item.images.length > 0 || item.videos.length > 0) && (
+              {(item.images.length > 0 || item.videos.length > 0 || !!item.ar?.length) && (
                 <View style={styles.metricsRow}>
                   {item.images.length > 0 && (
                     <View style={[styles.metricPill, { backgroundColor: withAlpha(subjectColor, 0.08), borderColor: withAlpha(subjectColor, 0.16) }]}>
@@ -297,6 +303,14 @@ export default function ConceptsTab({
                       <PlayCircle size={moderateScale(12)} color="#2563EB" strokeWidth={2.2} />
                       <Text allowFontScaling={false} style={styles.metricTextBlue}>
                         {item.videos.length} Video{item.videos.length > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  )}
+                  {item.ar && item.ar.length > 0 && (
+                    <View style={[styles.metricPill, { backgroundColor: withAlpha('#7C3AED', 0.08), borderColor: withAlpha('#7C3AED', 0.16) }]}>
+                      <Box size={moderateScale(12)} color="#7C3AED" strokeWidth={2.2} />
+                      <Text allowFontScaling={false} style={[styles.metricText, { color: '#7C3AED' }]}>
+                        AR
                       </Text>
                     </View>
                   )}

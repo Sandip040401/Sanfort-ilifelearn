@@ -169,6 +169,7 @@ export interface BookTopic {
   images:     string[];
   videos:     string[];
   arSheets:   string[];
+  ar?:        any[];
 }
 
 export interface BookConcept {
@@ -176,6 +177,7 @@ export interface BookConcept {
   title:        string;
   volumeNumber: number;
   topics:       BookTopic[];
+  ar?:          any[];
 }
 
 export interface EbookPage {
@@ -225,6 +227,7 @@ export interface FlatTopic extends BookTopic {
   volumeNumber: number;
   conceptIndex: number;
   color:        string;
+  ar?:          any[];
 }
 
 export type BookGradeKey = 'hummingbird' | 'dove' | 'macaw';

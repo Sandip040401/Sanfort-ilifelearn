@@ -18,6 +18,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import {
   ArrowLeft,
+  Box,
   FileText,
   Image as ImageIcon,
   PlayCircle,
@@ -27,14 +28,14 @@ import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import MediaViewer, { type MediaViewerPayload } from '@/components/MediaViewer';
 import { useScreenReady } from '@/hooks/useScreenReady';
 import { useTheme } from '@/theme';
-import type { BooksStackParamList } from '@/types';
+import type { BooksStackParamList, MainStackParamList } from '@/types';
 import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import { withAlpha } from './books.data';
 import { getYouTubeThumbnailUrl, isYouTubeUrl } from '@/utils/video';
 
 type TopicRouteProp = RouteProp<BooksStackParamList, 'TopicDetail'>;
-type TopicNavigationProp = StackNavigationProp<BooksStackParamList>;
+type TopicNavigationProp = StackNavigationProp<MainStackParamList & BooksStackParamList>;
 
 type ResourceKind = 'image' | 'video' | 'document';
 
@@ -103,6 +104,7 @@ function TopicScreenContent() {
     images: Array.isArray(topic?.images) ? topic.images : [],
     videos: Array.isArray(topic?.videos) ? topic.videos : [],
     arSheets: Array.isArray(topic?.arSheets) ? topic.arSheets : [],
+    ar: Array.isArray(topic?.ar) ? topic.ar : [],
     keyword: topic?.keyword ?? '',
   };
 
@@ -201,6 +203,65 @@ function TopicScreenContent() {
     );
   };
 
+  const renderARSection = (items: any[]) => {
+    if (!items.length) {
+      return null;
+    }
+
+    const gridGap = scale(12);
+    const columnWidth = (windowWidth - scale(40) - gridGap) / 2;
+
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          AR Activities ({items.length})
+        </Text>
+
+        <View style={styles.resourcesGrid}>
+          {items.map((ar, index) => {
+            return (
+              <TouchableOpacity
+                key={`ar-${index}`}
+                activeOpacity={0.88}
+                onPress={() => {
+                   if (ar.modelId) {
+                      navigation.navigate('ARViewer', { modelId: ar.modelId });
+                   }
+                }}
+                style={[
+                  styles.resourceCardGrid,
+                  {
+                    width: columnWidth,
+                    backgroundColor: colors.surface,
+                    borderColor: isDark ? colors.border : withAlpha(safeAccent, 0.12),
+                  },
+                ]}>
+                <LinearGradient
+                  colors={[withAlpha('#7C3AED', 0.14), withAlpha('#7C3AED', 0.04)]}
+                  locations={[0, 1]}
+                  style={styles.resourcePosterGrid}>
+                  <Box size={moderateScale(32)} color="#7C3AED" strokeWidth={2} />
+                </LinearGradient>
+
+                <Text
+                  allowFontScaling={false}
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                  style={[styles.resourceLabelGrid, { color: colors.text }]}>
+                  {`3D Experience ${index + 1}`}
+                </Text>
+
+                <View style={[styles.arBadge, { backgroundColor: withAlpha('#7C3AED', 0.1) }]}>
+                  <Text style={styles.arBadgeText}>LAUNCH AR</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <>
       <View style={[styles.root, { backgroundColor: isDark ? colors.background : safeAccent }]}>
@@ -287,6 +348,7 @@ function TopicScreenContent() {
                 <View style={{ height: verticalScale(4) }} />
                 {renderResourceSection('Concept Sheets', safeTopic.images, 'image')}
                 {renderResourceSection('Videos', safeTopic.videos, 'video')}
+                {renderARSection(safeTopic.ar)}
               </>
             )}
           </View>
@@ -537,8 +599,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   loadingCardCopy: {
-    textAlign: 'center',
     fontSize: moderateScale(12),
     lineHeight: moderateScale(18),
+  },
+  arBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: moderateScale(4),
+    paddingHorizontal: scale(6),
+    paddingVertical: verticalScale(2),
+    marginTop: verticalScale(4),
+  },
+  arBadgeText: {
+    fontSize: moderateScale(9),
+    fontWeight: '900',
+    color: '#7C3AED',
+    letterSpacing: 0.5,
   },
 });

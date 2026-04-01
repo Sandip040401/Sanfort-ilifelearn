@@ -40,6 +40,7 @@ export default function EbooksTab({
   accentColor,
   bottomInset,
   headerContent,
+  tabBarContent,
   refreshing,
   onRefresh,
 }: {
@@ -47,6 +48,7 @@ export default function EbooksTab({
   accentColor: string;
   bottomInset: number;
   headerContent?: React.ReactNode;
+  tabBarContent?: React.ReactNode;
   refreshing: boolean;
   onRefresh: () => void;
 }) {
@@ -235,6 +237,7 @@ export default function EbooksTab({
         }
         contentContainerStyle={{paddingBottom: bottomInset + verticalScale(12)}}>
         {headerContent}
+        {tabBarContent}
 
         {/* Book & Volume selectors */}
         <View style={styles.header}>

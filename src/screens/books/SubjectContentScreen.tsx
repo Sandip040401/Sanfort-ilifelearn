@@ -21,6 +21,7 @@ import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import ConceptsTab from '@/components/books/ConceptsTab';
 import VideosTab from '@/components/books/VideosTab';
 import EbooksTab from '@/components/books/EbooksTab';
+import ARTab from '@/components/books/ARTab';
 import {BooksService} from '@/services';
 import {useScreenReady} from '@/hooks/useScreenReady';
 import {useTheme} from '@/theme';
@@ -31,7 +32,7 @@ import {flattenTopics, getTotalVideoCount, normalizeConceptsPayload} from './boo
 type SubjectContentRouteProp = RouteProp<BooksStackParamList, 'SubjectContent'>;
 type BooksNavigationProp = StackNavigationProp<BooksStackParamList>;
 
-type TabKey = 'concepts' | 'videos' | 'ebooks';
+type TabKey = 'concepts' | 'videos' | 'ebooks' | 'ar';
 const H_PAD = scale(20);
 
 const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
@@ -59,7 +60,7 @@ const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
 };
 
 function SubjectContentScreenContent() {
-  const {colors} = useTheme();
+  const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectContentRouteProp>();
@@ -92,7 +93,8 @@ function SubjectContentScreenContent() {
             id: `week-${week.weekNumber}`,
             title: week.title || `Week ${week.weekNumber}`,
             volumeNumber: week.weekNumber || 1,
-            topics: week.topics || []
+            topics: week.topics || [],
+            ar: week.ar || []
           })),
           ebooks: [],
           videoVolumes: [],
@@ -144,6 +146,7 @@ function SubjectContentScreenContent() {
         (total, ebook) => total + ebook.volumes.length,
         0,
       ),
+      ar: booksQuery.data.concepts.reduce((total, concept) => total + (concept.ar?.length || 0), 0),
     };
   }, [booksQuery.data, subjectColor]);
 
@@ -152,8 +155,9 @@ function SubjectContentScreenContent() {
       {key: 'concepts' as const, label: 'Concepts', count: stats.concepts},
       {key: 'videos' as const, label: 'Videos', count: stats.videos},
       {key: 'ebooks' as const, label: 'Ebooks', count: stats.ebooks},
+      {key: 'ar' as const, label: 'AR', count: stats.ar},
     ],
-    [stats.concepts, stats.ebooks, stats.videos],
+    [stats.ar, stats.concepts, stats.ebooks, stats.videos],
   );
 
   const accent = subjectColor;
@@ -217,12 +221,12 @@ function SubjectContentScreenContent() {
     }),
     [contentWidth],
   );
-  const tabsShellStyle: ViewStyle = useMemo(
+  const tabsShellStyle = useMemo(
     () => ({
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
+      backgroundColor: isDark ? withAlpha(colors.surface, 0.4) : withAlpha(accent, 0.05),
+      borderColor: isDark ? withAlpha(colors.border, 0.3) : withAlpha(accent, 0.1),
     }),
-    [colors.border, colors.surface],
+    [accent, colors.border, colors.surface, isDark],
   );
   const refreshContent = () => {
     booksQuery.refetch();
@@ -239,107 +243,112 @@ function SubjectContentScreenContent() {
     },
     [activeTab],
   );
-  const headerContent = useMemo(
+
+  const heroContent = useMemo(
     () => (
-      <>
-        <View style={[styles.heroSection, heroPaddingStyle, heroSectionWidthStyle]}>
-          <LinearGradient
-            colors={headerColors}
-            locations={[0, 1]}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 1}}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View style={[styles.heroInner, heroInnerWidthStyle]}>
-            <View style={styles.heroTopRow}>
-              <Pressable
-                onPress={() => navigation.goBack()}
-                style={styles.heroIconButton}>
-                <ArrowLeft size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
-              </Pressable>
+      <View style={[styles.heroSection, heroPaddingStyle, heroSectionWidthStyle]}>
+        <LinearGradient
+          colors={headerColors}
+          locations={[0, 1]}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 1}}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <View style={[styles.heroInner, heroInnerWidthStyle]}>
+          <View style={styles.heroTopRow}>
+            <Pressable
+              onPress={() => navigation.goBack()}
+              style={styles.heroIconButton}>
+              <ArrowLeft size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
+            </Pressable>
 
-              <View style={styles.heroPill}>
-                <Text
-                  allowFontScaling={false}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  style={styles.heroPillText}>
-                  {gradeName}
-                </Text>
-              </View>
+            <View style={styles.heroPill}>
+              <Text
+                allowFontScaling={false}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={styles.heroPillText}>
+                {gradeName}
+              </Text>
             </View>
-
-            <Text style={styles.heroTitle}>{subjectDisplayName}</Text>
-            {tabs.filter(t => t.count > 0).length > 1 && (
-              <View style={styles.toolbarWrap}>
-                <View style={[styles.tabsShell, tabsShellStyle]}>
-                  {tabs.filter(tab => tab.count > 0).map((tab) => {
-                    const isTabActive = activeTab === tab.key;
-                    return (
-                      <Pressable
-                        key={tab.key}
-                        onPress={() => handleTabPress(tab.key)}
-                        style={[
-                          styles.tabButton,
-                          isTabActive ? activeTabButtonStyle : styles.tabButtonIdle,
-                        ]}>
-                        <View style={styles.tabButtonContent}>
-                          <Text
-                            style={[
-                              styles.tabText,
-                              isTabActive ? {color: '#fff'} : inactiveTabTextStyle,
-                            ]}>
-                            {tab.label}
-                          </Text>
-                          <View
-                            style={[
-                              styles.tabCount,
-                              isTabActive ? activeCountStyle : inactiveCountStyle,
-                            ]}>
-                            <Text
-                              style={[
-                                styles.tabCountText,
-                                isTabActive
-                                  ? activeCountTextStyle
-                                  : inactiveCountTextStyle,
-                              ]}>
-                              {tab.count}
-                            </Text>
-                          </View>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
           </View>
-          <View style={[styles.curve, {backgroundColor: colors.background}]} />
-        </View>
 
-       
-      </>
+          <Text style={styles.heroTitle}>{subjectDisplayName}</Text>
+        </View>
+        <View style={[styles.curve, {backgroundColor: colors.background}]} />
+      </View>
     ),
     [
-      accent,
-      activeCountStyle,
-      activeTab,
-      activeTabButtonStyle,
-      colors.text,
-      colors.textSecondary,
+      colors.background,
       gradeName,
       headerColors,
       heroInnerWidthStyle,
       heroPaddingStyle,
       heroSectionWidthStyle,
+      navigation,
+      subjectDisplayName,
+    ],
+  );
+
+  const tabBarContent = useMemo(
+    () => {
+      const visibleTabs = tabs.filter(tab => (tab.count || 0) > 0);
+      if (visibleTabs.length <= 1) return null;
+
+      return (
+        <View style={styles.toolbarWrap}>
+          <View style={[styles.tabsShell, tabsShellStyle]}>
+            {visibleTabs.map((tab) => {
+              const isTabActive = activeTab === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => handleTabPress(tab.key)}
+                  style={[
+                    styles.tabButton,
+                    isTabActive ? activeTabButtonStyle : styles.tabButtonIdle,
+                    { minWidth: scale(80) }
+                  ]}>
+                  <View style={styles.tabButtonContent}>
+                    <Text
+                      style={[
+                        styles.tabText,
+                        isTabActive ? {color: '#fff'} : inactiveTabTextStyle,
+                      ]}>
+                      {tab.label}
+                    </Text>
+                    <View
+                      style={[
+                        styles.tabCount,
+                        isTabActive ? activeCountStyle : inactiveCountStyle,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.tabCountText,
+                          isTabActive
+                            ? activeCountTextStyle
+                            : inactiveCountTextStyle,
+                        ]}>
+                        {tab.count}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      );
+    },
+    [
+      activeCountStyle,
+      activeCountTextStyle,
+      activeTab,
+      activeTabButtonStyle,
       handleTabPress,
       inactiveCountStyle,
       inactiveCountTextStyle,
       inactiveTabTextStyle,
-      isTablet,
-      navigation,
-      subjectDisplayName,
-      subjectMeta?.badge,
       tabs,
       tabsShellStyle,
     ],
@@ -385,7 +394,8 @@ function SubjectContentScreenContent() {
             data={booksQuery.data}
             subjectColor={accent}
             bottomInset={contentBottomInset}
-            headerContent={headerContent}
+            headerContent={heroContent}
+            tabBarContent={tabBarContent}
             refreshing={booksQuery.isRefetching}
             onRefresh={refreshContent}
             filterPrefix={gradeName?.toLowerCase()?.includes('san') ? 'Week' : 'Vol'}
@@ -403,17 +413,29 @@ function SubjectContentScreenContent() {
             videoVolumes={booksQuery.data.videoVolumes}
             accentColor={accent}
             bottomInset={contentBottomInset}
-            headerContent={headerContent}
+            headerContent={heroContent}
+            tabBarContent={tabBarContent}
+            refreshing={booksQuery.isRefetching}
+            onRefresh={refreshContent}
+          />
+        ) : activeTab === 'ebooks' ? (
+          <EbooksTab
+            ebooks={booksQuery.data.ebooks}
+            accentColor={accent}
+            bottomInset={contentBottomInset}
+            headerContent={heroContent}
+            tabBarContent={tabBarContent}
             refreshing={booksQuery.isRefetching}
             onRefresh={refreshContent}
           />
         ) : (
-          <EbooksTab
-            ebooks={booksQuery.data.ebooks}
-            // arSheets={booksQuery.data.arSheets}
+          <ARTab
+            concepts={booksQuery.data.concepts}
             accentColor={accent}
+            subjectName={subjectDisplayName}
             bottomInset={contentBottomInset}
-            headerContent={headerContent}
+            headerContent={heroContent}
+            tabBarContent={tabBarContent}
             refreshing={booksQuery.isRefetching}
             onRefresh={refreshContent}
           />
@@ -524,39 +546,43 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(10),
     color: 'rgba(255,255,255,0.75)',
   },
-  toolbarWrap: {
+   toolbarWrap: {
     alignSelf: 'center',
-    paddingTop: verticalScale(14),
+    paddingTop: verticalScale(6),
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(7),
+    width: '100%',
+    alignItems: 'center',
   },
   tabsShell: {
     flexDirection: 'row',
-    padding: scale(6),
-    gap: scale(6),
-    borderRadius: moderateScale(22),
+    padding: scale(4),
+    gap: scale(4),
+    borderRadius: moderateScale(14),
     borderWidth: 1,
   },
   toolbarHint: {
-    marginTop: verticalScale(10),
-    fontSize: moderateScale(11),
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(10),
     fontWeight: '600',
   },
   tabButton: {
     flex: 1,
-    minHeight: verticalScale(44),
-    borderRadius: moderateScale(14),
+    minHeight: verticalScale(32),
+    borderRadius: moderateScale(10),
     borderWidth: 1,
-    paddingHorizontal: scale(6),
-    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 0,
   },
   tabButtonContent: {
     minWidth: 0,
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: verticalScale(2),
+    gap: verticalScale(4),
   },
   tabButtonIdle: {
     backgroundColor: 'transparent',

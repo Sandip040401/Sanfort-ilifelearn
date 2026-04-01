@@ -58,6 +58,7 @@ function normalizeTopic(rawTopic: unknown, index: number): BookTopic {
     arSheets: uniqueStrings(
       ensureStringArray(topic.arSheets).concat(ensureStringArray(topic.worksheets)),
     ),
+    ar: ensureArray(topic.ar),
   };
 }
 
@@ -71,6 +72,7 @@ function normalizeConcept(rawConcept: unknown, index: number): BookConcept {
     topics: ensureArray(concept.topics).map((topic, topicIndex) =>
       normalizeTopic(topic, topicIndex),
     ),
+    ar: ensureArray(concept.ar),
   };
 }
 
@@ -232,6 +234,7 @@ export function flattenTopics(
       volumeNumber: concept.volumeNumber,
       conceptIndex,
       color: subjectColor,
+      ar: topic.ar,
     })),
   );
 }

@@ -28,6 +28,7 @@ export default function VideosTab({
   accentColor,
   bottomInset,
   headerContent,
+  tabBarContent,
   refreshing,
   onRefresh,
 }: {
@@ -35,6 +36,7 @@ export default function VideosTab({
   accentColor: string;
   bottomInset: number;
   headerContent?: React.ReactNode;
+  tabBarContent?: React.ReactNode;
   refreshing: boolean;
   onRefresh: () => void;
 }) {
@@ -131,6 +133,7 @@ export default function VideosTab({
         ListHeaderComponent={
           <View style={styles.listHeader}>
             {headerContent}
+            {tabBarContent}
             <View style={styles.sectionBlock}>
               <Text style={[styles.sectionTitle, {color: colors.text}]}>Video Lessons</Text>
               <Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>
