@@ -31,6 +31,7 @@ import ARInstructionModal from '@/components/ARInstructionModal';
 import { ARScannerModule } from '@/screens/ar/ARScannerModule';
 import { normalizeEnvName } from '@/utils/normalize';
 import { withAlpha } from '@/screens/books/books.data';
+import { getReferenceImageSource } from '@/screens/ar/ar.reference';
 
 const isAndroid = Platform.OS === 'android';
 
@@ -114,10 +115,10 @@ function ARModelOptionsSheet({
   const { colors } = useTheme();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-  
+
   const normalizedSubject = normalizeEnvName(subjectName || '').toLowerCase();
-  const onlyShowPlaceButton = 
-    normalizedSubject.includes('my body') || 
+  const onlyShowPlaceButton =
+    normalizedSubject.includes('my body') ||
     normalizedSubject.includes('numbers') ||
     modelType === 'multiple-glb' ||
     modelType === 'multi-glb' ||
@@ -251,7 +252,7 @@ export default function ARTab({
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
   const navigation = useNavigation<StackNavigationProp<MainStackParamList & BooksStackParamList>>();
-  
+
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [instructionVisible, setInstructionVisible] = useState(false);
@@ -264,7 +265,7 @@ export default function ARTab({
         ...ar,
         conceptTitle: concept.title,
         weekNumber: concept.volumeNumber,
-        subjectName: subjectName || (concept as any).subject, 
+        subjectName: subjectName || (concept as any).subject,
         uniqueId: `${concept.id}-ar-${index}`,
       }))
     );
@@ -278,69 +279,85 @@ export default function ARTab({
   const handleOpenModel = useCallback((model: any, opts?: { openPainter?: boolean; initialPaintMode?: string }) => {
     closeSheet();
     const modelId = String(typeof model.modelId === 'object' ? model.modelId?._id : model.modelId);
-    navigation.navigate('ARViewer', { 
-      modelId, 
+    navigation.navigate('ARViewer', {
+      modelId,
       openPainter: opts?.openPainter,
       initialPaintMode: opts?.initialPaintMode as any
     });
   }, [navigation, closeSheet]);
 
-  const startActualScan = async (model: any) => {
-    if (Platform.OS !== 'android') {
-      Alert.alert('Not Supported', 'AR Scan is currently available on Android only.');
-      return;
-    }
-
-    try {
-      const supported = await ARScannerModule.isARSupported();
-      if (!supported) {
-        Alert.alert('Not Supported', 'ARCore is not available on this device.');
+  const startActualScan = async (model: ARModel) => {
+      if (Platform.OS !== 'android') {
+        Alert.alert('Not Supported', 'AR Scan is currently available on Android only.');
         return;
       }
-
-      const permission = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.CAMERA,
-      );
-      if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-        Alert.alert('Camera Permission', 'Camera permission is required for AR Scan.');
-        return;
-      }
-
-      const modelId = String(typeof model.modelId === 'object' ? model.modelId?._id : model.modelId).trim();
-      if (!modelId) {
-        Alert.alert('Error', 'Model ID not found.');
-        return;
-      }
-
-      const modelFileUrl = ARService.getModelFileUrl(modelId);
-      const referenceImageUrl = model.modelId?.thumbnail || model.modelId?.preview_image || ARService.getPreviewImageUrl(modelId);
-
-      let audiosJson: string | undefined;
+      console.log('🚀 ~ ARTab ~ startActualScan ~ model:', model);
+  
       try {
-        const audiosResponse = await ARService.getModelAudios(modelId);
-        if (audiosResponse.audios?.length) {
-          const audiosWithUrls = audiosResponse.audios.map(a => ({
-            ...a,
-            audioUrl: a.url || ARService.getAudioStreamUrlById(a.gridfsId),
-          }));
-          audiosJson = JSON.stringify(audiosWithUrls);
+        const supported = await ARScannerModule.isARSupported();
+        if (!supported) {
+          Alert.alert('Not Supported', 'ARCore is not available on this device.');
+          return;
         }
-      } catch {
-        // Audio fetch failed — scanner will work without audio
+  
+        const permission = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+        );
+        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert('Camera Permission', 'Camera permission is required for AR Scan.');
+          return;
+        }
+  
+        const modelId = String(model._id || model.id || '').trim();
+        if (!modelId) {
+          Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
+          return;
+        }
+  
+        // Prioritize direct file URL
+        const modelFileUrl = (model as any).file && String((model as any).file).startsWith('http')
+          ? (model as any).file
+          : ARService.getModelFileUrl(modelId);
+  
+        // Prioritize direct preview/thumbnail
+        const referenceImageUrl = (model as any).preview_image || (model as any).thumbnail || getReferenceImageSource(model) || ARService.getPreviewImageUrl(modelId);
+  
+        // Fetch audios for this model or use pre-loaded ones (prioritizing direct URLs)
+        let audiosJson: string | undefined;
+        try {
+          const modelAudios = (model as any).audios || [];
+          if (modelAudios.length > 0) {
+            const mapped = modelAudios.map((a: any) => ({
+              ...a,
+              audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null)
+            }));
+            audiosJson = JSON.stringify(mapped);
+          } else {
+            const audiosResponse = await ARService.getModelAudios(modelId);
+            if (audiosResponse.audios?.length) {
+              const audiosWithUrls = audiosResponse.audios.map(a => ({
+                ...a,
+                audioUrl: a.url || ARService.getAudioStreamUrlById(a.gridfsId),
+              }));
+              audiosJson = JSON.stringify(audiosWithUrls);
+            }
+          }
+        } catch {
+          // Audio fetch failed — scanner will work without audio
+        }
+  
+        await ARScannerModule.startScannerDynamic(
+          modelFileUrl,
+          referenceImageUrl,
+          model.name || 'model',
+          audiosJson,
+        );
+      } catch (error: any) {
+        Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
+      } finally {
+        closeSheet();
       }
-
-      await ARScannerModule.startScannerDynamic(
-        modelFileUrl,
-        referenceImageUrl,
-        model.modelId?.name || model.name || 'model',
-        audiosJson,
-      );
-    } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
-    } finally {
-      closeSheet();
-    }
-  };
+    };
 
   const handleScanModel = (model: any) => {
     closeSheet();
@@ -397,7 +414,7 @@ export default function ARTab({
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          
+
           <View style={[styles.modelPreviewShell, { height: verticalScale(74), position: 'relative' }]}>
             <View style={styles.cardHeader}>
               <View style={[styles.weekBadge, { backgroundColor: 'rgba(255,255,255,0.85)', borderColor: withAlpha(accentColor, 0.3) }]}>

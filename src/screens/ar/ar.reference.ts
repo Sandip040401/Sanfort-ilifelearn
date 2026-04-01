@@ -1,7 +1,7 @@
-import {Platform} from 'react-native';
-import {ARService} from '@/services';
-import {API_BASE_URL} from '@/config';
-import type {ARModel} from '@/types';
+import { Platform } from 'react-native';
+import { ARService } from '@/services';
+import { API_BASE_URL } from '@/config';
+import type { ARModel } from '@/types';
 
 const REFERENCE_IMAGE_ASSETS_BY_MODEL: Record<string, string> = {
   bear: 'reference_bear_page.jpg',
@@ -51,43 +51,34 @@ export function normalizeReferenceForDisplay(value: string) {
 
 export function getReferenceImageSource(model?: ARModel | null) {
   if (!model) return null;
-  const previewValue = 
-    (model as any).thumbnail || 
-    (model as any).preview_image || 
-    model.previewImage || 
-    (model as any).preview_url ||
-    (model as any).thumbnailUrl;
+  const m = model as any;
 
-  if (previewValue && String(previewValue).startsWith('http')) {
-    return String(previewValue);
-  }
+  // 1. Prioritize explicit reference, coloring sheets, and the user-specified preview_image
+  const raw =
+    m.preview_image || // User emphasized this field as the source of truth
+    m.previewImage ||
+    m.coloringPage || m.coloringPageUrl ||
+    m.colorSheet || m.colorSheetUrl ||
+    m.targetImageUrl || m.targetImage ||
+    m.sheetImage || m.sheetUrl ||
+    m.arSheet || m.arSheetUrl ||
+    m.referenceImageUrl || m.referenceUrl || m.referenceImage || m.reference_image || m.reference ||
+    m.preview_url || m.previewUrl ||
+    m.thumbnailUrl || m.thumbnail; // Icons last
 
-  if (previewValue) {
-    return resolvePreviewReference(model, String(previewValue));
-  }
-  const rawReference =
-    (model as any).referenceImageUrl ||
-    (model as any).referenceUrl ||
-    (model as any).referenceImage ||
-    (model as any).reference_image ||
-    (model as any).targetImageUrl ||
-    (model as any).targetImage ||
-    (model as any).sheetImage ||
-    (model as any).sheetUrl ||
-    (model as any).arSheet ||
-    (model as any).arSheetUrl ||
-    (model as any).coloringPage ||
-    (model as any).coloringPageUrl ||
-    (model as any).colorSheet ||
-    (model as any).colorSheetUrl ||
-    (model as any).reference;
-  if (rawReference) {
-    return normalizeReferenceSource(String(rawReference));
+  if (!raw) {
+    const key = (m.name || m.id || m._id || '').toString().trim().toLowerCase();
+    if (key && REFERENCE_IMAGE_ASSETS_BY_MODEL[key]) {
+      return REFERENCE_IMAGE_ASSETS_BY_MODEL[key];
+    }
+    return null;
   }
 
-  const key = (model.name || model.id || model._id || '').toString().trim().toLowerCase();
-  if (key && REFERENCE_IMAGE_ASSETS_BY_MODEL[key]) {
-    return REFERENCE_IMAGE_ASSETS_BY_MODEL[key];
+  const value = String(raw).trim();
+  if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('file://')) {
+    return value;
   }
-  return null;
+
+  return resolvePreviewReference(model, value);
 }
+

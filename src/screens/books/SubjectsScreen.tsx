@@ -145,8 +145,6 @@ function SubjectsScreenContent() {
 
         <View style={styles.content}>
           <View style={[styles.contentInner, {width: contentWidth - H_PAD * 2}]}>
- 
-
             <View style={[styles.grid, isTablet && styles.gridTablet]}>
               {books.length === 0 ? (
                 <View style={{ width: '100%', padding: moderateScale(40), alignItems: 'center' }}>
