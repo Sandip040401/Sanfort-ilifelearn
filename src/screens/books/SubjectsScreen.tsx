@@ -14,13 +14,17 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import type {RouteProp} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
+import {useQuery} from '@tanstack/react-query';
 import {ArrowLeft, ChevronRight, Layers3} from 'lucide-react-native';
+import KidLoadingAnimation from '@/components/books/KidLoadingAnimation';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
+
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
 import {BooksService} from '@/services/books.service';
+import {useAuth} from '@/store';
 import {getGradeMeta, SUBJECT_OPTIONS, withAlpha} from './books.data';
 
 const H_PAD = scale(20);
@@ -31,13 +35,38 @@ type BooksNavigationProp = StackNavigationProp<BooksStackParamList>;
 
 function SubjectsScreenContent() {
   const {colors, isDark} = useTheme();
+  const {user} = useAuth();
   const insets = useSafeAreaInsets();
   const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectsRouteProp>();
-  const [refreshing, setRefreshing] = React.useState(false);
-  const {gradeKey, gradeName, gradeColors, books = []} = route.params as any;
+  const {gradeKey, gradeName, gradeColors, books: initialBooks = []} = route.params as any;
   const {width, height} = useWindowDimensions();
+
+  const { data: apiBooks, isPending, isRefetching, refetch } = useQuery({
+    queryKey: ['subjects', gradeKey],
+    queryFn: async () => {
+      const response = await BooksService.getAllGrades();
+      const resData = response.data as any;
+      if (!resData.success) throw new Error('Failed to fetch subjects');
+      
+      const grades = resData.grades;
+      
+      const targetBaseName = gradeName.trim().toLowerCase();
+      const relevantGrades = grades.filter((g: any) => g.category.split(' (')[0].trim().toLowerCase() === targetBaseName);
+      
+      if (relevantGrades.length === 0) return initialBooks;
+      
+      return relevantGrades.flatMap((g: any) => g.books || []);
+    },
+    initialData: initialBooks,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const books = apiBooks || initialBooks;
+  
+  const role = user?.role?.toLowerCase();
+  const isStaff = role === 'teacher' || role === 'super-admin' || role === 'admin';
   const isLandscape = width > height;
   const cardText = colors.text;
   const cardSubText = colors.textSecondary;
@@ -59,13 +88,8 @@ function SubjectsScreenContent() {
         ? Math.max(verticalScale(170), Math.min(verticalScale(210), cardWidth * 0.95))
         : undefined);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-
-    // Subjects are local right now; keep pull-to-refresh ready for future API sync.
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 650);
+  const handleRefresh = async () => {
+    await refetch();
   };
 
   return (
@@ -76,11 +100,11 @@ function SubjectsScreenContent() {
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={isRefetching}
             onRefresh={handleRefresh}
             progressViewOffset={insets.top + verticalScale(14)}
             tintColor="#FFFFFF"
-            colors={[gradeMeta?.accent ?? headerColors[0]]}
+            colors={['#6C4CFF']}
             progressBackgroundColor="#F8F5FF"
           />
         }
@@ -100,18 +124,22 @@ function SubjectsScreenContent() {
             style={StyleSheet.absoluteFill}
           />
           <View style={[styles.headerInner, {width: contentWidth - H_PAD * 2}]}>
-            <View style={styles.headerTopRow}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => navigation.goBack()}
-                style={styles.backButton}>
-                <ArrowLeft size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
-              </TouchableOpacity>
+            <View style={[styles.headerTopRow, !isStaff && { justifyContent: 'flex-end' }]}>
+              {isStaff && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => navigation.goBack()}
+                  style={styles.backButton}>
+                  <ArrowLeft size={moderateScale(20)} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+              )}
 
-              <View style={styles.headerBadge}>
-                <Layers3 size={moderateScale(16)} color="#fff" strokeWidth={2} />
-                <Text style={styles.headerBadgeText}>Themes Library</Text>
-              </View>
+              {isStaff && (
+                <View style={styles.headerBadge}>
+                  <Layers3 size={moderateScale(16)} color="#fff" strokeWidth={2} />
+                  <Text style={styles.headerBadgeText}>Themes Library</Text>
+                </View>
+              )}
             </View>
 
             {/* <Text style={styles.headerEyebrow}>

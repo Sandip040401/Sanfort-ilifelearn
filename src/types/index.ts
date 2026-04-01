@@ -269,5 +269,12 @@ export type BooksStackParamList = {
   GradeSelector: undefined;
   Subjects:       {gradeKey: string; gradeName: string; gradeColors: string[]};
   SubjectContent: {gradeKey: string; gradeName: string; subjectKey: string; subjectName: string; subjectColor: string};
-  TopicDetail:    {topic: FlatTopic; subjectColor: string; subjectName: string; gradeName: string};
+  TopicDetail: {
+    topic: FlatTopic;
+    subjectColor: string;
+    subjectName: string;
+    gradeName: string;
+    gradeKey?: string;
+    subjectKey?: string;
+  };
 };
