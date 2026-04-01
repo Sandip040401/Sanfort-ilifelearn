@@ -14,7 +14,6 @@ import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import {
@@ -27,12 +26,8 @@ import {
 } from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import MediaViewer, { type MediaViewerPayload } from '@/components/MediaViewer';
-import KidLoadingAnimation from '@/components/books/KidLoadingAnimation';
 import { useScreenReady } from '@/hooks/useScreenReady';
 import { useTheme } from '@/theme';
-import { useAuth } from '@/store';
-import { BooksService } from '@/services';
-import { normalizeConceptsPayload } from './books.utils';
 import type { BooksStackParamList, MainStackParamList } from '@/types';
 import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
@@ -82,61 +77,35 @@ const getKeywordStyles = (keyword: string = '') => {
 
 function TopicScreenContent() {
   const { colors, isDark } = useTheme();
-  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { onScroll } = useTabBarHideOnScroll();
   const navigation = useNavigation<TopicNavigationProp>();
   const route = useRoute<TopicRouteProp>();
-  const { topic: initialTopic, subjectColor, subjectName, gradeName, gradeKey, subjectKey } = route.params;
+  const { topic, subjectColor, subjectName, gradeName } = route.params;
   const { width: windowWidth } = useWindowDimensions();
   const [selectedMedia, setSelectedMedia] = useState<MediaViewerPayload | null>(null);
   const screenReady = useScreenReady();
-  
-  const role = user?.role?.toLowerCase();
-  const isStaff = role === 'teacher' || role === 'super-admin' || role === 'admin';
-
   const safeAccent = subjectColor && subjectColor.startsWith('#')
     ? subjectColor
     : colors.primary || '#F97316';
-    
+  const headerTextColor = '#FFFFFF';
+  const headerSubTextColor = 'rgba(255,255,255,0.82)';
+  const headerBadgeBg = 'rgba(255,255,255,0.18)';
+  const headerBadgeBorder = 'rgba(255,255,255,0.22)';
+  const quickStatBg = 'rgba(255,255,255,0.14)';
+  const quickStatBorder = 'rgba(255,255,255,0.18)';
+  const quickStatLabelColor = 'rgba(255,255,255,0.75)';
   const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
-
-  const { data: topicData, isPending } = useQuery({
-    queryKey: ['topic-detail', initialTopic.id],
-    queryFn: async () => {
-      // Re-fetching the subject to get the absolute latest for this topic
-      const isSanfort = gradeName?.toLowerCase()?.includes('san');
-      let book: any = {};
-      if (isSanfort) {
-        const response = await BooksService.getGradeById(subjectKey || '');
-        const data = response.data as any;
-        book = data?.book || {};
-      } else {
-         const response = await BooksService.getConceptsForHome(gradeKey || '', subjectKey || '');
-         const data = response.data?.data ?? response.data;
-         book = data || {};
-      }
-      
-      // Find the topic in the books/weeks
-      const allTopics = (book.weeks || []).flatMap((w: any) => (w.topics || []).map((t: any) => ({ ...t, volumeNumber: w.weekNumber })));
-      const found = allTopics.find((t: any) => t.id === initialTopic.id || t._id === initialTopic.id);
-      
-      return found || initialTopic;
-    },
-    initialData: initialTopic,
-    staleTime: 1000 * 60 * 5,
-  });
-
   const safeTopic = {
-    ...topicData,
-    title: topicData?.title ?? 'Topic',
-    conceptTitle: topicData?.conceptTitle ?? 'Concept',
-    volumeNumber: topicData?.volumeNumber ?? 0,
-    images: Array.isArray(topicData?.images) ? topicData.images : [],
-    videos: Array.isArray(topicData?.videos) ? topicData.videos : [],
-    arSheets: Array.isArray(topicData?.arSheets) ? topicData.arSheets : [],
-    ar: Array.isArray(topicData?.ar) ? topicData.ar : [],
-    keyword: topicData?.keyword ?? '',
+    ...topic,
+    title: topic?.title ?? 'Topic',
+    conceptTitle: topic?.conceptTitle ?? 'Concept',
+    volumeNumber: topic?.volumeNumber ?? 0,
+    images: Array.isArray(topic?.images) ? topic.images : [],
+    videos: Array.isArray(topic?.videos) ? topic.videos : [],
+    arSheets: Array.isArray(topic?.arSheets) ? topic.arSheets : [],
+    ar: Array.isArray(topic?.ar) ? topic.ar : [],
+    keyword: topic?.keyword ?? '',
   };
 
   const renderResourceSection = (
@@ -364,11 +333,7 @@ function TopicScreenContent() {
           </View>
 
           <View style={styles.content}>
-            {!isStaff && isPending ? (
-              <View style={[styles.loadingCard, { backgroundColor: colors.surface, paddingVertical: verticalScale(60) }]}>
-                 <KidLoadingAnimation />
-              </View>
-            ) : !screenReady ? (
+            {!screenReady ? (
               <View style={[styles.loadingCard, { backgroundColor: colors.surface }]}>
                 <ActivityIndicator size="small" color={safeAccent} />
                 <Text style={[styles.loadingCardTitle, { color: colors.text }]}>

@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useEffect } from 'react';
+import React from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -6,14 +6,11 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
-  ActivityIndicator,
-  RefreshControl,
 } from 'react-native';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import FastImage from 'react-native-fast-image';
 import Animated, {
@@ -27,18 +24,7 @@ import {
   FileText,
   Layers3,
   PlayCircle,
-  Star,
-  Sparkles,
-  GraduationCap,
 } from 'lucide-react-native';
-import {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-  withDelay,
-} from 'react-native-reanimated';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import { Skeleton } from '@/components/ui';
 import { useTheme } from '@/theme';
@@ -48,7 +34,6 @@ import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import { BooksService } from '@/services/books.service';
 import { useAuth } from '@/store';
 import { GRADE_OPTIONS } from './books.data';
-import KidLoadingAnimation from '@/components/books/KidLoadingAnimation';
 
 const H_PAD = scale(20);
 const CARD_GAP = scale(14);
@@ -139,84 +124,12 @@ function BooksScreenContent() {
     [skeletonCount],
   );
 
-  const { data: apiData, isPending, isRefetching, refetch } = useQuery({
-    queryKey: ['grades', user?.id],
-    queryFn: async () => {
-      const response = await BooksService.getAllGrades();
-      const resData = response.data as any;
-      if (!resData.success) throw new Error('Failed to fetch grades');
-      return resData.grades;
-    },
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-
-  const grades = useMemo(() => {
-    if (!apiData) return [];
-    
-    const sequence = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'];
-    const groupedGradesMap = new Map();
-
-    apiData.forEach((g: any) => {
-      const baseName = g.category.split(' (')[0];
-      const design = DESIGN_MAP[baseName] || DESIGN_MAP['SAN Toddler'];
-      if (!groupedGradesMap.has(baseName)) {
-        groupedGradesMap.set(baseName, {
-          _id: baseName,
-          category: g.category,
-          books: [],
-          design,
-          baseName
-        });
-      }
-      groupedGradesMap.get(baseName).books.push({...g, design, baseName});
-    });
-
-    let mapped = Array.from(groupedGradesMap.values())
-      .sort((a: any, b: any) => sequence.indexOf(a.baseName) - sequence.indexOf(b.baseName));
-
-    const role = user?.role?.toLowerCase();
-    const isStaff = role === 'teacher' || role === 'super-admin' || role === 'admin';
-
-    if (!isStaff) {
-      const targetGrade = ((user as any)?.gradeName || 'SAN Toddler').trim().toLowerCase();
-      const filtered = mapped.filter((g: any) => g.baseName.trim().toLowerCase() === targetGrade);
-
-      if (filtered.length > 0) {
-        mapped = filtered;
-      } else if (mapped.length > 0) {
-        mapped = [mapped[0]];
-      }
-    }
-    
-    return mapped;
-  }, [apiData, user]);
-
-  const role = user?.role?.toLowerCase();
-  const isStaff = role === 'teacher' || role === 'super-admin' || role === 'admin';
-
-  // ── Auto-Redirection for Students ──
-  React.useEffect(() => {
-    if (!isPending && !isStaff && grades.length === 1) {
-      const grade = grades[0];
-      const { design } = grade;
-      const colorsArr = [design.accent + 'DD', design.accent + '99'];
-
-      navigation.replace('Subjects', {
-        gradeKey: grade._id,
-        gradeName: grade.baseName,
-        gradeColors: colorsArr,
-        books: grade.books,
-      } as any);
-    }
-  }, [isPending, isStaff, grades, navigation]);
-
-  const handleRefresh = useCallback(async () => {
-    await refetch();
-  }, [refetch]);
+  const [grades, setGrades] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
   const handleGradePress = (grade: any) => {
     const { design } = grade;
-    const colorsArr = [design.accent + 'DD', design.accent + '99'];
+    const colorsArr = [design.accent + 'DD', design.accent + '99']; // Using target gradient colors
 
     navigation.navigate('Subjects', {
       gradeKey: grade._id,
@@ -226,26 +139,65 @@ function BooksScreenContent() {
     } as any);
   };
 
-  // For students/non-staff, ALWAYS show a loader until the redirection happens
-  if (!role || !isStaff) {
-    return (
-      <View style={[styles.root, rootBackgroundStyle, { justifyContent: 'center', alignItems: 'center' }]}>
-        <KidLoadingAnimation />
-      </View>
-    );
-  }
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchGrades = async () => {
+        try {
+          const response = await BooksService.getAllGrades();
+          const resData = response.data as any;
+          if (resData.success) {
+            const sequence = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'];
+            let groupedGradesMap = new Map();
+
+            resData.grades.forEach((g: any) => {
+              const baseName = g.category.split(' (')[0];
+              const design = DESIGN_MAP[baseName] || DESIGN_MAP['SAN Toddler'];
+              if (!groupedGradesMap.has(baseName)) {
+                groupedGradesMap.set(baseName, {
+                  _id: baseName,
+                  category: g.category,
+                  books: [],
+                  design,
+                  baseName
+                });
+              }
+              groupedGradesMap.get(baseName).books.push({...g, design, baseName});
+            });
+
+            let apiGrades = Array.from(groupedGradesMap.values())
+              .sort((a: any, b: any) => sequence.indexOf(a.baseName) - sequence.indexOf(b.baseName));
+
+            const role = user?.role?.toLowerCase();
+            if (role !== 'teacher' && role !== 'super-admin' && role !== 'admin') {
+              const targetGrade = ((user as any)?.gradeName || 'SAN Toddler').trim().toLowerCase();
+              const filtered = apiGrades.filter((g: any) => g.baseName.trim().toLowerCase() === targetGrade);
+
+              if (filtered.length > 0) {
+                apiGrades = filtered;
+              } else if (apiGrades.length > 0) {
+                apiGrades = [apiGrades[0]];
+              }
+            }
+
+            setGrades(apiGrades);
+          }
+        } catch (error: any) {
+          console.error('API Error:', error.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchGrades();
+    }, [user])
+  );
 
   return (
     <View style={[styles.root, rootBackgroundStyle]}>
       <ScrollView
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={handleRefresh}
-            tintColor="#fff"
-            colors={['#6C4CFF']}
-          />
-        }
+        showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scrollContent,
           {
@@ -316,7 +268,7 @@ function BooksScreenContent() {
             </Text> */}
 
             <View style={[styles.gradeGrid, showTwoColumn && styles.gradeGridTablet]}>
-              {isPending ? (
+              {loading ? (
                 skeletonItems.map(item => (
                   <View
                     key={`grade-skeleton-${item}`}
@@ -853,63 +805,6 @@ const styles = StyleSheet.create({
   },
   gradeCardSkeletonWrap: {
     marginBottom: CARD_GAP,
-  },
-  kidLoaderContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kidLoaderMain: {
-    marginBottom: verticalScale(30),
-  },
-  kidIconStack: {
-    width: scale(110),
-    height: scale(110),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kidIconCircle: {
-    width: scale(90),
-    height: scale(90),
-    borderRadius: scale(45),
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#6C4CFF',
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    elevation: 10,
-    borderWidth: 4,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  floatingStar1: {
-    position: 'absolute',
-    top: -scale(10),
-    right: -scale(10),
-  },
-  floatingStar2: {
-    position: 'absolute',
-    bottom: -scale(5),
-    left: -scale(15),
-  },
-  floatingStar3: {
-    position: 'absolute',
-    top: scale(5),
-    left: -scale(20),
-  },
-  kidLoaderTextWrap: {
-    alignItems: 'center',
-  },
-  kidLoaderTitle: {
-    color: '#fff',
-    fontSize: moderateScale(22),
-    fontWeight: '900',
-    marginBottom: verticalScale(8),
-    textAlign: 'center',
-  },
-  kidLoaderSub: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: moderateScale(14),
-    fontWeight: '600',
-    textAlign: 'center',
   },
   gradeHeaderBar: {
     height: verticalScale(0), // Removed top bar for cleaner look

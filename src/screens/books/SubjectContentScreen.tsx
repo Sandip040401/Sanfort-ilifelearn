@@ -405,8 +405,6 @@ function SubjectContentScreenContent() {
                 subjectColor: accent,
                 subjectName: subjectDisplayName,
                 gradeName: booksQuery.data.grade.name || gradeName,
-                gradeKey,
-                subjectKey,
               })
             }
           />
