@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Alert,
+  Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -29,10 +30,10 @@ import { useTheme } from '@/theme';
 import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import type { BottomTabParamList, MainStackParamList } from '@/types';
-import ComingSoonModal from '@/components/ComingSoonModal';
 
 const H_PAD = scale(20);
 const CARD_GAP = scale(12);
+const COMPACT_PHONE_BREAKPOINT = 360;
 
 type TabNav = BottomTabNavigationProp<BottomTabParamList, 'Home'>;
 type MainNav = StackNavigationProp<MainStackParamList>;
@@ -41,6 +42,11 @@ const LearningThemesImg = require('@/assets/images/home_screen/Learning-Themes.w
 const ARImg = require('@/assets/images/home_screen/AR-Image.webp');
 const WebVRImg = require('@/assets/images/home_screen/WebVR.webp');
 const EduGamesImg = require('@/assets/images/home_screen/Edu-Games.webp');
+const HOME_IMAGE_SOURCES = [LearningThemesImg, ARImg, WebVRImg, EduGamesImg] as const;
+
+const HEADER_GRADIENT_COLORS = ['#3D2799', '#5439CC', '#6C4CFF'];
+const HERO_GRADIENT_COLORS = ['#4F46E5', '#5D49F2', '#6C4CFF', '#8354FF', '#9B5CFF'];
+const GAMES_GRADIENT_COLORS = ['#4F46E5', '#6366F1', '#7E22CE'];
 
 const GRID_ITEMS = [
   { key: 'AR' as const, label: 'Augmented Reality', sub: 'Explore interactive 3D models through AR', image: ARImg, colors: ['#0369A1', '#0EA5E9'], shadow: '#0EA5E9' },
@@ -65,10 +71,10 @@ export default function HomeScreen() {
   const lastScrollY = useRef(0);
   const isTabBarHidden = useRef(false);
   const tabBarHeight = TAB_BAR_HEIGHT + insets.bottom;
-  const [isSoonVisible, setIsSoonVisible] = useState(false);
 
   const isTablet = width >= 768;
   const isLandscape = width > height;
+  const useSingleToolColumn = width < COMPACT_PHONE_BREAKPOINT && !isLandscape;
   const outerHPad = isTablet && isLandscape ? scale(12) : H_PAD;
   const maxContentWidth = isTablet && !isLandscape ? width - 48 : undefined;
   const gridGap = isTablet ? 14 : CARD_GAP;
@@ -91,6 +97,28 @@ export default function HomeScreen() {
     ],
     [colors.background, tabBarHeight],
   );
+  const gridLayoutStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
+      styles.gridRow,
+      useSingleToolColumn ? styles.gridColumn : null,
+      { gap: gridGap, marginBottom: gridGap },
+    ],
+    [gridGap, useSingleToolColumn],
+  );
+
+  useEffect(() => {
+    const preloadable = HOME_IMAGE_SOURCES.reduce<{ uri: string }[]>((acc, source) => {
+      const asset = Image.resolveAssetSource(source);
+      if (asset?.uri) {
+        acc.push({ uri: asset.uri });
+      }
+      return acc;
+    }, []);
+
+    if (preloadable.length > 0) {
+      FastImage.preload(preloadable);
+    }
+  }, []);
 
   const animateTabBar = useCallback(
     (hide: boolean) => {
@@ -143,7 +171,7 @@ export default function HomeScreen() {
         {/* ── Header ── */}
         <View style={[styles.headerOuter, { paddingTop: insets.top + 16 }]}>
           <LinearGradient
-            colors={['#3D2799', '#5439CC', '#6C4CFF']}
+            colors={HEADER_GRADIENT_COLORS}
             locations={[0, 0.5, 1]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -210,7 +238,7 @@ export default function HomeScreen() {
             <TouchableOpacity onPress={() => tabNav.navigate('Themes')} activeOpacity={0.88}>
               <View style={styles.heroCard}>
                 <LinearGradient
-                  colors={['#4F46E5', '#5D49F2', '#6C4CFF', '#8354FF', '#9B5CFF']}
+                  colors={HERO_GRADIENT_COLORS}
                   locations={[0, 0.25, 0.5, 0.75, 1]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFill}
@@ -228,9 +256,13 @@ export default function HomeScreen() {
 
             {/* Grid — 2x2 on all devices */}
             <Text style={[styles.section, { color: colors.text }]}>Learning Tools</Text>
-            <View style={[styles.gridRow, { gap: gridGap, marginBottom: gridGap }]}>
-              {GRID_ITEMS.slice(0, 2).map((item) => (
-                <TouchableOpacity key={item.key} onPress={() => tabNav.navigate(item.key)} activeOpacity={0.88} style={styles.gridTouchable}>
+            <View style={gridLayoutStyle}>
+              {GRID_ITEMS.map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  onPress={() => tabNav.navigate(item.key)}
+                  activeOpacity={0.88}
+                  style={[styles.gridTouchable, useSingleToolColumn && styles.gridTouchableSingle]}>
                   <View style={[styles.gridCard, isTablet && styles.gridCardTablet]}>
                     <LinearGradient colors={item.colors as unknown as string[]} locations={[0, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
                     <FastImage source={item.image} style={[styles.gridImageOnly, isTablet && styles.gridImageOnlyTablet]} resizeMode={FastImage.resizeMode.contain} />
@@ -272,24 +304,19 @@ export default function HomeScreen() {
             >
               <View style={styles.wideCard}>
                 <LinearGradient
-                  colors={['#4F46E5', '#6366F1', '#7E22CE']}
+                  colors={GAMES_GRADIENT_COLORS}
                   locations={[0, 0.5, 1]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
                 <FastImage source={EduGamesImg} style={styles.wideImageOnly} resizeMode={FastImage.resizeMode.contain} />
-                <View style={{ flex: 1 }}>
+                <View style={styles.flexOne}>
                   <Text style={styles.wideTitle}>Educational Games</Text>
                   <Text style={styles.wideSub}>Fun learning games for kids</Text>
                 </View>
                 <View style={styles.wideDecor} />
               </View>
             </TouchableOpacity>
-
-            <ComingSoonModal
-              visible={isSoonVisible}
-              onClose={() => setIsSoonVisible(false)}
-            />
 
           </View>
         </View>
@@ -356,7 +383,9 @@ const styles = StyleSheet.create({
   decor2: { position: 'absolute', bottom: verticalScale(-20), right: scale(50), width: scale(60), height: scale(60), borderRadius: scale(30), backgroundColor: 'rgba(255,255,255,0.06)' },
 
   gridRow: { flexDirection: 'row', marginBottom: CARD_GAP },
+  gridColumn: { flexDirection: 'column' },
   gridTouchable: { flex: 1 },
+  gridTouchableSingle: { flex: 0, width: '100%' },
   gridCard: { minHeight: verticalScale(125), borderRadius: moderateScale(18), paddingTop: verticalScale(14), paddingHorizontal: scale(14), paddingBottom: verticalScale(12), overflow: 'hidden' },
   gridCardTablet: { minHeight: 170, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 16, borderRadius: 20 },
   gridIcon: { width: scale(54), height: scale(54), borderRadius: moderateScale(15), backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(8), borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },

@@ -673,7 +673,9 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: moderateScale(20), padding: moderateScale(18),
     shadowColor: '#000', shadowOpacity: 0.06,
-    shadowRadius: moderateScale(12), shadowOffset: { width: 0, height: verticalScale(4) }, elevation: 2,
+    shadowRadius: moderateScale(12), shadowOffset: { width: 0, height: verticalScale(4) },
+    borderWidth: 1,
+    borderColor: 'rgba(17, 24, 39, 0.06)',
     gap: verticalScale(14),
   },
 
@@ -748,7 +750,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 4,
   },
   helpBtnText: {
     fontSize: moderateScale(12),

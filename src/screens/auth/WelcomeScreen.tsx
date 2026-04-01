@@ -125,7 +125,6 @@ const styles = StyleSheet.create({
 
   hero:       {alignItems:'center', paddingHorizontal:scale(24)},
   logoWrap:   {marginBottom:verticalScale(20), position:'relative'},
-  logoInner:  {width:scale(96), height:scale(96), borderRadius:moderateScale(28), backgroundColor:'#fff', alignItems:'center', justifyContent:'center', shadowColor:'#000', shadowOffset:{width:0, height:verticalScale(10)}, shadowOpacity:0.25, shadowRadius:moderateScale(20), elevation:12},
   logoImage:  {width:scale(110), height:scale(110)},
   logoBadge:  {position:'absolute', bottom:verticalScale(0), right:scale(0), width:scale(28), height:scale(28), borderRadius:scale(14), backgroundColor:'#FFB020', alignItems:'center', justifyContent:'center', borderWidth:2, borderColor:'#fff'},
   appName:    {fontSize:moderateScale(28), lineHeight:moderateScale(34), fontWeight:'800', color:'#fff', letterSpacing:0.3, marginBottom:verticalScale(6), textAlign:'center'},
@@ -139,7 +138,7 @@ const styles = StyleSheet.create({
   featureSub:   {fontSize:moderateScale(11), color:'rgba(255,255,255,0.65)'},
 
   bottomWrap: {paddingHorizontal:scale(24), marginTop:'auto', paddingTop:verticalScale(20), gap:verticalScale(14)},
-  ctaBtn:     {flexDirection:'row', alignItems:'center', justifyContent:'center', gap:scale(8), backgroundColor:'#fff', borderRadius:moderateScale(18), paddingVertical:verticalScale(16), shadowColor:'#000', shadowOffset:{width:0, height:verticalScale(8)}, shadowOpacity:0.2, shadowRadius:moderateScale(16), elevation:8},
+  ctaBtn:     {flexDirection:'row', alignItems:'center', justifyContent:'center', gap:scale(8), backgroundColor:'#fff', borderRadius:moderateScale(18), paddingVertical:verticalScale(16), shadowColor:'#000', shadowOffset:{width:0, height:verticalScale(8)}, shadowOpacity:0.2, shadowRadius:moderateScale(16)},
   ctaBtnText: {fontSize:moderateScale(16), fontWeight:'700', color:'#6C4CFF'},
   versionText:{textAlign:'center', fontSize:moderateScale(12), color:'rgba(255,255,255,0.5)'},
 });
