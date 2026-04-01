@@ -10,7 +10,7 @@ import {
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import FastImage from 'react-native-fast-image';
 import Animated, {
@@ -330,51 +330,49 @@ function BooksScreenContent() {
     FastImage.preload(preloadable);
   }, []);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      let isMounted = true;
+  React.useEffect(() => {
+    let isMounted = true;
 
-      const fetchGrades = async () => {
-        setLoading(true);
+    const fetchGrades = async () => {
+      setLoading(true);
 
-        try {
-          const response = await BooksService.getAllGrades();
-          const resData = response.data as { success?: boolean; grades?: unknown[] };
+      try {
+        const response = await BooksService.getAllGrades();
+        const resData = response.data as { success?: boolean; grades?: unknown[] };
 
-          if (!isMounted) {
-            return;
-          }
-
-          if (resData.success && Array.isArray(resData.grades)) {
-            const normalizedGrades = normalizeApiGrades(resData.grades);
-            setGrades(
-              getScopedGrades(normalizedGrades, user?.role, user?.gradeName),
-            );
-          } else {
-            setGrades([]);
-          }
-        } catch (error) {
-          if (__DEV__) {
-            console.warn('[BooksScreen] Failed to load grades', error);
-          }
-
-          if (isMounted) {
-            setGrades([]);
-          }
-        } finally {
-          if (isMounted) {
-            setLoading(false);
-          }
+        if (!isMounted) {
+          return;
         }
-      };
 
-      fetchGrades();
+        if (resData.success && Array.isArray(resData.grades)) {
+          const normalizedGrades = normalizeApiGrades(resData.grades);
+          setGrades(
+            getScopedGrades(normalizedGrades, user?.role, user?.gradeName),
+          );
+        } else {
+          setGrades([]);
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[BooksScreen] Failed to load grades', error);
+        }
 
-      return () => {
-        isMounted = false;
-      };
-    }, [user?.gradeName, user?.role]),
-  );
+        if (isMounted) {
+          setGrades([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchGrades();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.gradeName, user?.role]);
 
   return (
     <View style={[styles.root, rootBackgroundStyle]}>
