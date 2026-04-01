@@ -286,78 +286,120 @@ export default function ARTab({
     });
   }, [navigation, closeSheet]);
 
-  const startActualScan = async (model: ARModel) => {
-      if (Platform.OS !== 'android') {
-        Alert.alert('Not Supported', 'AR Scan is currently available on Android only.');
+  const startActualScan = async (model: any) => {
+    if (Platform.OS !== 'android') {
+      Alert.alert('Not Supported', 'AR Scan is currently available on Android only.');
+      return;
+    }
+    console.log('🚀 ~ ARTab ~ startActualScan ~ model:', model);
+
+    try {
+      const supported = await ARScannerModule.isARSupported();
+      if (!supported) {
+        Alert.alert('Not Supported', 'ARCore is not available on this device.');
         return;
       }
-      console.log('🚀 ~ ARTab ~ startActualScan ~ model:', model);
-  
-      try {
-        const supported = await ARScannerModule.isARSupported();
-        if (!supported) {
-          Alert.alert('Not Supported', 'ARCore is not available on this device.');
-          return;
-        }
-  
-        const permission = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.CAMERA,
-        );
-        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-          Alert.alert('Camera Permission', 'Camera permission is required for AR Scan.');
-          return;
-        }
-  
-        const modelId = String(model._id || model.id || '').trim();
-        if (!modelId) {
-          Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
-          return;
-        }
-  
-        // Prioritize direct file URL
-        const modelFileUrl = (model as any).file && String((model as any).file).startsWith('http')
-          ? (model as any).file
-          : ARService.getModelFileUrl(modelId);
-  
-        // Prioritize direct preview/thumbnail
-        const referenceImageUrl = (model as any).preview_image || (model as any).thumbnail || getReferenceImageSource(model) || ARService.getPreviewImageUrl(modelId);
-  
-        // Fetch audios for this model or use pre-loaded ones (prioritizing direct URLs)
-        let audiosJson: string | undefined;
-        try {
-          const modelAudios = (model as any).audios || [];
-          if (modelAudios.length > 0) {
-            const mapped = modelAudios.map((a: any) => ({
-              ...a,
-              audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null)
-            }));
-            audiosJson = JSON.stringify(mapped);
-          } else {
-            const audiosResponse = await ARService.getModelAudios(modelId);
-            if (audiosResponse.audios?.length) {
-              const audiosWithUrls = audiosResponse.audios.map(a => ({
-                ...a,
-                audioUrl: a.url || ARService.getAudioStreamUrlById(a.gridfsId),
-              }));
-              audiosJson = JSON.stringify(audiosWithUrls);
-            }
-          }
-        } catch {
-          // Audio fetch failed — scanner will work without audio
-        }
-  
-        await ARScannerModule.startScannerDynamic(
-          modelFileUrl,
-          referenceImageUrl,
-          model.name || 'model',
-          audiosJson,
-        );
-      } catch (error: any) {
-        Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
-      } finally {
-        closeSheet();
+
+      const permission = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+      );
+      if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('Camera Permission', 'Camera permission is required for AR Scan.');
+        return;
       }
-    };
+
+      const actualModel = typeof model.modelId === 'object' ? model.modelId : null;
+      const modelId = String(actualModel?._id || model.modelId || model._id || model.id || '').trim();
+
+      if (!modelId) {
+        Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
+        return;
+      }
+
+      // Prioritize direct file URL
+      let modelFileUrl = (model as any).file && String((model as any).file).startsWith('http')
+        ? (model as any).file
+        : (actualModel?.file && String(actualModel.file).startsWith('http'))
+          ? actualModel.file
+          : null;
+
+      // Prioritize direct preview/thumbnail
+      let referenceImageUrl = (model as any).preview_image || (model as any).thumbnail || actualModel?.preview_image || actualModel?.thumbnail || getReferenceImageSource(model);
+
+      // Fetch detailed model data if file URL is missing or we need more info
+      let fetchedModelData: any = null;
+      if (!modelFileUrl || !referenceImageUrl) {
+        try {
+          const res = await ARService.getUserArModalById(modelId);
+          fetchedModelData = (res as any).data?.arModal || (res as any).arModal;
+
+          if (fetchedModelData) {
+            if (!modelFileUrl) modelFileUrl = fetchedModelData.file;
+            if (!referenceImageUrl) referenceImageUrl = fetchedModelData.preview_image || fetchedModelData.thumbnail;
+          }
+        } catch (err) {
+          console.error('Failed to fetch model details for scanner:', err);
+        }
+      }
+
+      // Final fallbacks
+      if (!modelFileUrl) modelFileUrl = ARService.getModelFileUrl(modelId);
+      if (!referenceImageUrl) referenceImageUrl = ARService.getPreviewImageUrl(modelId);
+
+      // Fetch audios for this model or use pre-loaded ones (prioritizing direct URLs)
+      let audiosJson: string | undefined;
+      try {
+        const allowedUrls = (model as any).allowedAudioURLs || [];
+        let modelAudios = (model as any).audios || actualModel?.audios || fetchedModelData?.audios || [];
+
+        if (modelAudios.length > 0) {
+          // Apply filtering if a whitelist exists
+          if (allowedUrls.length > 0) {
+            modelAudios = modelAudios.filter((a: any) =>
+              allowedUrls.includes(a.url) || allowedUrls.includes(a.gridfsId) || allowedUrls.includes(a._id)
+            );
+          }
+
+          const mapped = modelAudios.map((a: any) => ({
+            ...a,
+            audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null)
+          }));
+          audiosJson = JSON.stringify(mapped);
+        } else {
+          const audiosResponse = await ARService.getModelAudios(modelId);
+          if (audiosResponse.audios?.length) {
+            let fetchedAudios = audiosResponse.audios;
+
+            // Apply filtering if a whitelist exists
+            if (allowedUrls.length > 0) {
+              fetchedAudios = fetchedAudios.filter(a =>
+                allowedUrls.includes(a.url) || allowedUrls.includes(a.gridfsId) || allowedUrls.includes(a._id)
+              );
+            }
+
+            const audiosWithUrls = fetchedAudios.map(a => ({
+              ...a,
+              audioUrl: a.url || ARService.getAudioStreamUrlById(a.gridfsId),
+            }));
+            audiosJson = JSON.stringify(audiosWithUrls);
+          }
+        }
+      } catch {
+        // Audio fetch failed — scanner will work without audio
+      }
+
+      await ARScannerModule.startScannerDynamic(
+        modelFileUrl,
+        referenceImageUrl,
+        model.name || 'model',
+        audiosJson,
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to launch AR Scanner.');
+    } finally {
+      closeSheet();
+    }
+  };
 
   const handleScanModel = (model: any) => {
     closeSheet();
@@ -443,10 +485,11 @@ export default function ARTab({
   return (
     <>
       <FlatList
+        key={numColumns}
         data={arItems}
         keyExtractor={item => item.uniqueId}
         numColumns={numColumns}
-        columnWrapperStyle={styles.columnWrapper}
+        columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: bottomInset + verticalScale(20) }

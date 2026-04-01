@@ -144,6 +144,42 @@ export default function EbooksTab({
     () => [styles.selectorChipText, {color: colors.textSecondary}],
     [colors.textSecondary],
   );
+  const bookPageToneStyle = useMemo(
+    () => ({
+      backgroundColor: isDark ? colors.card : '#FFFDF7',
+    }),
+    [colors.card, isDark],
+  );
+  const bookPageSizeStyle = useMemo(
+    () => ({
+      width: bookWidth,
+      height: pageHeight,
+    }),
+    [bookWidth, pageHeight],
+  );
+  const documentViewerStyle = useMemo(
+    () => ({
+      borderColor: isDark ? colors.border : withAlpha(accentColor, 0.14),
+      height: pageHeight,
+      marginHorizontal: bookMargin,
+      backgroundColor: isDark ? colors.card : '#FFFFFF',
+    }),
+    [accentColor, bookMargin, colors.border, colors.card, isDark, pageHeight],
+  );
+  const viewerLoadingStyle = useMemo(
+    () => ({
+      backgroundColor: isDark ? colors.background : '#FFFDF7',
+    }),
+    [colors.background, isDark],
+  );
+  const bookFrameStyle = useMemo(
+    () => ({
+      borderColor: isDark ? colors.border : withAlpha(accentColor, 0.12),
+      width: bookWidth,
+      backgroundColor: isDark ? colors.card : '#FFFDF7',
+    }),
+    [accentColor, bookWidth, colors.border, colors.card, isDark],
+  );
 
   const renderPage = ({item, index}: {item: EbookPage; index: number}) => {
     const imageUrl = item.content.image || item.lastSavedContent.image;
@@ -152,7 +188,7 @@ export default function EbooksTab({
 
     return (
       <Pressable onPress={handleOpenFullScreen} style={[styles.pageSlide, {width: bookWidth}]}>
-        <View style={[styles.bookPage, {backgroundColor: isDark ? colors.card : '#FFFDF7', width: bookWidth, height: pageHeight}]}>
+        <View style={[styles.bookPage, bookPageToneStyle, bookPageSizeStyle]}>
           {/* Page spine shadow on left */}
           <View style={styles.pageSpine} />
 
@@ -313,19 +349,14 @@ export default function EbooksTab({
             <View
               style={[
                 styles.documentViewer,
-                {
-                  borderColor: isDark ? colors.border : withAlpha(accentColor, 0.14),
-                  height: pageHeight,
-                  marginHorizontal: bookMargin,
-                  backgroundColor: isDark ? colors.card : '#FFFFFF',
-                },
+                documentViewerStyle,
               ]}>
               <WebView
                 source={{uri: getDocumentViewerUrl(documentUrl)}}
                 originWhitelist={['*']}
                 startInLoadingState
                 renderLoading={() => (
-                  <View style={[styles.viewerLoadingState, {backgroundColor: isDark ? colors.background : '#FFFDF7'}]}>
+                  <View style={[styles.viewerLoadingState, viewerLoadingStyle]}>
                     <ActivityIndicator size="small" color={accentColor} />
                     <Text style={[styles.viewerLoadingText, {color: colors.textSecondary}]}>
                       Opening {volumeTitle}…
@@ -347,11 +378,7 @@ export default function EbooksTab({
                 <View
                   style={[
                     styles.bookFrame,
-                    {
-                      borderColor: isDark ? colors.border : withAlpha(accentColor, 0.12),
-                      width: bookWidth,
-                      backgroundColor: isDark ? colors.card : '#FFFDF7',
-                    },
+                    bookFrameStyle,
                   ]}>
                   <FlatList
                     ref={pagesRef}

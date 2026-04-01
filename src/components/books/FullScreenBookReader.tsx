@@ -159,7 +159,7 @@ export default function FullScreenBookReader({
               )}
 
               {item.type === 'writeImage' && (
-                <View style={[styles.activityBadge, {backgroundColor: '#F59E0B'}]}>
+                <View style={[styles.activityBadge, styles.activityBadgeWarning]}>
                   <Text style={styles.activityBadgeText}>Write Activity</Text>
                 </View>
               )}
@@ -179,6 +179,13 @@ export default function FullScreenBookReader({
   if (!visible || pages.length === 0) {
     return null;
   }
+  const prevDisabled = currentPage === 0;
+  const nextDisabled = currentPage === pages.length - 1;
+  const navButtonActiveStyle = {backgroundColor: withAlpha(accentColor, 0.25)};
+  const prevNavButtonStyle = prevDisabled ? styles.navBtnDisabled : navButtonActiveStyle;
+  const nextNavButtonStyle = nextDisabled ? styles.navBtnDisabled : navButtonActiveStyle;
+  const prevIconColor = prevDisabled ? 'rgba(255,255,255,0.3)' : '#fff';
+  const nextIconColor = nextDisabled ? 'rgba(255,255,255,0.3)' : '#fff';
 
   return (
     <Modal
@@ -250,17 +257,14 @@ export default function FullScreenBookReader({
               {/* Previous */}
               <Pressable
                 onPress={() => goToPage('prev')}
-                disabled={currentPage === 0}
+                disabled={prevDisabled}
                 style={[
                   styles.navBtn,
-                  {
-                    backgroundColor:
-                      currentPage === 0 ? 'rgba(255,255,255,0.08)' : withAlpha(accentColor, 0.25),
-                  },
+                  prevNavButtonStyle,
                 ]}>
                 <ChevronLeft
                   size={moderateScale(22)}
-                  color={currentPage === 0 ? 'rgba(255,255,255,0.3)' : '#fff'}
+                  color={prevIconColor}
                   strokeWidth={2.5}
                 />
               </Pressable>
@@ -286,19 +290,14 @@ export default function FullScreenBookReader({
               {/* Next */}
               <Pressable
                 onPress={() => goToPage('next')}
-                disabled={currentPage === pages.length - 1}
+                disabled={nextDisabled}
                 style={[
                   styles.navBtn,
-                  {
-                    backgroundColor:
-                      currentPage === pages.length - 1
-                        ? 'rgba(255,255,255,0.08)'
-                        : withAlpha(accentColor, 0.25),
-                  },
+                  nextNavButtonStyle,
                 ]}>
                 <ChevronRight
                   size={moderateScale(22)}
-                  color={currentPage === pages.length - 1 ? 'rgba(255,255,255,0.3)' : '#fff'}
+                  color={nextIconColor}
                   strokeWidth={2.5}
                 />
               </Pressable>
@@ -412,6 +411,9 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(4),
     zIndex: 3,
   },
+  activityBadgeWarning: {
+    backgroundColor: '#F59E0B',
+  },
   activityBadgeText: {
     fontSize: moderateScale(10),
     fontWeight: '800',
@@ -505,6 +507,9 @@ const styles = StyleSheet.create({
     borderRadius: scale(22),
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  navBtnDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   progressContainer: {
     flex: 1,

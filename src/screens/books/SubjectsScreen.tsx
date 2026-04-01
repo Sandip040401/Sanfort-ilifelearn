@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,11 +16,10 @@ import type {StackNavigationProp} from '@react-navigation/stack';
 import {ArrowLeft, ChevronRight, Layers3} from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import {useTheme} from '@/theme';
-import type {BooksStackParamList} from '@/types';
+import type {BooksStackParamList, SubjectBookSummary} from '@/types';
 import {useTabBarHideOnScroll} from '@/navigation/useTabBarHideOnScroll';
 import {TAB_BAR_HEIGHT} from '@/navigation/CustomTabBar';
-import {BooksService} from '@/services/books.service';
-import {getGradeMeta, SUBJECT_OPTIONS, withAlpha} from './books.data';
+import {getGradeMeta, withAlpha} from './books.data';
 
 const H_PAD = scale(20);
 const CARD_GAP = scale(14);
@@ -29,44 +27,214 @@ const CARD_GAP = scale(14);
 type SubjectsRouteProp = RouteProp<BooksStackParamList, 'Subjects'>;
 type BooksNavigationProp = StackNavigationProp<BooksStackParamList>;
 
+type SubjectThemeCardProps = {
+  book: SubjectBookSummary;
+  cardWidth: number;
+  cardHeight?: number;
+  isDark: boolean;
+  isTablet: boolean;
+  isNarrowCard: boolean;
+  cardText: string;
+  headerFallbackColor: string;
+  cardColors: {
+    card: string;
+    surface: string;
+  };
+  shadowStyle: {
+    shadowColor: string;
+    shadowOpacity: number;
+  };
+  onPress: (book: SubjectBookSummary, subjectColor: string) => void;
+};
+
+const SubjectThemeCard = React.memo(function SubjectThemeCard({
+  book,
+  cardWidth,
+  cardHeight,
+  isDark,
+  isTablet,
+  isNarrowCard,
+  cardText,
+  headerFallbackColor,
+  cardColors,
+  shadowStyle,
+  onPress,
+}: SubjectThemeCardProps) {
+  const subjectColor = book.design?.accent || headerFallbackColor;
+  const subjectCardToneStyle = {
+    borderColor: withAlpha(subjectColor, isDark ? 0.22 : 0.14),
+    ...shadowStyle,
+  };
+  const subjectCardHeightStyle = cardHeight ? {height: cardHeight} : undefined;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      style={[styles.subjectCardWrap, {width: cardWidth}]}
+      onPress={() => onPress(book, subjectColor)}>
+      <View
+        style={[
+          styles.subjectCard,
+          subjectCardHeightStyle,
+          subjectCardToneStyle,
+        ]}>
+        <LinearGradient
+          colors={isDark ? [cardColors.card, cardColors.surface] : ['#FFFFFF', '#F8F9FA']}
+          locations={[0, 1]}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 1}}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.subjectTopRow}>
+          <View style={styles.subjectLead}>
+            <LinearGradient
+              colors={[subjectColor, subjectColor]}
+              locations={[0, 1]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={styles.subjectIconWrap}>
+              <Layers3 size={moderateScale(18)} color="#fff" strokeWidth={2} />
+            </LinearGradient>
+            <Text
+              style={[styles.subjectName, {color: cardText}]}
+              numberOfLines={2}
+              ellipsizeMode="tail">
+              {book.subject}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.subjectArrowWrap,
+              {backgroundColor: withAlpha(subjectColor, 0.10)},
+            ]}>
+            <ChevronRight size={moderateScale(14)} color={subjectColor} strokeWidth={2.5} />
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.subjectFooter,
+            isTablet && styles.subjectFooterFixed,
+            isNarrowCard && styles.subjectFooterCompact,
+          ]}>
+          <View
+            style={[
+              styles.subjectBadge,
+              {backgroundColor: withAlpha(subjectColor, 0.10)},
+              isNarrowCard && styles.subjectBadgeCompact,
+            ]}>
+            <Text style={[styles.subjectBadgeText, {color: subjectColor}]}>
+              {book.weeks?.length ? `${book.weeks.length} Weeks` : 'Explore Theme'}
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.subjectGlow,
+            {backgroundColor: withAlpha(subjectColor, isDark ? 0.15 : 0.08)},
+          ]}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+SubjectThemeCard.displayName = 'SubjectThemeCard';
+
 function SubjectsScreenContent() {
   const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
   const {onScroll} = useTabBarHideOnScroll();
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectsRouteProp>();
-  const [refreshing, setRefreshing] = React.useState(false);
-  const {gradeKey, gradeName, gradeColors, books = []} = route.params as any;
+  const {gradeKey, gradeName, gradeColors, books = []} = route.params;
   const {width, height} = useWindowDimensions();
   const isLandscape = width > height;
   const cardText = colors.text;
   const cardSubText = colors.textSecondary;
-  const cardMetaText = colors.textSecondary;
   const gradeMeta = getGradeMeta(gradeKey);
-  const headerColors = gradeColors?.length >= 2
-    ? gradeColors
-    : [...(gradeMeta?.colors ?? ['#2563EB', '#60A5FA'])];
+  const safeBooks = React.useMemo<SubjectBookSummary[]>(
+    () =>
+      books.filter(
+        (book): book is SubjectBookSummary =>
+          !!book && typeof book._id === 'string' && typeof book.subject === 'string',
+      ),
+    [books],
+  );
+  const headerColors = React.useMemo<[string, string]>(() => {
+    if (gradeColors?.length >= 2) {
+      return [gradeColors[0], gradeColors[1]];
+    }
+
+    const fallback = gradeMeta?.colors ?? ['#2563EB', '#60A5FA'];
+    return [fallback[0], fallback[1]];
+  }, [gradeColors, gradeMeta?.colors]);
   const isTablet = width >= 768;
   const contentWidth = isTablet ? Math.min(width - scale(32), scale(920)) : width;
   const cardWidth = isTablet
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : contentWidth - H_PAD * 2;
   const isNarrowCard = cardWidth < scale(320);
-  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(32);
   const cardHeight = isLandscape
     ? Math.max(verticalScale(110), Math.min(verticalScale(140), cardWidth * 0.45))
     : (isTablet
         ? Math.max(verticalScale(170), Math.min(verticalScale(210), cardWidth * 0.95))
         : undefined);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-
-    // Subjects are local right now; keep pull-to-refresh ready for future API sync.
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 650);
-  };
+  const subjectCardShadowStyle = React.useMemo(
+    () => ({
+      shadowColor: isDark ? '#000' : '#28145B',
+      shadowOpacity: isDark ? 0.3 : 0.08,
+    }),
+    [isDark],
+  );
+  const handleOpenSubject = React.useCallback(
+    (book: SubjectBookSummary, subjectColor: string) => {
+      navigation.navigate('SubjectContent', {
+        gradeKey,
+        gradeName,
+        subjectKey: book._id,
+        subjectName: book.subject,
+        subjectColor,
+      });
+    },
+    [gradeKey, gradeName, navigation],
+  );
+  const subjectCards = React.useMemo(
+    () =>
+      safeBooks.map(book => (
+        <SubjectThemeCard
+          key={book._id}
+          book={book}
+          cardWidth={cardWidth}
+          cardHeight={cardHeight}
+          isDark={isDark}
+          isTablet={isTablet}
+          isNarrowCard={isNarrowCard}
+          cardText={cardText}
+          headerFallbackColor={headerColors[0]}
+          cardColors={{card: colors.card, surface: colors.surface}}
+          shadowStyle={subjectCardShadowStyle}
+          onPress={handleOpenSubject}
+        />
+      )),
+    [
+      cardHeight,
+      cardText,
+      cardWidth,
+      colors.card,
+      colors.surface,
+      handleOpenSubject,
+      headerColors,
+      isDark,
+      isNarrowCard,
+      isTablet,
+      safeBooks,
+      subjectCardShadowStyle,
+    ],
+  );
 
   return (
     <View style={[styles.root, {backgroundColor: headerColors[0]}]}>
@@ -74,16 +242,6 @@ function SubjectsScreenContent() {
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            progressViewOffset={insets.top + verticalScale(14)}
-            tintColor="#FFFFFF"
-            colors={[gradeMeta?.accent ?? headerColors[0]]}
-            progressBackgroundColor="#F8F5FF"
-          />
-        }
         contentContainerStyle={[
           styles.scrollContent,
           {
@@ -146,103 +304,12 @@ function SubjectsScreenContent() {
         <View style={styles.content}>
           <View style={[styles.contentInner, {width: contentWidth - H_PAD * 2}]}>
             <View style={[styles.grid, isTablet && styles.gridTablet]}>
-              {books.length === 0 ? (
-                <View style={{ width: '100%', padding: moderateScale(40), alignItems: 'center' }}>
-                  <Text style={{ color: cardSubText, marginTop: verticalScale(12) }}>No books found.</Text>
+              {safeBooks.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={[styles.emptyStateText, {color: cardSubText}]}>No books found.</Text>
                 </View>
               ) : (
-                books.map((book: any, idx: number) => {
-                  const subjectColor = book.design?.accent || headerColors[0];
-                  console.log(book);
-                  return (
-                    <TouchableOpacity
-                      key={book._id || idx}
-                      activeOpacity={0.88}
-                      style={[styles.subjectCardWrap, {width: cardWidth}]}
-                      onPress={() => {
-                        navigation.navigate('SubjectContent', {
-                          gradeKey,
-                          gradeName,
-                          subjectKey: book._id,
-                          subjectName: book.subject,
-                          subjectColor: subjectColor,
-                        });
-                      }}>
-                      <View
-                        style={[
-                          styles.subjectCard,
-                          cardHeight ? {height: cardHeight} : undefined,
-                          {
-                            borderColor: withAlpha(subjectColor, isDark ? 0.22 : 0.14),
-                            shadowColor: isDark ? '#000' : '#28145B',
-                            shadowOpacity: isDark ? 0.3 : 0.08,
-                          },
-                        ]}>
-                      <LinearGradient
-                        colors={isDark ? [colors.card, colors.surface] : ['#FFFFFF', '#F8F9FA']}
-                        locations={[0, 1]}
-                        start={{x: 0, y: 0}}
-                        end={{x: 1, y: 1}}
-                        style={StyleSheet.absoluteFill}
-                      />
-                      <View style={styles.subjectTopRow}>
-                        <View style={{flexDirection: 'row', alignItems: 'center', gap: moderateScale(12)}}>
-                          <LinearGradient
-                          colors={[subjectColor, subjectColor]}
-                          locations={[0, 1]}
-                          start={{x: 0, y: 0}}
-                          end={{x: 1, y: 1}}
-                          style={styles.subjectIconWrap}>
-                          <Layers3 size={moderateScale(18)} color="#fff" strokeWidth={2} />
-                        </LinearGradient>
-                        <Text
-                        style={[styles.subjectName, {color: cardText}]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail">
-                        {book.subject}
-                      </Text>
-                        </View>
-
-                        <View
-                          style={[
-                            styles.subjectArrowWrap,
-                            {backgroundColor: withAlpha(subjectColor, 0.10)},
-                          ]}>
-                          <ChevronRight size={moderateScale(14)} color={subjectColor} strokeWidth={2.5} />
-                        </View>
-                      </View>
-
-                
-                      
-
-                      <View
-                        style={[
-                          styles.subjectFooter,
-                          isTablet && styles.subjectFooterFixed,
-                          isNarrowCard && styles.subjectFooterCompact,
-                        ]}>
-                        <View
-                          style={[
-                            styles.subjectBadge,
-                            {backgroundColor: withAlpha(subjectColor, 0.10)},
-                            isNarrowCard && styles.subjectBadgeCompact,
-                          ]}>
-                          <Text style={[styles.subjectBadgeText, {color: subjectColor}]}>
-                            {book.weeks?.length ? `${book.weeks.length} Weeks` : 'Explore Theme'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View
-                        style={[
-                          styles.subjectGlow,
-                          {backgroundColor: withAlpha(subjectColor, isDark ? 0.15 : 0.08)},
-                        ]}
-                      />
-                    </View>
-                    </TouchableOpacity>
-                  );
-                })
+                subjectCards
               )}
             </View>
           </View>
@@ -414,6 +481,14 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
 
   },
+  emptyState: {
+    width: '100%',
+    alignItems: 'center',
+    padding: moderateScale(40),
+  },
+  emptyStateText: {
+    marginTop: verticalScale(12),
+  },
   gridTablet: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -436,6 +511,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: verticalScale(6),
+  },
+  subjectLead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(12),
   },
   subjectIconWrap: {
     width: scale(38),

@@ -35,30 +35,6 @@ type BooksNavigationProp = StackNavigationProp<BooksStackParamList>;
 type TabKey = 'concepts' | 'videos' | 'ebooks' | 'ar';
 const H_PAD = scale(20);
 
-const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
-  const raw = (hex || '').replace('#', '').trim();
-  if (!raw) return light;
-  const value = raw.length === 3
-    ? raw.split('').map(ch => ch + ch).join('')
-    : raw;
-  if (value.length !== 6) return light;
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return light;
-  const toLinear = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  const L =
-    0.2126 * toLinear(r) +
-    0.7152 * toLinear(g) +
-    0.0722 * toLinear(b);
-  const contrastLight = (1.05) / (L + 0.05);
-  const contrastDark = (L + 0.05) / 0.05;
-  return contrastDark > contrastLight ? dark : light;
-};
-
 function SubjectContentScreenContent() {
   const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
@@ -82,6 +58,8 @@ function SubjectContentScreenContent() {
 
   const booksQuery = useQuery({
     queryKey: ['books-content', gradeKey, subjectKey],
+    enabled: Boolean(gradeKey && subjectKey),
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const isSanfort = gradeName?.toLowerCase()?.includes('san');
       if (isSanfort) {
@@ -107,8 +85,6 @@ function SubjectContentScreenContent() {
           subjectName: book.subject || subjectName,
           subjectColor,
         });
-        console.log('--- Subject Content Data (Sanfort) ---');
-        console.log(JSON.stringify(result, null, 2));
         return result;
       } else {
         const response = await BooksService.getConceptsForHome(gradeKey, subjectKey);
@@ -119,8 +95,6 @@ function SubjectContentScreenContent() {
           subjectName,
           subjectColor,
         });
-        console.log('--- Subject Content Data (Standard) ---');
-        console.log(JSON.stringify(result, null, 2));
         return result;
       }
     },
@@ -175,12 +149,6 @@ function SubjectContentScreenContent() {
       backgroundColor: accent,
     }),
     [accent],
-  );
-  const activeCountTextStyle: TextStyle = useMemo(
-    () => ({
-      color: '#fff',
-    }),
-    [],
   );
   const inactiveCountStyle: ViewStyle = useMemo(
     () => ({
@@ -313,7 +281,7 @@ function SubjectContentScreenContent() {
                     <Text
                       style={[
                         styles.tabText,
-                        isTabActive ? {color: '#fff'} : inactiveTabTextStyle,
+                        isTabActive ? styles.tabTextActive : inactiveTabTextStyle,
                       ]}>
                       {tab.label}
                     </Text>
@@ -325,9 +293,7 @@ function SubjectContentScreenContent() {
                       <Text
                         style={[
                           styles.tabCountText,
-                          isTabActive
-                            ? activeCountTextStyle
-                            : inactiveCountTextStyle,
+                          isTabActive ? styles.tabCountTextActive : inactiveCountTextStyle,
                         ]}>
                         {tab.count}
                       </Text>
@@ -342,7 +308,6 @@ function SubjectContentScreenContent() {
     },
     [
       activeCountStyle,
-      activeCountTextStyle,
       activeTab,
       activeTabButtonStyle,
       handleTabPress,
@@ -592,6 +557,9 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(10),
     fontWeight: '800',
   },
+  tabTextActive: {
+    color: '#fff',
+  },
   tabCount: {
     minWidth: scale(22),
     height: verticalScale(18),
@@ -603,6 +571,9 @@ const styles = StyleSheet.create({
   tabCountText: {
     fontSize: moderateScale(9),
     fontWeight: '800',
+    color: '#fff',
+  },
+  tabCountTextActive: {
     color: '#fff',
   },
   contentArea: {

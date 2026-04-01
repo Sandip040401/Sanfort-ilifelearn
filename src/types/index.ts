@@ -230,6 +230,16 @@ export interface FlatTopic extends BookTopic {
   ar?:          any[];
 }
 
+export interface SubjectBookSummary {
+  _id: string;
+  subject: string;
+  weeks?: unknown[];
+  design?: {
+    accent?: string;
+  };
+  [key: string]: unknown;
+}
+
 export type BookGradeKey = 'hummingbird' | 'dove' | 'macaw';
 export type BookSubjectKey = 'literacy' | 'numeracy' | 'science' | 'rhymes';
 
@@ -267,7 +277,7 @@ export type WebVRStackParamList = {
 
 export type BooksStackParamList = {
   GradeSelector: undefined;
-  Subjects:       {gradeKey: string; gradeName: string; gradeColors: string[]};
+  Subjects:       {gradeKey: string; gradeName: string; gradeColors: string[]; books?: SubjectBookSummary[]};
   SubjectContent: {gradeKey: string; gradeName: string; subjectKey: string; subjectName: string; subjectColor: string};
   TopicDetail:    {topic: FlatTopic; subjectColor: string; subjectName: string; gradeName: string};
 };

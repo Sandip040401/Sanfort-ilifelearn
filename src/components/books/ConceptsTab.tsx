@@ -13,7 +13,6 @@ import {
   BookOpen,
   Box,
   ChevronRight,
-  FileText,
   Images,
   PlayCircle,
 } from 'lucide-react-native';
@@ -24,30 +23,6 @@ import { withAlpha } from '@/screens/books/books.data';
 import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
 
 const PAGE_SIZE = 10;
-
-const getContrastText = (hex: string, light = '#fff', dark = '#111827') => {
-  const raw = (hex || '').replace('#', '').trim();
-  if (!raw) return light;
-  const value = raw.length === 3
-    ? raw.split('').map(ch => ch + ch).join('')
-    : raw;
-  if (value.length !== 6) return light;
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return light;
-  const toLinear = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  const L =
-    0.2126 * toLinear(r) +
-    0.7152 * toLinear(g) +
-    0.0722 * toLinear(b);
-  const contrastLight = (1.05) / (L + 0.05);
-  const contrastDark = (L + 0.05) / 0.05;
-  return contrastDark > contrastLight ? dark : light;
-};
 
 const getKeywordStyles = (keyword: string = '') => {
   const k = keyword.trim();
@@ -96,10 +71,6 @@ export default function ConceptsTab({
   const { onScroll } = useTabBarHideOnScroll();
   const [selectedVolume, setSelectedVolume] = useState<'all' | number>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const accentTextColor = useMemo(
-    () => getContrastText(subjectColor),
-    [subjectColor],
-  );
   const activeFilterTextStyle = useMemo(
     () => [styles.filterChipTextActive, { color: '#fff' }],
     [],
@@ -256,7 +227,7 @@ export default function ConceptsTab({
           </Text>
         </View>
       }
-      renderItem={({ item, index }) => (
+      renderItem={({ item }) => (
         <Pressable
           onPress={() => onSelectTopic(item)}
           style={({ pressed }) => [
@@ -309,7 +280,7 @@ export default function ConceptsTab({
                   {item.ar && item.ar.length > 0 && (
                     <View style={[styles.metricPill, { backgroundColor: withAlpha('#7C3AED', 0.08), borderColor: withAlpha('#7C3AED', 0.16) }]}>
                       <Box size={moderateScale(12)} color="#7C3AED" strokeWidth={2.2} />
-                      <Text allowFontScaling={false} style={[styles.metricText, { color: '#7C3AED' }]}>
+                      <Text allowFontScaling={false} style={styles.metricTextPurple}>
                         AR
                       </Text>
                     </View>
@@ -437,6 +408,11 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(11),
     fontWeight: '800',
     color: '#2563EB',
+  },
+  metricTextPurple: {
+    fontSize: moderateScale(11),
+    fontWeight: '800',
+    color: '#7C3AED',
   },
   keywordBadge: {
     borderRadius: moderateScale(6),

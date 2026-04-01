@@ -20,7 +20,6 @@ import {
   ArrowLeft,
   Box,
   FileText,
-  Image as ImageIcon,
   PlayCircle,
   Tag,
 } from 'lucide-react-native';
@@ -39,42 +38,6 @@ type TopicNavigationProp = StackNavigationProp<MainStackParamList & BooksStackPa
 
 type ResourceKind = 'image' | 'video' | 'document';
 
-
-
-const getFileLabelFromUrl = (url: string, fallback: string) => {
-  if (!url) return fallback;
-  try {
-    const trimmed = url.split('?')[0]?.split('#')[0] ?? '';
-    const parts = trimmed.split('/').filter(Boolean);
-    const last = parts[parts.length - 1];
-    if (!last) return fallback;
-    const decoded = decodeURIComponent(last);
-    return decoded.replace(/\.[a-z0-9]+$/i, '') || fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const getKeywordStyles = (keyword: string = '') => {
-  const k = keyword.trim();
-  switch (k) {
-    case 'English':
-      return { bg: '#DBEAFE', text: '#1D4ED8', border: '#BAE6FD' };
-    case 'Numeracy':
-      return { bg: '#D1FAE5', text: '#059669', border: '#A7F3D0' };
-    case 'Hindi':
-      return { bg: '#FFEDD5', text: '#C2410C', border: '#FED7AA' };
-    case 'EVS':
-      return { bg: '#DCFCE7', text: '#166534', border: '#BBF7D0' };
-    case 'Conceptual Learning':
-      return { bg: '#F3E8FF', text: '#7E22CE', border: '#E9D5FF' };
-    case 'Other Concepts':
-      return { bg: '#F1F5F9', text: '#475569', border: '#E2E8F0' };
-    default:
-      return { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' };
-  }
-};
-
 function TopicScreenContent() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -88,13 +51,6 @@ function TopicScreenContent() {
   const safeAccent = subjectColor && subjectColor.startsWith('#')
     ? subjectColor
     : colors.primary || '#F97316';
-  const headerTextColor = '#FFFFFF';
-  const headerSubTextColor = 'rgba(255,255,255,0.82)';
-  const headerBadgeBg = 'rgba(255,255,255,0.18)';
-  const headerBadgeBorder = 'rgba(255,255,255,0.22)';
-  const quickStatBg = 'rgba(255,255,255,0.14)';
-  const quickStatBorder = 'rgba(255,255,255,0.18)';
-  const quickStatLabelColor = 'rgba(255,255,255,0.75)';
   const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
   const safeTopic = {
     ...topic,
@@ -292,20 +248,17 @@ function TopicScreenContent() {
               <View style={styles.heroTopLeft}>
                 <Pressable
                   onPress={() => navigation.goBack()}
-                  style={[
-                    styles.backButton,
-                    { backgroundColor: 'rgba(255, 255, 255, 0.15)', borderColor: 'rgba(255, 255, 255, 0.2)' },
-                  ]}>
+                  style={styles.backButtonGlass}>
                   <ArrowLeft size={moderateScale(22)} color="#FFFFFF" strokeWidth={2.5} />
                 </Pressable>
 
-                <View style={[styles.breadcrumbBadge, { justifyContent: 'center' }]}>
+                <View style={styles.breadcrumbBadgeCentered}>
                   {!!gradeName && !!subjectName && (
-                    <Text style={[styles.breadcrumbBranding, { color: 'rgba(255, 255, 255, 0.7)' }]} numberOfLines={1}>
+                    <Text style={styles.breadcrumbBrandingMuted} numberOfLines={1}>
                       {gradeName.toUpperCase()} • {subjectName.toUpperCase()}
                     </Text>
                   )}
-                  <Text style={[styles.headerSubtitle, { color: '#FFFFFF' }]} numberOfLines={1}>
+                  <Text style={styles.headerSubtitleWhite} numberOfLines={1}>
                     {safeTopic.conceptTitle}
                   </Text>
                 </View>
@@ -345,7 +298,7 @@ function TopicScreenContent() {
               </View>
             ) : (
               <>
-                <View style={{ height: verticalScale(4) }} />
+                <View style={styles.contentTopSpacer} />
                 {renderResourceSection('Concept Sheets', safeTopic.images, 'image')}
                 {renderResourceSection('Videos', safeTopic.videos, 'video')}
                 {renderARSection(safeTopic.ar)}
@@ -423,19 +376,40 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderColor: 'rgba(255, 255, 255, 0.25)',
   },
+  backButtonGlass: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
   breadcrumbBadge: {
     gap: verticalScale(1),
     flex: 1,
+  },
+  breadcrumbBadgeCentered: {
+    gap: verticalScale(1),
+    flex: 1,
+    justifyContent: 'center',
   },
   breadcrumbBranding: {
     fontSize: moderateScale(10),
     fontWeight: '800',
     letterSpacing: 0.8,
   },
+  breadcrumbBrandingMuted: {
+    fontSize: moderateScale(10),
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
   headerSubtitle: {
     fontSize: moderateScale(14),
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  headerSubtitleWhite: {
+    fontSize: moderateScale(14),
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: '#FFFFFF',
   },
   heroMain: {
     marginTop: verticalScale(4),
@@ -479,6 +453,9 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: scale(20),
+  },
+  contentTopSpacer: {
+    height: verticalScale(4),
   },
   keywordCard: {
     borderRadius: moderateScale(22),

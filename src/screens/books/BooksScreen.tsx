@@ -18,33 +18,39 @@ import Animated, {
   FadeInRight,
   Layout,
 } from 'react-native-reanimated';
-import {
-  ArrowRight,
-  BookOpen,
-  FileText,
-  Layers3,
-  PlayCircle,
-} from 'lucide-react-native';
 import ScreenErrorBoundary from '@/components/ui/ScreenErrorBoundary';
 import { Skeleton } from '@/components/ui';
 import { useTheme } from '@/theme';
-import type { BooksStackParamList } from '@/types';
+import type { BooksStackParamList, SubjectBookSummary } from '@/types';
 import { useTabBarHideOnScroll } from '@/navigation/useTabBarHideOnScroll';
 import { TAB_BAR_HEIGHT } from '@/navigation/CustomTabBar';
 import { BooksService } from '@/services/books.service';
 import { useAuth } from '@/store';
-import { GRADE_OPTIONS } from './books.data';
 
 const H_PAD = scale(20);
 const CARD_GAP = scale(14);
 
-const RESOURCE_PILLS = [
-  { label: 'Concepts', Icon: Layers3 },
-  { label: 'Videos', Icon: PlayCircle },
-  { label: 'Ebooks', Icon: FileText },
-] as const;
+type GradeDesign = {
+  name: string;
+  subtitle: string;
+  description: string;
+  image: string;
+  gradient: [string, string];
+  darkGradient: [string, string];
+  accent: string;
+  border: string;
+  darkBorder: string;
+};
 
-const DESIGN_MAP: Record<string, any> = {
+type GradeGroup = {
+  _id: string;
+  category: string;
+  books: SubjectBookSummary[];
+  design: GradeDesign;
+  baseName: string;
+};
+
+const DESIGN_MAP: Record<string, GradeDesign> = {
   'SAN Toddler': {
     name: 'SAN Toddler',
     subtitle: '2–3 Years',
@@ -91,13 +97,180 @@ const DESIGN_MAP: Record<string, any> = {
   },
 };
 
-const FLOW_STEPS = [
-  { id: '01', title: 'Choose grade', caption: 'Start by level', Icon: BookOpen },
-  { id: '02', title: 'Open subject', caption: 'Pick one stream', Icon: Layers3 },
-  { id: '03', title: 'Explore library', caption: 'Read, watch, practise', Icon: FileText },
-] as const;
+const GRADE_SEQUENCE = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'] as const;
+const PRIVILEGED_ROLES = new Set(['teacher', 'super-admin', 'admin']);
 
 const rootBackgroundStyle = { backgroundColor: '#3D2799' } as const;
+
+function getGradeOrder(baseName: string): number {
+  const index = GRADE_SEQUENCE.indexOf(baseName as (typeof GRADE_SEQUENCE)[number]);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function normalizeApiGrades(rawGrades: unknown[]): GradeGroup[] {
+  const groupedGrades = new Map<string, GradeGroup>();
+
+  rawGrades.forEach(rawGrade => {
+    if (!rawGrade || typeof rawGrade !== 'object') {
+      return;
+    }
+
+    const grade = rawGrade as Record<string, unknown>;
+    const category = typeof grade.category === 'string' ? grade.category : '';
+    const baseName = category.split(' (')[0]?.trim() || 'SAN Toddler';
+    const design = DESIGN_MAP[baseName] ?? DESIGN_MAP['SAN Toddler'];
+    const current = groupedGrades.get(baseName);
+    if (current) {
+      const mappedBook: SubjectBookSummary = {
+        ...(grade as Record<string, unknown>),
+        _id:
+          typeof grade._id === 'string'
+            ? grade._id
+            : `${baseName}-${current.books.length + 1}`,
+        subject: typeof grade.subject === 'string' ? grade.subject : baseName,
+        design,
+        baseName,
+      };
+      current.books.push(mappedBook);
+      return;
+    }
+
+    const mappedBook: SubjectBookSummary = {
+      ...(grade as Record<string, unknown>),
+      _id: typeof grade._id === 'string' ? grade._id : `${baseName}-1`,
+      subject: typeof grade.subject === 'string' ? grade.subject : baseName,
+      design,
+      baseName,
+    };
+
+    groupedGrades.set(baseName, {
+      _id: baseName,
+      category,
+      books: [mappedBook],
+      design,
+      baseName,
+    });
+  });
+
+  return Array.from(groupedGrades.values()).sort(
+    (left, right) => getGradeOrder(left.baseName) - getGradeOrder(right.baseName),
+  );
+}
+
+function getScopedGrades(
+  apiGrades: GradeGroup[],
+  role?: string,
+  gradeName?: string,
+): GradeGroup[] {
+  const normalizedRole = role?.toLowerCase();
+  if (normalizedRole && PRIVILEGED_ROLES.has(normalizedRole)) {
+    return apiGrades;
+  }
+
+  const targetGrade = (gradeName || 'SAN Toddler').trim().toLowerCase();
+  const filtered = apiGrades.filter(
+    grade => grade.baseName.trim().toLowerCase() === targetGrade,
+  );
+
+  if (filtered.length > 0) {
+    return filtered;
+  }
+
+  return apiGrades.length > 0 ? [apiGrades[0]] : [];
+}
+
+type GradeCardProps = {
+  grade: GradeGroup;
+  index: number;
+  cardWidth: number;
+  isDark: boolean;
+  onPress: (grade: GradeGroup) => void;
+};
+
+const GradeCard = React.memo(function GradeCard({
+  grade,
+  index,
+  cardWidth,
+  isDark,
+  onPress,
+}: GradeCardProps) {
+  const { design } = grade;
+  const isEven = index % 2 === 0;
+  const cardGradients = isDark ? design.darkGradient : design.gradient;
+  const borderCol = isDark ? design.darkBorder : design.border;
+  const subTextColor = isDark ? 'rgba(255,255,255,0.7)' : `${design.accent}CC`;
+  const imageSideOffsetStyle = isEven
+    ? styles.gradeImageSideLeft
+    : styles.gradeImageSideRight;
+  const gradeBodyPositionStyle = isEven
+    ? styles.gradeCardBodyEven
+    : styles.gradeCardBodyOdd;
+  const gradeBadgeToneStyle = isDark
+    ? styles.gradeBadgeDark
+    : styles.gradeBadgeLight;
+  const gradeBadgeTextToneStyle = isDark
+    ? styles.gradeBadgeTextDark
+    : { color: design.accent };
+  const gradeCardWrapStyle = {
+    width: cardWidth,
+    borderColor: borderCol,
+    backgroundColor: isDark ? '#1a1a1a' : '#fff',
+  };
+  const unifiedGradients = isEven
+    ? ['transparent', 'transparent', cardGradients[0], cardGradients[1]]
+    : [cardGradients[0], cardGradients[1], 'transparent', 'transparent'];
+  const unifiedLocations = isEven
+    ? [0, 0.15, 0.45, 1]
+    : [0, 0.53, 0.85, 1];
+  const entering = isEven
+    ? FadeInLeft.delay(index * 120).duration(600)
+    : FadeInRight.delay(index * 120).duration(600);
+
+  return (
+    <Animated.View entering={entering} layout={Layout.springify()}>
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => onPress(grade)}
+        style={[styles.gradeCardWrap, gradeCardWrapStyle]}>
+        <View style={[styles.gradeImageSideWrap, imageSideOffsetStyle]}>
+          <FastImage
+            source={{ uri: design.image }}
+            style={styles.gradeImageFull}
+            resizeMode={FastImage.resizeMode.cover}
+          />
+        </View>
+
+        <LinearGradient
+          colors={unifiedGradients as string[]}
+          locations={unifiedLocations}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+
+        <View style={styles.gradeCardInner}>
+          <View style={[styles.gradeCardBody, gradeBodyPositionStyle]}>
+            <Text style={[styles.gradeNameText, { color: design.accent }]}>
+              {design.name}
+            </Text>
+
+            <View style={[styles.gradeBadge, gradeBadgeToneStyle]}>
+              <Text style={[styles.gradeBadgeText, gradeBadgeTextToneStyle]}>
+                {design.subtitle}
+              </Text>
+            </View>
+
+            <Text style={[styles.gradeDescText, styles.gradeDescLeft, { color: subTextColor }]}>
+              "{design.description}"
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+GradeCard.displayName = 'GradeCard';
 
 function BooksScreenContent() {
   const { colors, isDark } = useTheme();
@@ -110,11 +283,10 @@ function BooksScreenContent() {
   const isTablet = width >= 768;
   const isLandscape = width > height;
   const isTabletLandscape = isTablet && isLandscape;
-  const isCompact = !isLandscape;
   const showTwoColumn = isTabletLandscape;
   const contentWidth = isTablet ? Math.min(width - scale(32), scale(920)) : width;
   const singleCardWidth = contentWidth - H_PAD * 2;
-  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(24);
+  const bottomContentInset = TAB_BAR_HEIGHT + insets.bottom + verticalScale(40);
   const cardWidth = showTwoColumn
     ? (contentWidth - H_PAD * 2 - CARD_GAP) / 2
     : singleCardWidth;
@@ -124,72 +296,84 @@ function BooksScreenContent() {
     [skeletonCount],
   );
 
-  const [grades, setGrades] = React.useState<any[]>([]);
+  const [grades, setGrades] = React.useState<GradeGroup[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  const handleGradePress = (grade: any) => {
+  const handleGradePress = React.useCallback((grade: GradeGroup) => {
     const { design } = grade;
-    const colorsArr = [design.accent + 'DD', design.accent + '99']; // Using target gradient colors
+    const colorsArr: [string, string] = [`${design.accent}DD`, `${design.accent}99`];
 
     navigation.navigate('Subjects', {
       gradeKey: grade._id,
       gradeName: grade.baseName,
       gradeColors: colorsArr,
       books: grade.books,
-    } as any);
-  };
+    });
+  }, [navigation]);
+  const gradeCards = React.useMemo(
+    () =>
+      grades.map((grade, index) => (
+        <GradeCard
+          key={grade._id}
+          grade={grade}
+          index={index}
+          cardWidth={cardWidth}
+          isDark={isDark}
+          onPress={handleGradePress}
+        />
+      )),
+    [cardWidth, grades, handleGradePress, isDark],
+  );
+
+  React.useEffect(() => {
+    const preloadable = Object.values(DESIGN_MAP).map(design => ({ uri: design.image }));
+    FastImage.preload(preloadable);
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
+      let isMounted = true;
+
       const fetchGrades = async () => {
+        setLoading(true);
+
         try {
           const response = await BooksService.getAllGrades();
-          const resData = response.data as any;
-          if (resData.success) {
-            const sequence = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'];
-            let groupedGradesMap = new Map();
+          const resData = response.data as { success?: boolean; grades?: unknown[] };
 
-            resData.grades.forEach((g: any) => {
-              const baseName = g.category.split(' (')[0];
-              const design = DESIGN_MAP[baseName] || DESIGN_MAP['SAN Toddler'];
-              if (!groupedGradesMap.has(baseName)) {
-                groupedGradesMap.set(baseName, {
-                  _id: baseName,
-                  category: g.category,
-                  books: [],
-                  design,
-                  baseName
-                });
-              }
-              groupedGradesMap.get(baseName).books.push({...g, design, baseName});
-            });
-
-            let apiGrades = Array.from(groupedGradesMap.values())
-              .sort((a: any, b: any) => sequence.indexOf(a.baseName) - sequence.indexOf(b.baseName));
-
-            const role = user?.role?.toLowerCase();
-            if (role !== 'teacher' && role !== 'super-admin' && role !== 'admin') {
-              const targetGrade = ((user as any)?.gradeName || 'SAN Toddler').trim().toLowerCase();
-              const filtered = apiGrades.filter((g: any) => g.baseName.trim().toLowerCase() === targetGrade);
-
-              if (filtered.length > 0) {
-                apiGrades = filtered;
-              } else if (apiGrades.length > 0) {
-                apiGrades = [apiGrades[0]];
-              }
-            }
-
-            setGrades(apiGrades);
+          if (!isMounted) {
+            return;
           }
-        } catch (error: any) {
-          console.error('API Error:', error.message);
+
+          if (resData.success && Array.isArray(resData.grades)) {
+            const normalizedGrades = normalizeApiGrades(resData.grades);
+            setGrades(
+              getScopedGrades(normalizedGrades, user?.role, user?.gradeName),
+            );
+          } else {
+            setGrades([]);
+          }
+        } catch (error) {
+          if (__DEV__) {
+            console.warn('[BooksScreen] Failed to load grades', error);
+          }
+
+          if (isMounted) {
+            setGrades([]);
+          }
         } finally {
-          setLoading(false);
+          if (isMounted) {
+            setLoading(false);
+          }
         }
       };
 
       fetchGrades();
-    }, [user])
+
+      return () => {
+        isMounted = false;
+      };
+    }, [user?.gradeName, user?.role]),
   );
 
   return (
@@ -281,96 +465,7 @@ function BooksScreenContent() {
                   </View>
                 ))
               ) : (
-                grades.map((grade, index) => {
-                  const { design } = grade;
-                  const isEven = index % 2 === 0;
-                  const cardGradients = isDark ? design.darkGradient : design.gradient;
-                  const borderCol = isDark ? design.darkBorder : design.border;
-                  const subTextColor = isDark ? 'rgba(255,255,255,0.7)' : design.accent + 'CC';
-
-                  // Unified Gradient Mask for seamless blending
-                  // We flip the gradient logic based on the image's position
-                  const unifiedGradients = isEven
-                    ? ['transparent', 'transparent', cardGradients[0], cardGradients[1]]
-                    : [cardGradients[0], cardGradients[1], 'transparent', 'transparent'];
-
-                  const unifiedLocations = isEven
-                    ? [0, 0.15, 0.45, 1]     // Image Left: wait till 0.15, then fade to completely solid at 0.55
-                    : [0, 0.53, 0.85, 1];    // Image Right: solid until 0.45, then fade to transparent at 0.85
-
-                  const ImageSection = (
-                    <View style={[styles.gradeImageSideWrap, isEven ? { left: scale(-15) } : { right: scale(-15) }]}>
-                      <FastImage
-                        source={{ uri: design.image }}
-                        style={styles.gradeImageFull}
-                        resizeMode={FastImage.resizeMode.cover}
-                      />
-                    </View>
-                  );
-
-                  const ContentSection = (
-                    <View style={[
-                      styles.gradeCardBody,
-                      {
-                        alignItems: 'flex-start',
-                        paddingLeft: isEven ? '48%' : scale(10),
-                        paddingRight: !isEven ? '48%' : scale(8),
-                      }
-                    ]}>
-                      <Text style={[styles.gradeNameText, { color: design.accent }]}>
-                        {design.name}
-                      </Text>
-
-                      <View style={[styles.gradeBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-                        <Text style={[styles.gradeBadgeText, { color: isDark ? '#fff' : design.accent }]}>
-                          {design.subtitle}
-                        </Text>
-                      </View>
-
-                      <Text style={[styles.gradeDescText, { color: subTextColor, textAlign: 'left' }]}>
-                        "{design.description}"
-                      </Text>
-                    </View>
-                  );
-
-                  return (
-                    <Animated.View
-                      key={grade._id}
-                      entering={isEven ? FadeInLeft.delay(index * 120).duration(600) : FadeInRight.delay(index * 120).duration(600)}
-                      layout={Layout.springify()}
-                    >
-                      <TouchableOpacity
-                        activeOpacity={0.92}
-                        onPress={() => handleGradePress(grade)}
-                        style={[
-                          styles.gradeCardWrap,
-                          {
-                            width: cardWidth,
-                            borderColor: borderCol,
-                            backgroundColor: isDark ? '#1a1a1a' : '#fff', // fallback
-                          },
-                        ]}>
-
-                        {/* 1. Underlying Image Layer */}
-                        {ImageSection}
-
-                        {/* 2. Unified Background & Mask Layer (Seamless) */}
-                        <LinearGradient
-                          colors={unifiedGradients as string[]}
-                          locations={unifiedLocations}
-                          start={{ x: 0, y: 0.5 }}
-                          end={{ x: 1, y: 0.5 }}
-                          style={StyleSheet.absoluteFill}
-                        />
-
-                        {/* 3. Text Layer */}
-                        <View style={styles.gradeCardInner}>
-                          {ContentSection}
-                        </View>
-                      </TouchableOpacity>
-                    </Animated.View>
-                  );
-                })
+                gradeCards
               )}
             </View>
           </View>
@@ -821,13 +916,28 @@ const styles = StyleSheet.create({
     width: '55%', // Increased to ensure overlap
     overflow: 'hidden',
   },
+  gradeImageSideLeft: {
+    left: scale(-15),
+  },
+  gradeImageSideRight: {
+    right: scale(-15),
+  },
   gradeImageFull: {
     width: '100%',
     height: '100%',
   },
   gradeCardBody: {
     flex: 1,
+    alignItems: 'flex-start',
     paddingHorizontal: scale(16),
+  },
+  gradeCardBodyEven: {
+    paddingLeft: '48%',
+    paddingRight: scale(8),
+  },
+  gradeCardBodyOdd: {
+    paddingLeft: scale(10),
+    paddingRight: '48%',
   },
   gradeNameText: {
     fontSize: moderateScale(22),
@@ -842,13 +952,25 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(10),
     marginBottom: verticalScale(10),
   },
+  gradeBadgeDark: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  gradeBadgeLight: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
   gradeBadgeText: {
     fontSize: moderateScale(11),
     fontWeight: '800',
+  },
+  gradeBadgeTextDark: {
+    color: '#fff',
   },
   gradeDescText: {
     fontSize: moderateScale(12),
     fontStyle: 'italic',
     lineHeight: moderateScale(18),
+  },
+  gradeDescLeft: {
+    textAlign: 'left',
   },
 });

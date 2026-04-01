@@ -219,6 +219,43 @@ function getPreviewUri(model: ARModel) {
   return null;
 }
 
+function pickRemoteUrl(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const trimmed = value.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
+function getCandidateModelIds(modelRecord: any, nestedModel: any): string[] {
+  const rawCandidates = [
+    typeof modelRecord?.modelId === 'string' ? modelRecord.modelId : '',
+    nestedModel?._id,
+    modelRecord?._id,
+    modelRecord?.id,
+  ];
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  rawCandidates.forEach(value => {
+    const id = typeof value === 'string' ? value.trim() : '';
+    if (!id || seen.has(id)) {
+      return;
+    }
+    seen.add(id);
+    result.push(id);
+  });
+
+  return result;
+}
+
 
 function getEnvironmentColors(environment: AREnvironmentView) {
   if (environment.gradient && LEGACY_GRADIENT_MAP[environment.gradient]) {
@@ -908,28 +945,123 @@ function ARScreenContent() {
         return;
       }
 
-      const modelId = String(model._id || model.id || '').trim();
-      if (!modelId) {
+      const modelRecord = model as any;
+      const nestedModel =
+        modelRecord?.modelId && typeof modelRecord.modelId === 'object'
+          ? modelRecord.modelId
+          : null;
+      const modelIdCandidates = getCandidateModelIds(modelRecord, nestedModel);
+      if (modelIdCandidates.length === 0) {
         Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
         return;
       }
 
+      let modelId = '';
+      let resolvedModelRecord: any = modelRecord;
+      let resolvedNestedModel: any = nestedModel;
+      for (const candidateId of modelIdCandidates) {
+        try {
+          await ARService.getModelById(candidateId);
+          modelId = candidateId;
+          break;
+        } catch {
+          try {
+            const userModalResponse = await ARService.getUserArModalById(candidateId);
+            const userModal =
+              userModalResponse?.data?.modal ||
+              userModalResponse?.data?.arModal ||
+              userModalResponse?.data;
+            const userNestedModel =
+              userModal?.modelId && typeof userModal.modelId === 'object'
+                ? userModal.modelId
+                : null;
+            const linkedModelId = String(
+              (typeof userModal?.modelId === 'string' ? userModal.modelId : '') ||
+              userNestedModel?._id ||
+              '',
+            ).trim();
+
+            if (!linkedModelId) {
+              continue;
+            }
+
+            const linkedDirectFile = pickRemoteUrl(
+              userModal?.file,
+              userModal?.fileUrl,
+              userNestedModel?.file,
+              userNestedModel?.fileUrl,
+            );
+            if (linkedDirectFile) {
+              modelId = linkedModelId;
+              resolvedModelRecord = userModal;
+              resolvedNestedModel = userNestedModel;
+              break;
+            }
+
+            await ARService.getModelById(linkedModelId);
+            modelId = linkedModelId;
+            resolvedModelRecord = userModal;
+            resolvedNestedModel = userNestedModel;
+            break;
+          } catch {
+            // Keep trying fallback IDs.
+          }
+        }
+      }
+
+      if (!modelId) {
+        Alert.alert(
+          'Model Missing',
+          'This AR model is not available on server (404). Please ask backend team to fix model mapping.',
+        );
+        return;
+      }
+
       // Prioritize direct file URL
-      const modelFileUrl = (model as any).file && String((model as any).file).startsWith('http')
-        ? (model as any).file
-        : ARService.getModelFileUrl(modelId);
+      const modelFileUrl = pickRemoteUrl(
+        resolvedModelRecord?.file,
+        resolvedModelRecord?.fileUrl,
+        resolvedNestedModel?.file,
+        resolvedNestedModel?.fileUrl,
+        modelRecord?.file,
+        modelRecord?.fileUrl,
+        nestedModel?.file,
+        nestedModel?.fileUrl,
+      ) || ARService.getModelFileUrl(modelId);
 
       // Prioritize direct preview/thumbnail
-      const referenceImageUrl = (model as any).preview_image || (model as any).thumbnail || getReferenceImageSource(model) || ARService.getPreviewImageUrl(modelId);
+      const referenceImageUrl = pickRemoteUrl(
+        resolvedModelRecord?.preview_image,
+        resolvedModelRecord?.thumbnail,
+        resolvedModelRecord?.previewUrl,
+        resolvedNestedModel?.preview_image,
+        resolvedNestedModel?.thumbnail,
+        resolvedNestedModel?.previewUrl,
+        modelRecord?.preview_image,
+        modelRecord?.thumbnail,
+        modelRecord?.previewUrl,
+        nestedModel?.preview_image,
+        nestedModel?.thumbnail,
+        nestedModel?.previewUrl,
+      ) ||
+        getReferenceImageSource(
+          resolvedNestedModel || resolvedModelRecord || nestedModel || modelRecord
+        ) ||
+        ARService.getPreviewImageUrl(modelId);
 
       // Fetch audios for this model or use pre-loaded ones (prioritizing direct URLs)
       let audiosJson: string | undefined;
       try {
-        const modelAudios = (model as any).audios || [];
+        const modelAudios =
+          resolvedModelRecord?.audios ||
+          resolvedNestedModel?.audios ||
+          modelRecord?.audios ||
+          nestedModel?.audios ||
+          [];
         if (modelAudios.length > 0) {
           const mapped = modelAudios.map((a: any) => ({
             ...a,
-            audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null)
+            audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null),
           }));
           audiosJson = JSON.stringify(mapped);
         } else {
@@ -949,7 +1081,7 @@ function ARScreenContent() {
       await ARScannerModule.startScannerDynamic(
         modelFileUrl,
         referenceImageUrl,
-        model.name || 'model',
+        resolvedNestedModel?.name || resolvedModelRecord?.name || nestedModel?.name || modelRecord?.name || 'model',
         audiosJson,
       );
     } catch (error: any) {
