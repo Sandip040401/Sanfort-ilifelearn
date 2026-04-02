@@ -70,6 +70,7 @@ import {
 import ARIcon from '@/components/icons/ARIcon';
 import AnimationIcon from '@/components/icons/AnimationIcon';
 import Rotate360Icon from '@/components/icons/Rotate360Icon';
+import * as ARCache from '@/utils/ar-cache';
 
 type ARViewerRouteProp = RouteProp<MainStackParamList, 'ARViewer'>;
 type ARViewerNavigationProp = StackNavigationProp<MainStackParamList, 'ARViewer'>;
@@ -262,6 +263,7 @@ export default function ARViewerScreen() {
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [audioReady, setAudioReady] = useState(false);
   const [audioSyncPending, setAudioSyncPending] = useState(false);
+  const [cachedModelUrl, setCachedModelUrl] = useState<string | null>(null);
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const [userGradeId, setUserGradeId] = useState<string | undefined>();
@@ -379,7 +381,6 @@ export default function ARViewerScreen() {
     () => getBrowsableEnvironments((foldersQuery.data || []) as any[], models),
     [foldersQuery.data, models],
   );
-
   const currentModel = useMemo(() => {
     const detailModel = modelDetailQuery.data;
     if (detailModel && getModelStableId(detailModel) === modelId) {
@@ -388,7 +389,19 @@ export default function ARViewerScreen() {
     return models.find(model => getModelStableId(model) === modelId) || null;
   }, [modelId, models, modelDetailQuery.data]);
 
-  const modelUrl = useMemo(() => {
+  useEffect(() => {
+    if (!currentModel) return;
+    const modelId = getModelStableId(currentModel);
+    ARCache.isModelDownloaded(modelId).then(exists => {
+      if (exists) {
+        setCachedModelUrl(`file://${ARCache.getLocalModelPath(modelId)}`);
+      } else {
+        setCachedModelUrl(null);
+      }
+    });
+  }, [currentModel]);
+
+  const remoteModelUrl = useMemo(() => {
     if (!currentModel) return '';
     const m = currentModel as any;
 
@@ -397,15 +410,12 @@ export default function ARViewerScreen() {
         const rawFile = typeof p?.file === 'string' ? p.file : '';
         if (!rawFile) return [];
         
-        // If part file is an absolute URL, use it directly
         const partUrl = rawFile.startsWith('http') 
           ? rawFile 
           : `${ARService.getModelFileUrl(getModelStableId(currentModel))}?part=${encodeURIComponent(rawFile.split('/').pop() || '')}`;
 
-        // Find part-specific audio in the new audios array
         let audioUrl = p.url || p.audioUrl || (p.audio?.gridfsId ? ARService.getAudioStreamUrlById(p.audio.gridfsId) : null);
         if (!audioUrl && p.audios && Array.isArray(p.audios) && p.audios.length > 0) {
-          // Default to first available audio for the part if no selection is available
           audioUrl = p.audios[0].url || (p.audios[0].gridfsId ? ARService.getAudioStreamUrlById(p.audios[0].gridfsId) : null);
         }
 
@@ -422,13 +432,20 @@ export default function ARViewerScreen() {
       }
     }
 
-    // Prioritize direct file URL for single models
-    if (m.file && String(m.file).startsWith('http')) {
-      return String(m.file);
-    }
+    const directUrl = 
+      (m.file && String(m.file).startsWith('http') ? String(m.file) : null) ||
+      (m.fileUrl && String(m.fileUrl).startsWith('http') ? String(m.fileUrl) : null) ||
+      (m.modelFile && String(m.modelFile).startsWith('http') ? String(m.modelFile) : null) ||
+      (m.model_url && String(m.model_url).startsWith('http') ? String(m.model_url) : null);
 
+    if (directUrl) return directUrl;
     return ARService.getModelFileUrl(getModelStableId(currentModel));
   }, [currentModel]);
+
+  const modelUrl = useMemo(() => {
+    if (cachedModelUrl) return cachedModelUrl;
+    return remoteModelUrl;
+  }, [cachedModelUrl, remoteModelUrl]);
 
   const currentEnvironment = useMemo<AREnvironmentView | null>(() => {
     const byId = environments.find(env => env._id === environmentId);
@@ -607,10 +624,34 @@ export default function ARViewerScreen() {
     }
   }, [loadingModel, paintingEnabled, targetTextureDataUrl, textureDisplayMode]);
 
-  const viewerHtml = useMemo(
-    () => (modelUrl ? buildARViewerHtml(modelUrl) : ''),
-    [modelUrl],
-  );
+  const [localModelBase64, setLocalModelBase64] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (modelUrl && modelUrl.startsWith('file://')) {
+      const path = modelUrl.replace('file://', '');
+      ARCache.RNFS.readFile(path, 'base64')
+        .then((base64: string) => {
+          setLocalModelBase64(base64);
+        })
+        .catch((err: any) => {
+          console.warn('[ARViewer] Local read fail, will try remote:', err);
+          setLocalModelBase64(null);
+          setCachedModelUrl(null); // Force back to remoteUrl
+        });
+    } else {
+      setLocalModelBase64(null);
+    }
+  }, [modelUrl]);
+
+  const viewerHtml = useMemo(() => {
+    if (!modelUrl) return '';
+    
+    if (modelUrl.startsWith('file://') && !localModelBase64) {
+      return '';
+    }
+    
+    return buildARViewerHtml(modelUrl, localModelBase64, remoteModelUrl);
+  }, [modelUrl, localModelBase64, remoteModelUrl]);
 
   const targetUrl = useMemo(() => {
     const referenceSource = getReferenceImageSource(currentModel);
@@ -818,8 +859,13 @@ export default function ARViewerScreen() {
           clearTimeout(loadEndTimeoutRef.current);
           loadEndTimeoutRef.current = null;
         }
-        setViewerError(data.message || 'Failed to load model');
-        setLoadingModel(false);
+        // Only show error overlay if we are still in initial loading phase
+        // This prevents minor loader errors (like missing textures) from blocking
+        // the screen after the model is already visible.
+        if (loadingModel) {
+          setViewerError(data.message || 'Failed to load model');
+          setLoadingModel(false);
+        }
         setIsExporting(false);
       }
       if (data.type === 'log') {
@@ -1042,6 +1088,7 @@ export default function ARViewerScreen() {
           allowsFullscreenVideo
           mixedContentMode="always"
           allowFileAccess
+          allowFileAccessFromFileURLs
           allowUniversalAccessFromFileURLs
           cacheEnabled
           scalesPageToFit={Platform.OS !== 'ios'}

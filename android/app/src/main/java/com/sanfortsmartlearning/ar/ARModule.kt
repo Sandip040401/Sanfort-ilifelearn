@@ -139,11 +139,22 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                 val cacheDir = File(reactContext.cacheDir, "ar_scanner_cache")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
 
-                val safeName = modelName.lowercase().replace(Regex("[^a-z0-9_]"), "_")
+                val safeName = modelName.replace("[^a-zA-Z0-9]".toRegex(), "_")
 
-                // Download model .glb file (with caching)
-                val modelFile = File(cacheDir, "${safeName}.glb")
-                downloadFileWithCache(modelUrl, modelFile)
+                // Handle model GLB (supporting local file:// or network http://)
+                val modelFile: File = when {
+                    modelUrl.startsWith("file://") || modelUrl.startsWith("/") -> {
+                        val path = if (modelUrl.startsWith("file://")) modelUrl.removePrefix("file://") else modelUrl
+                        val f = File(path)
+                        if (!f.exists()) throw IOException("Local model file not found: $path")
+                        f
+                    }
+                    else -> {
+                        val dest = File(cacheDir, "${safeName}.glb")
+                        downloadFileWithCache(modelUrl, dest)
+                        dest
+                    }
+                }
 
                 val isHttpReference =
                     referenceImageUrl.startsWith("http://") || referenceImageUrl.startsWith("https://")
@@ -202,7 +213,8 @@ class ARModule(private val reactContext: ReactApplicationContext) :
 
                 promise.resolve(true)
             } catch (error: Exception) {
-                promise.reject("AR_SCANNER_DOWNLOAD_FAILED", error.message, error)
+                android.util.Log.e("ARModule", "AR Scanner launch failed", error)
+                promise.reject("AR_SCANNER_LAUNCH_FAILED", error.message, error)
             }
         }.start()
     }
@@ -271,6 +283,7 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                 Uri.fromFile(modelFile).toString()
             }
             modelPath.startsWith("/") -> Uri.fromFile(File(modelPath)).toString()
+            modelPath.startsWith("file://") -> modelPath
             else -> modelPath
         }
     }
@@ -295,15 +308,18 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                 return
             }
         }
-        val connection = URL(urlString).openConnection() as java.net.HttpURLConnection
-        connection.connectTimeout = 15000
-        connection.readTimeout = 30000
-        connection.instanceFollowRedirects = true
-        val responseCode = connection.responseCode
-        val contentType = connection.contentType ?: "unknown"
-        android.util.Log.i("ARModule", "Download response: code=$responseCode contentType=$contentType url=$urlString")
-        if (responseCode != 200) {
-            throw IOException("Download failed with HTTP $responseCode for $urlString")
+        val url = URL(urlString)
+        val connection = url.openConnection()
+        if (connection is java.net.HttpURLConnection) {
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.instanceFollowRedirects = true
+            val responseCode = connection.responseCode
+            val contentType = connection.contentType ?: "unknown"
+            android.util.Log.i("ARModule", "Download response: code=$responseCode contentType=$contentType url=$urlString")
+            if (responseCode != 200) {
+                throw IOException("Download failed with HTTP $responseCode for $urlString")
+            }
         }
         connection.inputStream.use { input ->
             FileOutputStream(outputFile).use { output ->

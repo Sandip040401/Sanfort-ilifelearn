@@ -1,4 +1,4 @@
-export function buildARViewerHtml(modelFileUrl: string) {
+export function buildARViewerHtml(modelFileUrl: string, base64Model: string | null = null, remoteUrl: string | null = null) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -176,6 +176,8 @@ export function buildARViewerHtml(modelFileUrl: string) {
   }
 
   const inputUrl = ${JSON.stringify(modelFileUrl)};
+  const base64Data = ${JSON.stringify(base64Model)};
+  
   let modelsToLoad = [];
   try {
     modelsToLoad = inputUrl.startsWith('[') ? JSON.parse(inputUrl) : [{ id: 'default', url: inputUrl }];
@@ -183,66 +185,101 @@ export function buildARViewerHtml(modelFileUrl: string) {
     modelsToLoad = [{ id: 'default', url: inputUrl }];
   }
 
+  // Handle local file via Base64 if needed
+  if (base64Data && modelsToLoad.length === 1) {
+    try {
+      const binary = atob(base64Data);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) array[i] = binary.charCodeAt(i);
+      const blob = new Blob([array], { type: 'application/octet-stream' });
+      modelsToLoad[0].url = URL.createObjectURL(blob);
+      console.log('Loading local model via Blob URL');
+    } catch (e) {
+      console.error('Failed to convert base64 to blob', e);
+    }
+  }
+  const fallbackUrl = ${JSON.stringify(remoteUrl)};
+  
   const loadedModelsMap = new Map();
   const loader = new GLTFLoader();
   loader.setCrossOrigin('anonymous');
 
+  function loadModel(modelInfo, resolve, reject, isFallback = false) {
+    loader.load(
+      modelInfo.url,
+      (gltf) => {
+        loadedAnything = true;
+        const sceneGroup = gltf.scene;
+        scene.add(sceneGroup);
+        sceneGroup.visible = false; 
+
+        const box = new THREE.Box3().setFromObject(sceneGroup);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 2.5 / maxDim;
+        sceneGroup.scale.setScalar(scale);
+
+        sceneGroup.position.x = -center.x * scale;
+        sceneGroup.position.z = -center.z * scale;
+        sceneGroup.position.y = -(box.min.y * scale);
+        
+        sceneGroup.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            setupPaintCanvas(child);
+          }
+        });
+
+        let localMixer = null;
+        if (gltf.animations && gltf.animations.length > 0) {
+          localMixer = new THREE.AnimationMixer(sceneGroup);
+        }
+
+        loadedModelsMap.set(modelInfo.id, {
+          scene: sceneGroup,
+          mixer: localMixer,
+          animations: gltf.animations || [],
+          center: center
+        });
+        resolve();
+      },
+      (progress) => {
+        if (progress.total > 0 && modelsToLoad.length === 1) {
+          const pct = Math.round((progress.loaded / progress.total) * 100);
+          status.textContent = 'Loading... ' + pct + '%';
+          postMsg({ type: 'progress', percent: pct });
+        }
+      },
+      (error) => {
+        const errString = error.message || String(error) || 'Unknown fetch error';
+        console.error('Loader error (' + (isFallback ? 'remote' : 'local') + ') for ' + modelInfo.url + ':', errString);
+
+        if (!isFallback && fallbackUrl && modelsToLoad.length === 1 && modelInfo.id === 'default') {
+          console.warn('Attempting remote fallback:', fallbackUrl);
+          status.textContent = 'Network fallback...';
+          modelInfo.url = fallbackUrl;
+          loadModel(modelInfo, resolve, reject, true);
+          return;
+        }
+
+        if (loadedAnything && (errString.includes('fetch') || errString.includes('texture'))) {
+          console.log('Ignoring non-critical error:', errString);
+          resolve(); 
+          return;
+        }
+        reject({ message: errString + ' (' + modelInfo.id + ')', url: modelInfo.url });
+      }
+    );
+  }
+
+  let loadedAnything = false;
   Promise.all(modelsToLoad.map(modelInfo => {
     return new Promise((resolve, reject) => {
-      loader.load(
-        modelInfo.url,
-        (gltf) => {
-          const sceneGroup = gltf.scene;
-          scene.add(sceneGroup);
-          sceneGroup.visible = false; // Hidden initially
-          
-          const box = new THREE.Box3().setFromObject(sceneGroup);
-          const center = box.getCenter(new THREE.Vector3());
-          const size = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          const scale = 2.5 / maxDim;
-          sceneGroup.scale.setScalar(scale);
-
-          sceneGroup.position.x = -center.x * scale;
-          sceneGroup.position.z = -center.z * scale;
-          sceneGroup.position.y = -(box.min.y * scale);
-          
-          sceneGroup.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-              setupPaintCanvas(child);
-            }
-          });
-
-          let localMixer = null;
-          if (gltf.animations && gltf.animations.length > 0) {
-            localMixer = new THREE.AnimationMixer(sceneGroup);
-          }
-
-          loadedModelsMap.set(modelInfo.id, {
-            scene: sceneGroup,
-            mixer: localMixer,
-            animations: gltf.animations || [],
-            center: center
-          });
-
-          resolve();
-        },
-        (progress) => {
-          if (progress.total > 0 && modelsToLoad.length === 1) {
-            const pct = Math.round((progress.loaded / progress.total) * 100);
-            status.textContent = 'Loading... ' + pct + '%';
-            postMsg({ type: 'progress', percent: pct });
-          }
-        },
-        (error) => {
-          console.error('Loader Error for ' + modelInfo.url, error.toString(), JSON.stringify(error));
-          const errString = error.message || String(error) || 'Unknown fetch error';
-          reject({ message: errString + ' (' + modelInfo.id + ')', url: modelInfo.url });
-        }
-      );
+      loadModel(modelInfo, resolve, reject);
     });
+
   })).then(() => {
     status.classList.add('hidden');
     postMsg({ type: 'loaded' });
@@ -252,6 +289,12 @@ export function buildARViewerHtml(modelFileUrl: string) {
       window.switchModelPart(modelsToLoad[0].id);
     }
   }).catch((error) => {
+    if (loadedAnything) {
+      console.log('Suppressed final catch error because model is visible:', error.message);
+      status.classList.add('hidden');
+      postMsg({ type: 'loaded' });
+      return;
+    }
     status.textContent = 'Failed to load: ' + (error.url ? error.url.split('/').pop() : 'model');
     postMsg({ type: 'error', message: error.message || 'Load error' });
   });
