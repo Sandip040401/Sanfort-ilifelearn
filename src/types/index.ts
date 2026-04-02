@@ -253,7 +253,7 @@ export type AuthStackParamList = {
 export type MainStackParamList = {
   BottomTabs: undefined;
   Profile:    undefined;
-  ARViewer:   {modelId: string; environmentId?: string; openPainter?: boolean; initialPaintMode?: 'model' | 'target'};
+  ARViewer:   {modelId: string; environmentId?: string; openPainter?: boolean; initialPaintMode?: 'model' | 'target'; gradeKey?: string};
   WebVRViewer: {folderId: string; folderName: string};
   GamePlayer:  {gameId: string; gameUrl: string; gameTitle: string};
   BooksStack:  undefined;

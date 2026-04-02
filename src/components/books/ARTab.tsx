@@ -27,6 +27,7 @@ import {
 import { useTheme } from '@/theme';
 import type { BookConcept, MainStackParamList, BooksStackParamList, ARModel } from '@/types';
 import { ARService } from '@/services';
+import { useAuth } from '@/store';
 import ARInstructionModal from '@/components/ARInstructionModal';
 import { ARScannerModule } from '@/screens/ar/ARScannerModule';
 import { normalizeEnvName } from '@/utils/normalize';
@@ -236,6 +237,7 @@ type ARTabProps = {
   tabBarContent?: React.ReactNode;
   refreshing: boolean;
   onRefresh: () => void;
+  gradeKey?: string;
 };
 
 export default function ARTab({
@@ -247,7 +249,9 @@ export default function ARTab({
   tabBarContent,
   refreshing,
   onRefresh,
+  gradeKey,
 }: ARTabProps) {
+  console.log('🚀 ~ ARTab ~ gradeKey:', gradeKey);
   const { colors, isDark } = useTheme();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
@@ -257,6 +261,19 @@ export default function ARTab({
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [scanningModel, setScanningModel] = useState<any>(null);
+
+  const { user } = useAuth();
+  const isTeacher = user?.role === 'teacher' || user?.role === 'admin' || user?.role === 'super-admin';
+
+  const teacherModelsQuery = useQuery({
+    queryKey: ['ar-models-teacher', gradeKey],
+    queryFn: async () => {
+      const response = await ARService.getALLArModals(gradeKey);
+      return response.data?.arModals || [];
+    },
+    enabled: isTeacher && !!gradeKey,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const arItems = useMemo(() => {
     // Subject name comes from the concept in the SubjectContentScreen payload
@@ -271,6 +288,30 @@ export default function ARTab({
     );
   }, [concepts, subjectName]);
 
+  const finalItems = useMemo(() => {
+    if (!isTeacher || !teacherModelsQuery.data) {
+      return arItems;
+    }
+
+    const teacherModels = (teacherModelsQuery.data || []).map((m: any) => ({
+      ...m,
+      modelId: m,
+      name: m.name,
+      uniqueId: `teacher-${m._id}`,
+      weekNumber: '∞' // Marker for teacher-only / overall models
+    }));
+
+    // Merge and remove duplicates
+    const conceptIds = new Set(arItems.map(ai => {
+      const id = typeof ai.modelId === 'object' ? ai.modelId?._id : ai.modelId;
+      return String(id);
+    }));
+
+    const filteredTeacherModels = teacherModels.filter((tm: any) => !conceptIds.has(String(tm._id)));
+
+    return [...arItems, ...filteredTeacherModels];
+  }, [arItems, isTeacher, teacherModelsQuery.data]);
+
   const closeSheet = useCallback(() => {
     bottomSheetModalRef.current?.dismiss();
     setSelectedItem(null);
@@ -281,6 +322,7 @@ export default function ARTab({
     const modelId = String(typeof model.modelId === 'object' ? model.modelId?._id : model.modelId);
     navigation.navigate('ARViewer', {
       modelId,
+      gradeKey,
       openPainter: opts?.openPainter,
       initialPaintMode: opts?.initialPaintMode as any
     });
@@ -330,8 +372,10 @@ export default function ARTab({
       let fetchedModelData: any = null;
       if (!modelFileUrl || !referenceImageUrl) {
         try {
-          const res = await ARService.getUserArModalById(modelId);
-          fetchedModelData = (res as any).data?.arModal || (res as any).arModal;
+          const res = await ARService.getUserArModalById(modelId, gradeKey);
+          console.log('API response res\n', JSON.stringify(res.data, null, 2));
+          const modelData = res.data?.modal || res.data?.arModal || (res.data as any);
+          fetchedModelData = modelData.arModal;
 
           if (fetchedModelData) {
             if (!modelFileUrl) modelFileUrl = fetchedModelData.file;
@@ -419,6 +463,13 @@ export default function ARTab({
     [],
   );
 
+  const handleInternalRefresh = useCallback(() => {
+    if (isTeacher) {
+      teacherModelsQuery.refetch();
+    }
+    onRefresh();
+  }, [isTeacher, onRefresh, teacherModelsQuery]);
+
   const snapPoints = useMemo(() => [isLandscape ? '92%' : '62%'], [isLandscape]);
 
   const gridGap = scale(14);
@@ -486,7 +537,7 @@ export default function ARTab({
     <>
       <FlatList
         key={numColumns}
-        data={arItems}
+        data={finalItems}
         keyExtractor={item => item.uniqueId}
         numColumns={numColumns}
         columnWrapperStyle={numColumns > 1 ? styles.columnWrapper : undefined}
@@ -496,8 +547,8 @@ export default function ARTab({
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            refreshing={refreshing || teacherModelsQuery.isRefetching}
+            onRefresh={handleInternalRefresh}
             tintColor={accentColor}
             colors={[accentColor]}
           />

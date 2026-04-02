@@ -41,6 +41,7 @@ function SubjectContentScreenContent() {
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectContentRouteProp>();
   const {gradeKey, gradeName, subjectColor, subjectKey, subjectName} = route.params;
+  console.log('🚀 ~ SubjectContentScreen ~ gradeKey:', gradeKey);
   const {width} = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<TabKey>('concepts');
   const screenReady = useScreenReady();
@@ -403,6 +404,7 @@ function SubjectContentScreenContent() {
             tabBarContent={tabBarContent}
             refreshing={booksQuery.isRefetching}
             onRefresh={refreshContent}
+            gradeKey={gradeKey}
           />
         )}
       </View>

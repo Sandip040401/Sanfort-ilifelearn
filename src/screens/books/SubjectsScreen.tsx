@@ -150,6 +150,7 @@ function SubjectsScreenContent() {
   const navigation = useNavigation<BooksNavigationProp>();
   const route = useRoute<SubjectsRouteProp>();
   const {gradeKey, gradeName, gradeColors, books = []} = route.params;
+  console.log('🚀 ~ SubjectsScreen ~ gradeKey:', gradeKey);
   const {width, height} = useWindowDimensions();
   const isLandscape = width > height;
   const cardText = colors.text;

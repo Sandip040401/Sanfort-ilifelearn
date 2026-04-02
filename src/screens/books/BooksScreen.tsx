@@ -274,7 +274,7 @@ GradeCard.displayName = 'GradeCard';
 
 function BooksScreenContent() {
   const { colors, isDark } = useTheme();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const insets = useSafeAreaInsets();
   const { onScroll } = useTabBarHideOnScroll();
   const navigation = useNavigation<StackNavigationProp<BooksStackParamList>>();
@@ -298,6 +298,11 @@ function BooksScreenContent() {
 
   const [grades, setGrades] = React.useState<GradeGroup[]>([]);
   const [loading, setLoading] = React.useState(true);
+
+  console.log('🚀 ~ BooksScreen ~ user:', user);
+  console.log('🚀 ~ BooksScreen ~ token:', token);
+  console.log('🚀 ~ BooksScreen ~ grades:', grades);
+  
 
   const handleGradePress = React.useCallback((grade: GradeGroup) => {
     const { design } = grade;

@@ -223,7 +223,7 @@ export default function ARViewerScreen() {
   const navigation = useNavigation<ARViewerNavigationProp>();
   const route = useRoute<ARViewerRouteProp>();
   const { user } = useAuth();
-  const { modelId, environmentId, openPainter = false, initialPaintMode = 'model' } = route.params;
+  const { modelId, environmentId, openPainter = false, initialPaintMode = 'model', gradeKey } = route.params;
 
   const webViewRef = useRef<WebView>(null);
   const sheetWebViewRef = useRef<WebView>(null);
@@ -269,6 +269,12 @@ export default function ARViewerScreen() {
 
   // Sync grade ID for the side-menu and dynamic loading
   useEffect(() => {
+    if (gradeKey) {
+      setUserGradeId(gradeKey);
+      setGradeResuming(false);
+      return;
+    }
+
     const fetchGradeId = async () => {
       try {
         const response = await BooksService.getAllGrades();
@@ -276,7 +282,10 @@ export default function ARViewerScreen() {
         if (resData.success) {
           const targetGradeName = (user?.gradeName || 'SAN Toddler').trim().toLowerCase();
           const match = resData.grades.find((g: any) => g.category.split(' (')[0].trim().toLowerCase() === targetGradeName);
-          if (match) setUserGradeId(match._id);
+          if (match) {
+            const finalGradeName = match.category.split(' (')[0].trim();
+            setUserGradeId(finalGradeName);
+          }
         }
       } catch (err) {
         console.error('Failed to resolve gradeId in Viewer:', err);
@@ -285,7 +294,7 @@ export default function ARViewerScreen() {
       }
     };
     fetchGradeId();
-  }, [user?.gradeName]);
+  }, [user?.gradeName, gradeKey]);
 
   // ── Responsive: tablet + landscape detection ──
   const { width: winW, height: winH } = useWindowDimensions();
@@ -346,9 +355,9 @@ export default function ARViewerScreen() {
   });
 
   const modelDetailQuery = useQuery({
-    queryKey: ['ar-model-detail', modelId],
+    queryKey: ['ar-model-detail', modelId, userGradeId],
     queryFn: async () => {
-      const response = await ARService.getUserArModalById(modelId);
+      const response = await ARService.getUserArModalById(modelId, userGradeId);
       console.log('response\n', JSON.stringify(response.data, null, 2));
       return response.data?.modal || response.data?.arModal || (response.data as any);
     },

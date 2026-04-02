@@ -1,13 +1,13 @@
-import {Platform} from 'react-native';
+import { Platform } from 'react-native';
 
-const ANDROID_LOCALHOST    = '10.0.2.2';
-const IOS_LOCALHOST        = 'localhost';
-const PRODUCTION_API_BASE  = 'https://learn-api.eduzon.ai/api';
+const ANDROID_LOCALHOST = '10.0.2.2';
+const IOS_LOCALHOST = 'localhost';
+const PRODUCTION_API_BASE = 'https://learn-api.eduzon.ai/api';
 const USE_PRODUCTION_IN_DEV = true;
 
 const localhost = Platform.select({
   android: ANDROID_LOCALHOST,
-  ios:     IOS_LOCALHOST,
+  ios: IOS_LOCALHOST,
 })!;
 
 export const API_BASE_URL = __DEV__
@@ -18,9 +18,9 @@ export const API_BASE_URL = __DEV__
 
 export const Endpoints = {
   // Auth
-  login:     '/learn/auth/login',
-  register:  '/learn/auth/register',
-  sendOtp:   '/learn/auth/send-otp',
+  login: '/learn/auth/login',
+  register: '/learn/auth/register',
+  sendOtp: '/learn/auth/send-otp',
   verifyOtp: '/learn/auth/verify-otp',
 
   // Account
@@ -31,30 +31,30 @@ export const Endpoints = {
   profile: '/learn/user/profile',
 
   // AR
-  arModels:  '/modals-3d',
+  arModels: '/modals-3d',
   arFolders: '/folders',
-  arModalsUserAll:  '/modals-3d-user/all',
-  arModalUserById:  (id: string) => `/modals-3d-user/${id}`,
+  arModalsUserAll: '/modals-3d-user/all',
+  arModalUserById: (id: string, gradeId?: string) => `/modals-3d-user/${id}?grade=${gradeId}`,
   arFoldersUserAll: '/modals-3d-user/all-folders',
 
   // WebVR
-  webvrFolders:  '/webvr-folder',
-  webvrContent:  (folderId: string) => `/webvr/${folderId}`,
+  webvrFolders: '/webvr-folder',
+  webvrContent: (folderId: string) => `/webvr/${folderId}`,
   webvrAllItems: '/webvr/all',
 
   // Games
-  games:          '/learn/games',
-  gamesByTopic:   (topicId: string) => `/learn/games/topic/${topicId}`,
+  games: '/learn/games',
+  gamesByTopic: (topicId: string) => `/learn/games/topic/${topicId}`,
 
   // Read Aloud
-  readAloudAttempts:  (studentId: string) => `/learn/user/student/${studentId}/attempts`,
+  readAloudAttempts: (studentId: string) => `/learn/user/student/${studentId}/attempts`,
   readAloudDashboard: (studentId: string) => `/learn/user/student/${studentId}/read-aloud-student-dashboard`,
 
   // Books / Ebooks
-  allGrades:         '/home/all-grades',
-  gradeById:         (id: string) => `/home/grades/${id}`,
-  concepts:          (grade: string, subject: string) => `/home/concepts/${grade}/${subject}`,
-  ebooks:            (category: string, subject: string) => `/ebooks/${category}/${subject}`,
-  conceptVideos:     '/explanatory-videos/concept-videos',
+  allGrades: '/home/all-grades',
+  gradeById: (id: string) => `/home/grades/${id}`,
+  concepts: (grade: string, subject: string) => `/home/concepts/${grade}/${subject}`,
+  ebooks: (category: string, subject: string) => `/ebooks/${category}/${subject}`,
+  conceptVideos: '/explanatory-videos/concept-videos',
   explanatoryVideos: '/explanatory-videos',
 } as const;

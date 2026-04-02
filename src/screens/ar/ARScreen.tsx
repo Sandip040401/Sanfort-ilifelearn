@@ -778,8 +778,9 @@ function ARScreenContent() {
           });
 
           if (match) {
-            setUserGradeId(match._id);
-            console.log('Detected User gradeId:', match._id, 'for', targetGradeName);
+            const finalGradeName = match.category.split(' (')[0].trim();
+            setUserGradeId(finalGradeName);
+            console.log('Detected User gradeName for AR:', finalGradeName);
           }
         }
       } catch (err) {
@@ -966,7 +967,7 @@ function ARScreenContent() {
           break;
         } catch {
           try {
-            const userModalResponse = await ARService.getUserArModalById(candidateId);
+            const userModalResponse = await ARService.getUserArModalById(candidateId, userGradeId);
             const userModal =
               userModalResponse?.data?.modal ||
               userModalResponse?.data?.arModal ||
