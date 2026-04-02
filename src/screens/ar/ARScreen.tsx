@@ -860,6 +860,14 @@ const styles = StyleSheet.create({
     right: scale(6),
     zIndex: 10,
   },
+  statusOverlayFull: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
   downloadStatusBadge: {
     backgroundColor: '#6C4CFF',
     width: scale(26),
@@ -874,17 +882,29 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   progressContainer: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(4),
-    borderRadius: scale(10),
+    width: '80%',
     alignItems: 'center',
-    justifyContent: 'center',
   },
   progressText: {
     color: '#fff',
-    fontSize: moderateScale(10),
-    fontWeight: '800',
+    fontSize: moderateScale(14),
+    fontWeight: '900',
+    marginBottom: verticalScale(8),
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  progressBarBg: {
+    width: '100%',
+    height: verticalScale(6),
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: moderateScale(3),
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: moderateScale(3),
   },
 });
 
@@ -1353,22 +1373,24 @@ function ModelGallery({
               />
               
               {/* Status Overlay */}
-              <View style={styles.statusOverlay}>
-                {isDownloading ? (
-                  <View style={styles.progressContainer}>
+              {isDownloading ? (
+                <View style={styles.statusOverlayFull}>
+                  <Animated.View entering={FadeIn.duration(200)} style={styles.progressContainer}>
                     <Text style={styles.progressText}>{Math.round(progress)}%</Text>
-                  </View>
-                ) : isDownloaded ? (
-                  <View style={styles.downloadStatusBadge}>
-                    <FileCheck size={moderateScale(14)} color="#fff" strokeWidth={2.5} />
-                  </View>
-                ) : (
-                  <View style={[styles.downloadStatusBadge, { backgroundColor: 'rgba(0,0,0,0.3)' }]}>
-                    <Download size={moderateScale(14)} color="#fff" strokeWidth={2.5} />
-                  </View>
-                )
-                }
-              </View>
+                    <View style={styles.progressBarBg}>
+                      <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+                    </View>
+                  </Animated.View>
+                </View>
+              ) : (
+                <View style={styles.statusOverlay}>
+                  {!isDownloaded && (
+                    <View style={[styles.downloadStatusBadge, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+                      <Download size={moderateScale(14)} color="#fff" strokeWidth={3} />
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
 
             <View style={styles.modelInfoRow}>
