@@ -58,6 +58,9 @@ function capitalize(str: string): string {
   return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
+const TEACHER_PROFILE_ROLE = 'Principal';
+const TEACHER_PROFILE_SCHOOL_NAME = 'Sanfort Preschool - Corporate Office';
+
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { colors, mode, setMode, isDark } = useTheme();
@@ -103,6 +106,13 @@ export default function ProfileScreen() {
   const displayName = capitalize(user?.name || 'User');
   const avatarLetter = displayName.charAt(0);
   const userId = String(user?.id ?? user?._id ?? 'N/A');
+  const isTeacherProfile = user?.role?.trim().toLowerCase() === 'teacher';
+  const profileRole = user?.role
+    ? isTeacherProfile
+      ? TEACHER_PROFILE_ROLE
+      : capitalize(user.role)
+    : '';
+  const profileSchoolName = isTeacherProfile ? TEACHER_PROFILE_SCHOOL_NAME : '';
 
   React.useEffect(() => {
     return () => {
@@ -263,11 +273,11 @@ export default function ProfileScreen() {
             {user?.email || 'No email'}
           </Text>
 
-          {user?.role && (
+          {!!profileRole && (
             <View style={[styles.badge, { backgroundColor: colors.primarySurface }]}>
               <Shield size={moderateScale(13)} color={colors.primary} />
               <Text style={[styles.badgeText, { color: colors.primary }]}>
-                {capitalize(user.role)}
+                {profileRole}
               </Text>
             </View>
           )}
@@ -304,14 +314,26 @@ export default function ProfileScreen() {
               colors={colors}
               mono
             />
-            {user?.role && (
+            {!!profileRole && (
               <>
                 <Divider color={colors.divider} />
                 <CardRow
                   icon={<BookOpen size={moderateScale(18)} color="#8B5CF6" />}
                   iconBg={isDark ? '#1A1040' : '#F5F3FF'}
                   label="Role"
-                  value={capitalize(user.role)}
+                  value={profileRole}
+                  colors={colors}
+                />
+              </>
+            )}
+            {!!profileSchoolName && (
+              <>
+                <Divider color={colors.divider} />
+                <CardRow
+                  icon={<Globe size={moderateScale(18)} color="#4F46E5" />}
+                  iconBg={isDark ? '#172554' : '#EEF2FF'}
+                  label="School Name"
+                  value={profileSchoolName}
                   colors={colors}
                 />
               </>
