@@ -22,7 +22,7 @@ import ConceptsTab from '@/components/books/ConceptsTab';
 import VideosTab from '@/components/books/VideosTab';
 import EbooksTab from '@/components/books/EbooksTab';
 import ARTab from '@/components/books/ARTab';
-import {BooksService} from '@/services';
+import {BooksService, ARService} from '@/services';
 import {useScreenReady} from '@/hooks/useScreenReady';
 import {useTheme} from '@/theme';
 import type {BooksStackParamList} from '@/types';
@@ -107,6 +107,7 @@ function SubjectContentScreenContent() {
         concepts: 0,
         videos: 0,
         ebooks: 0,
+        ar: 0,
       };
     }
 
@@ -535,7 +536,7 @@ const styles = StyleSheet.create({
   },
   tabButton: {
     flex: 1,
-    minHeight: verticalScale(32),
+    minHeight: verticalScale(36),
     borderRadius: moderateScale(10),
     borderWidth: 1,
     paddingHorizontal: scale(10),
@@ -556,22 +557,22 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   tabText: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(13.5),
     fontWeight: '800',
   },
   tabTextActive: {
     color: '#fff',
   },
   tabCount: {
-    minWidth: scale(22),
-    height: verticalScale(18),
+    minWidth: scale(24),
+    height: verticalScale(20),
     borderRadius: moderateScale(999),
     paddingHorizontal: scale(5),
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabCountText: {
-    fontSize: moderateScale(9),
+    fontSize: moderateScale(11),
     fontWeight: '800',
     color: '#fff',
   },

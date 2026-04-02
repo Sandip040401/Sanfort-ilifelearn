@@ -27,7 +27,6 @@ import {
 import { useTheme } from '@/theme';
 import type { BookConcept, MainStackParamList, BooksStackParamList, ARModel } from '@/types';
 import { ARService } from '@/services';
-import { useAuth } from '@/store';
 import ARInstructionModal from '@/components/ARInstructionModal';
 import { ARScannerModule } from '@/screens/ar/ARScannerModule';
 import { normalizeEnvName } from '@/utils/normalize';
@@ -262,19 +261,6 @@ export default function ARTab({
   const [instructionVisible, setInstructionVisible] = useState(false);
   const [scanningModel, setScanningModel] = useState<any>(null);
 
-  const { user } = useAuth();
-  const isTeacher = user?.role === 'teacher' || user?.role === 'admin' || user?.role === 'super-admin';
-
-  const teacherModelsQuery = useQuery({
-    queryKey: ['ar-models-teacher', gradeKey],
-    queryFn: async () => {
-      const response = await ARService.getALLArModals(gradeKey);
-      return response.data?.arModals || [];
-    },
-    enabled: isTeacher && !!gradeKey,
-    staleTime: 5 * 60 * 1000,
-  });
-
   const arItems = useMemo(() => {
     // Subject name comes from the concept in the SubjectContentScreen payload
     return concepts.flatMap(concept =>
@@ -288,29 +274,7 @@ export default function ARTab({
     );
   }, [concepts, subjectName]);
 
-  const finalItems = useMemo(() => {
-    if (!isTeacher || !teacherModelsQuery.data) {
-      return arItems;
-    }
-
-    const teacherModels = (teacherModelsQuery.data || []).map((m: any) => ({
-      ...m,
-      modelId: m,
-      name: m.name,
-      uniqueId: `teacher-${m._id}`,
-      weekNumber: '∞' // Marker for teacher-only / overall models
-    }));
-
-    // Merge and remove duplicates
-    const conceptIds = new Set(arItems.map(ai => {
-      const id = typeof ai.modelId === 'object' ? ai.modelId?._id : ai.modelId;
-      return String(id);
-    }));
-
-    const filteredTeacherModels = teacherModels.filter((tm: any) => !conceptIds.has(String(tm._id)));
-
-    return [...arItems, ...filteredTeacherModels];
-  }, [arItems, isTeacher, teacherModelsQuery.data]);
+  const finalItems = arItems;
 
   const closeSheet = useCallback(() => {
     bottomSheetModalRef.current?.dismiss();
@@ -464,11 +428,8 @@ export default function ARTab({
   );
 
   const handleInternalRefresh = useCallback(() => {
-    if (isTeacher) {
-      teacherModelsQuery.refetch();
-    }
     onRefresh();
-  }, [isTeacher, onRefresh, teacherModelsQuery]);
+  }, [onRefresh]);
 
   const snapPoints = useMemo(() => [isLandscape ? '92%' : '62%'], [isLandscape]);
 
@@ -547,7 +508,7 @@ export default function ARTab({
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing || teacherModelsQuery.isRefetching}
+            refreshing={refreshing}
             onRefresh={handleInternalRefresh}
             tintColor={accentColor}
             colors={[accentColor]}
