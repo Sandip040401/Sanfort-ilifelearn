@@ -528,13 +528,27 @@ class ARScannerActivity : AppCompatActivity() {
         }
         trackedNode.usesTintMaterial = false
         trackedNode.tintApplied = false
-        trackedNode.lastSolidTintColor = null
         hasAppliedPageTexture = false
+        // Force sceneform to refresh the node immediately after material restore.
+        runCatching { trackedNode.modelNode.renderable = trackedNode.renderable }
       } else {
         // ON → apply cached texture instantly + replay celebration
         val cachedTexture = lastBuiltTexture
         val cachedBitmap = lastAcceptedTextureBitmap
         var applied = false
+
+        // If texture is not ready yet, immediately show last known live tint
+        // so toggling feels instant (texture can refine right after).
+        val lastTint = lastTintVector
+        if (lastTint != null && lastTint.size >= 3) {
+          applySolidTintToTrackedNode(
+              trackedNode,
+              lastTint[0].coerceIn(0f, 1f),
+              lastTint[1].coerceIn(0f, 1f),
+              lastTint[2].coerceIn(0f, 1f),
+              "toggle-immediate",
+          )
+        }
 
         if (cachedTexture != null) {
           // Strategy 1: Try all texture binding methods on every material slot directly
@@ -562,6 +576,8 @@ class ARScannerActivity : AppCompatActivity() {
             runCatching { mat.setFloat(MaterialFactory.MATERIAL_ROUGHNESS, 0.85f) }
             applied = true
           }
+          // Force sceneform to refresh the node immediately after texture attach.
+          runCatching { trackedNode.modelNode.renderable = trackedNode.renderable }
         }
 
         if (applied) {
