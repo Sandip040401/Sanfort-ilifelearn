@@ -141,8 +141,10 @@ class ARModule(private val reactContext: ReactApplicationContext) :
 
                 val safeName = modelName.lowercase().replace(Regex("[^a-z0-9_]"), "_")
 
-                // Download model .glb file (with caching)
-                val modelFile = File(cacheDir, "${safeName}.glb")
+                // Cache key includes URL hash to avoid stale collisions when modelName repeats.
+                val modelHash = Integer.toHexString(modelUrl.hashCode())
+                val modelExt = guessModelExtension(modelUrl)
+                val modelFile = File(cacheDir, "${safeName}_${modelHash}.$modelExt")
                 downloadFileWithCache(modelUrl, modelFile)
 
                 val isHttpReference =
@@ -153,8 +155,10 @@ class ARModule(private val reactContext: ReactApplicationContext) :
                 val referenceFile: File?
                 val referenceAsset: String?
                 if (isHttpReference) {
-                    // Download reference image (with caching)
-                    val downloadedReference = File(cacheDir, "${safeName}_reference.jpg")
+                    // Cache key includes URL hash to avoid stale collisions across sheets.
+                    val referenceHash = Integer.toHexString(referenceImageUrl.hashCode())
+                    val referenceExt = guessImageExtension(referenceImageUrl)
+                    val downloadedReference = File(cacheDir, "${safeName}_reference_${referenceHash}.$referenceExt")
                     downloadFileWithCache(referenceImageUrl, downloadedReference)
                     referenceFile = downloadedReference
                     referenceAsset = null
@@ -283,6 +287,16 @@ class ARModule(private val reactContext: ReactApplicationContext) :
     private fun guessModelExtension(modelUrl: String): String {
         val base = modelUrl.substringBefore('?').substringBefore('#').lowercase()
         return if (base.endsWith(".gltf")) "gltf" else "glb"
+    }
+
+    private fun guessImageExtension(imageUrl: String): String {
+        val base = imageUrl.substringBefore('?').substringBefore('#').lowercase()
+        return when {
+            base.endsWith(".png") -> "png"
+            base.endsWith(".webp") -> "webp"
+            base.endsWith(".jpeg") -> "jpeg"
+            else -> "jpg"
+        }
     }
 
     private fun downloadFileWithCache(urlString: String, outputFile: File) {

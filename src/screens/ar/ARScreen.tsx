@@ -1056,14 +1056,64 @@ function ARScreenContent() {
         return;
       }
 
-      // 3. Resolve Reference Image (Prioritize 'thumbnail' or 'preview_image')
-      const referenceImageUrl = pickRemoteUrl(
-        modelRecord.thumbnail,
-        modelRecord.preview_image,
-        modelRecord.previewUrl,
-        modelRecord.modelId?.thumbnail,
-        modelRecord.modelId?.preview_image
-      ) || ARService.getPreviewImageUrl(modelId);
+      // 3. Resolve Reference Image
+      // Prefer explicit reference/color-sheet sources over thumbnails.
+      // Thumbnail is often low-res/cropped and unreliable for ARCore image tracking.
+      const referenceSource =
+        getReferenceImageSource(modelRecord) ||
+        getReferenceImageSource(modelRecord.modelId) ||
+        pickRemoteUrl(
+          modelRecord.preview_image,
+          modelRecord.previewImage,
+          modelRecord.previewUrl,
+          modelRecord.preview_url,
+          modelRecord.coloringPage,
+          modelRecord.coloringPageUrl,
+          modelRecord.colorSheet,
+          modelRecord.colorSheetUrl,
+          modelRecord.targetImageUrl,
+          modelRecord.targetImage,
+          modelRecord.sheetImage,
+          modelRecord.sheetUrl,
+          modelRecord.arSheet,
+          modelRecord.arSheetUrl,
+          modelRecord.referenceImageUrl,
+          modelRecord.referenceUrl,
+          modelRecord.referenceImage,
+          modelRecord.reference_image,
+          modelRecord.reference,
+          modelRecord.modelId?.preview_image,
+          modelRecord.modelId?.previewImage,
+          modelRecord.modelId?.previewUrl,
+          modelRecord.modelId?.preview_url,
+          modelRecord.modelId?.coloringPage,
+          modelRecord.modelId?.coloringPageUrl,
+          modelRecord.modelId?.colorSheet,
+          modelRecord.modelId?.colorSheetUrl,
+          modelRecord.modelId?.targetImageUrl,
+          modelRecord.modelId?.targetImage,
+          modelRecord.modelId?.sheetImage,
+          modelRecord.modelId?.sheetUrl,
+          modelRecord.modelId?.arSheet,
+          modelRecord.modelId?.arSheetUrl,
+          modelRecord.modelId?.referenceImageUrl,
+          modelRecord.modelId?.referenceUrl,
+          modelRecord.modelId?.referenceImage,
+          modelRecord.modelId?.reference_image,
+          modelRecord.modelId?.reference,
+          modelRecord.thumbnail,
+          modelRecord.modelId?.thumbnail
+        ) ||
+        (modelId ? ARService.getPreviewImageUrl(modelId) : '');
+
+      const referenceImageUrl = referenceSource
+        ? normalizeReferenceSource(String(referenceSource))
+        : '';
+
+      if (!referenceImageUrl) {
+        Alert.alert('Error', 'Reference sheet image not found. Please refresh and try again.');
+        return;
+      }
 
       // 4. Resolve Audios (Prioritize direct 'audios' array)
       let audiosJson: string | undefined;
