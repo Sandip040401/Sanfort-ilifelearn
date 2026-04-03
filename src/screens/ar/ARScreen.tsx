@@ -1039,142 +1039,66 @@ function ARScreenContent() {
       }
 
       const modelRecord = model as any;
-      const nestedModel =
-        modelRecord?.modelId && typeof modelRecord.modelId === 'object'
-          ? modelRecord.modelId
-          : null;
-      const modelIdCandidates = getCandidateModelIds(modelRecord, nestedModel);
-      if (modelIdCandidates.length === 0) {
-        Alert.alert('Error', 'Model ID not found. Please refresh and try again.');
+      
+      // 1. Resolve Model ID
+      const modelId = modelRecord._id || modelRecord.id || (typeof modelRecord.modelId === 'string' ? modelRecord.modelId : '') || (modelRecord.modelId?._id);
+      
+      // 2. Resolve GLB File URL (Prioritize direct field 'file')
+      const modelFileUrl = pickRemoteUrl(
+        modelRecord.file,
+        modelRecord.fileUrl,
+        modelRecord.modelId?.file,
+        modelRecord.modelId?.fileUrl
+      ) || (modelId ? ARService.getModelFileUrl(modelId) : '');
+
+      if (!modelFileUrl) {
+        Alert.alert('Error', 'AR Model file not found. Please refresh and try again.');
         return;
       }
 
-      let modelId = '';
-      let resolvedModelRecord: any = modelRecord;
-      let resolvedNestedModel: any = nestedModel;
-      for (const candidateId of modelIdCandidates) {
-        try {
-          await ARService.getModelById(candidateId);
-          modelId = candidateId;
-          break;
-        } catch {
-          try {
-            const userModalResponse = await ARService.getUserArModalById(candidateId, userGradeName);
-            const userModal =
-              userModalResponse?.data?.modal ||
-              userModalResponse?.data?.arModal ||
-              userModalResponse?.data;
-            const userNestedModel =
-              userModal?.modelId && typeof userModal.modelId === 'object'
-                ? userModal.modelId
-                : null;
-            const linkedModelId = String(
-              (typeof userModal?.modelId === 'string' ? userModal.modelId : '') ||
-              userNestedModel?._id ||
-              '',
-            ).trim();
+      // 3. Resolve Reference Image (Prioritize 'thumbnail' or 'preview_image')
+      const referenceImageUrl = pickRemoteUrl(
+        modelRecord.thumbnail,
+        modelRecord.preview_image,
+        modelRecord.previewUrl,
+        modelRecord.modelId?.thumbnail,
+        modelRecord.modelId?.preview_image
+      ) || ARService.getPreviewImageUrl(modelId);
 
-            if (!linkedModelId) {
-              continue;
-            }
-
-            const linkedDirectFile = pickRemoteUrl(
-              userModal?.file,
-              userModal?.fileUrl,
-              userNestedModel?.file,
-              userNestedModel?.fileUrl,
-            );
-            if (linkedDirectFile) {
-              modelId = linkedModelId;
-              resolvedModelRecord = userModal;
-              resolvedNestedModel = userNestedModel;
-              break;
-            }
-
-            await ARService.getModelById(linkedModelId);
-            modelId = linkedModelId;
-            resolvedModelRecord = userModal;
-            resolvedNestedModel = userNestedModel;
-            break;
-          } catch {
-            // Keep trying fallback IDs.
-          }
+      // 4. Resolve Audios (Prioritize direct 'audios' array)
+      let audiosJson: string | undefined;
+      const modelAudios = modelRecord.audios || modelRecord.modelId?.audios || [];
+      
+      if (Array.isArray(modelAudios) && modelAudios.length > 0) {
+        const mapped = modelAudios.map((a: any) => ({
+          ...a,
+          audioUrl: a.url || a.audioUrl || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null),
+        })).filter(a => !!a.audioUrl);
+        
+        if (mapped.length > 0) {
+          audiosJson = JSON.stringify(mapped);
         }
       }
-
-      if (!modelId) {
-        Alert.alert(
-          'Model Missing',
-          'This AR model is not available on server (404). Please ask backend team to fix model mapping.',
-        );
-        return;
-      }
-
-      // Prioritize direct file URL
-      const modelFileUrl = pickRemoteUrl(
-        resolvedModelRecord?.file,
-        resolvedModelRecord?.fileUrl,
-        resolvedNestedModel?.file,
-        resolvedNestedModel?.fileUrl,
-        modelRecord?.file,
-        modelRecord?.fileUrl,
-        nestedModel?.file,
-        nestedModel?.fileUrl,
-      ) || ARService.getModelFileUrl(modelId);
-
-      // Prioritize direct preview/thumbnail
-      const referenceImageUrl = pickRemoteUrl(
-        resolvedModelRecord?.preview_image,
-        resolvedModelRecord?.thumbnail,
-        resolvedModelRecord?.previewUrl,
-        resolvedNestedModel?.preview_image,
-        resolvedNestedModel?.thumbnail,
-        resolvedNestedModel?.previewUrl,
-        modelRecord?.preview_image,
-        modelRecord?.thumbnail,
-        modelRecord?.previewUrl,
-        nestedModel?.preview_image,
-        nestedModel?.thumbnail,
-        nestedModel?.previewUrl,
-      ) ||
-        getReferenceImageSource(
-          resolvedNestedModel || resolvedModelRecord || nestedModel || modelRecord
-        ) ||
-        ARService.getPreviewImageUrl(modelId);
-
-      // Fetch audios for this model or use pre-loaded ones (prioritizing direct URLs)
-      let audiosJson: string | undefined;
-      try {
-        const modelAudios =
-          resolvedModelRecord?.audios ||
-          resolvedNestedModel?.audios ||
-          modelRecord?.audios ||
-          nestedModel?.audios ||
-          [];
-        if (modelAudios.length > 0) {
-          const mapped = modelAudios.map((a: any) => ({
-            ...a,
-            audioUrl: a.url || (a.gridfsId ? ARService.getAudioStreamUrlById(a.gridfsId) : null),
-          }));
-          audiosJson = JSON.stringify(mapped);
-        } else {
+      
+      // Fallback: Fetch if nothing found and we have an ID
+      if (!audiosJson && modelId) {
+        try {
           const audiosResponse = await ARService.getModelAudios(modelId);
           if (audiosResponse.audios?.length) {
-            const audiosWithUrls = audiosResponse.audios.map(a => ({
+            const mapped = audiosResponse.audios.map(a => ({
               ...a,
               audioUrl: a.url || ARService.getAudioStreamUrlById(a.gridfsId),
             }));
-            audiosJson = JSON.stringify(audiosWithUrls);
+            audiosJson = JSON.stringify(mapped);
           }
-        }
-      } catch {
-        // Audio fetch failed — scanner will work without audio
+        } catch { /* ignore */ }
       }
 
+      // 5. Start Native Scanner
       await ARScannerModule.startScannerDynamic(
         modelFileUrl,
         referenceImageUrl,
-        resolvedNestedModel?.name || resolvedModelRecord?.name || nestedModel?.name || modelRecord?.name || 'model',
+        modelRecord.name || 'model',
         audiosJson,
       );
     } catch (error: any) {
