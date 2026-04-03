@@ -50,7 +50,7 @@ import {
 } from '@gorhom/bottom-sheet';
 import { ARService } from '@/services';
 import ARInstructionModal from '@/components/ARInstructionModal';
-import type { ARAudioTrack, ARModel, MainStackParamList } from '@/types';
+import type { ARAudioTrack, ARModel, ARFolderWithModels, MainStackParamList } from '@/types';
 import {
   type AREnvironmentView,
   getBrowsableEnvironments,
@@ -283,8 +283,8 @@ export default function ARViewerScreen() {
           const targetGradeName = (user?.gradeName || 'SAN Toddler').trim().toLowerCase();
           const match = resData.grades.find((g: any) => g.category.split(' (')[0].trim().toLowerCase() === targetGradeName);
           if (match) {
-            const finalGradeName = match.category.split(' (')[0].trim();
-            setUserGradeId(finalGradeName);
+            const finalName = match.category.split(' (')[0].trim();
+            setUserGradeId(finalName);
           }
         }
       } catch (err) {
@@ -347,7 +347,7 @@ export default function ARViewerScreen() {
     queryKey: ['ar-models', userGradeId],
     queryFn: async () => {
       const response = await ARService.getALLArModals(userGradeId);
-      return response.data?.arModals || [];
+      return response.data?.folders || [];
     },
     enabled: !!userGradeId || !gradeResuming,
     staleTime: 0,
@@ -383,7 +383,21 @@ export default function ARViewerScreen() {
     refetchInterval: 30000,
   });
 
-  const models = useMemo(() => (modelsQuery.data || []) as ARModel[], [modelsQuery.data]);
+  const models = useMemo(() => {
+    const rawFolders = (modelsQuery.data || []) as ARFolderWithModels[];
+    const flat: ARModel[] = [];
+    rawFolders.forEach(folder => {
+      if (Array.isArray(folder.models)) {
+        folder.models.forEach((model: ARModel) => {
+          flat.push({
+            ...model,
+            folder: model.folder || folder.folderId || folder._id
+          });
+        });
+      }
+    });
+    return flat;
+  }, [modelsQuery.data]);
   const environments = useMemo(
     () => getBrowsableEnvironments((foldersQuery.data || []) as any[], models),
     [foldersQuery.data, models],

@@ -100,6 +100,7 @@ export interface ARModel {
 
 export interface ARFolder {
   _id:         string;
+  folderId?:   string;
   folderName:  string;
   createdAt?:  string;
   updatedAt?:  string;
@@ -108,6 +109,10 @@ export interface ARFolder {
   imgURL?:     string;
   icon?:       string;
   gradient?:   string;
+}
+
+export interface ARFolderWithModels extends ARFolder {
+  models?: ARModel[];
 }
 
 export interface ARModelsResponse {
@@ -124,7 +129,7 @@ export interface ARFoldersResponse {
 export interface ARModalsUserResponse {
   success: boolean;
   categories: string[];
-  arModals: ARModel[];
+  folders: ARFolderWithModels[];
 }
 
 export interface ARAudioTrack {

@@ -40,14 +40,14 @@ export const ARService = {
   getFolders: () =>
     apiClient.get<ARFoldersResponse>(Endpoints.arFolders),
 
-  getALLArModals: (gradeId?: string) =>
-    apiClient.get<ARModalsUserResponse>(Endpoints.arModalsUserAll, {params: {grade: gradeId}}),
+  getALLArModals: (grade?: string) =>
+    apiClient.get<ARModalsUserResponse>(Endpoints.arModalsUserAll(grade)),
 
   getUserArModalById: (id: string, gradeId?: string) =>
     apiClient.get(Endpoints.arModalUserById(id, gradeId)),
 
-  getAllArFolders: (gradeId?: string) =>
-    apiClient.get(Endpoints.arFoldersUserAll, {params: {grade: gradeId}}),
+  getAllArFolders: (gradeName?: string) =>
+    apiClient.get(Endpoints.arFoldersUserAll(gradeName)),
 };
 
 export const getALLArModals = (gradeId?: string) => ARService.getALLArModals(gradeId);

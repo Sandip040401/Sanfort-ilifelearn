@@ -33,9 +33,9 @@ export const Endpoints = {
   // AR
   arModels: '/modals-3d',
   arFolders: '/folders',
-  arModalsUserAll: '/modals-3d-user/all',
+  arModalsUserAll: (gradeId?: string) => `/modals-3d-user/all?grade=${gradeId}`,
   arModalUserById: (id: string, gradeId?: string) => `/modals-3d-user/${id}?grade=${gradeId}`,
-  arFoldersUserAll: '/modals-3d-user/all-folders',
+  arFoldersUserAll: (gradeName?: string) => `/modals-3d-user/all-folders?grade=${gradeName}`,
 
   // WebVR
   webvrFolders: '/webvr-folder',

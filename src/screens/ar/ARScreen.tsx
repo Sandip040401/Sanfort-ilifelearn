@@ -37,6 +37,7 @@ import {
   Search,
   X,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react-native';
 import ARIcon from '@/components/icons/ARIcon';
 import { ScreenErrorBoundary, Skeleton } from '@/components/ui';
@@ -49,6 +50,7 @@ import { useTabBarScroll } from '@/navigation/TabBarScrollContext';
 import type {
   ARFolder,
   ARModel,
+  ARFolderWithModels,
   BottomTabParamList,
   MainStackParamList,
 } from '@/types';
@@ -167,6 +169,8 @@ const ENVIRONMENTS: ReadonlyArray<{
   ];
 
 const ENV_MAP = new Map(ENVIRONMENTS.map(e => [e.name, e]));
+const SAN_GRADES = ['SAN Toddler', 'SAN Learner', 'SAN Junior', 'SAN Senior'] as const;
+const PRIVILEGED_ROLES = new Set(['teacher', 'super-admin', 'admin', 'staff']); // Added 'staff' as well common for teachers
 
 function normalizeWorldName(raw: string): string {
   const s = (raw || '').trim().toLowerCase();
@@ -360,6 +364,9 @@ function EnvironmentGallery({
   topInset,
   bottomInset,
   onScroll,
+  isTeacher,
+  userGradeId,
+  onGradePress,
 }: {
   environments: AREnvironmentView[];
   models: ARModel[];
@@ -369,6 +376,9 @@ function EnvironmentGallery({
   topInset: number;
   bottomInset: number;
   onScroll: (e: any) => void;
+  isTeacher: boolean;
+  userGradeId?: string;
+  onGradePress: () => void;
 }) {
   const { colors } = useTheme();
   const { numColumns, cardWidth } = useResponsiveLayout();
@@ -387,17 +397,31 @@ function EnvironmentGallery({
           end={GRADIENT_END}
           style={StyleSheet.absoluteFill}
         />
-        <Animated.View
-          entering={headerIconEntering}
-          style={styles.bannerIconWrap}>
-          <ARIcon width={moderateScale(42)} height={moderateScale(42)} color="#fff" strokeWidth={2.5} />
-        </Animated.View>
-        <Animated.View entering={headerCopyEntering} style={styles.flexOne}>
-          <Text style={styles.headerTitleMain}>AR Worlds</Text>
-          <Text style={styles.headerSubMain}>
-            Explore 3D models in augmented reality!
-          </Text>
-        </Animated.View>
+        <View style={styles.headerRow}>
+          <Animated.View
+            entering={headerIconEntering}
+            style={styles.bannerIconWrap}>
+            <ARIcon width={moderateScale(40)} height={moderateScale(40)} color="#fff" strokeWidth={2.5} />
+          </Animated.View>
+          <Animated.View entering={headerCopyEntering} style={styles.flexOne}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: scale(4) }}>
+              <Text style={styles.headerTitleMain}>AR Worlds</Text>
+              {isTeacher && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={onGradePress}
+                  style={[styles.gradePill, { marginTop: verticalScale(4) }]}>
+                  <Text style={styles.gradePillText}>{userGradeId || 'Select Grade'}</Text>
+                  <ChevronDown size={moderateScale(12)} color="#fff" strokeWidth={3} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.headerSubMain}>
+              Explore 3D models in augmented reality!
+            </Text>
+          </Animated.View>
+
+        </View>
         <View style={[styles.curve, { backgroundColor: colors.background }]} />
       </View>
 
@@ -407,8 +431,9 @@ function EnvironmentGallery({
           {environments.length} available
         </Text>
       </View>
+
     </>
-  ), [colors.background, colors.text, colors.textSecondary, environments.length, headerPaddingTop]);
+  ), [colors.background, colors.text, colors.textSecondary, environments.length, headerPaddingTop, isTeacher, userGradeId, onGradePress]);
 
   const renderItem = useCallback(({ item, index }: { item: AREnvironmentView, index: number }) => {
     const modelCount = getModelsForEnvironment(item, models).length;
@@ -546,6 +571,9 @@ function ModelGallery({
   topInset,
   bottomInset,
   onScroll,
+  isTeacher,
+  userGradeId,
+  onGradePress,
 }: {
   environment: AREnvironmentView;
   models: ARModel[];
@@ -558,6 +586,9 @@ function ModelGallery({
   topInset: number;
   bottomInset: number;
   onScroll: (e: any) => void;
+  isTeacher: boolean;
+  userGradeId?: string;
+  onGradePress: () => void;
 }) {
   const { colors, isDark } = useTheme();
   const gradientColors = getEnvironmentColors(environment);
@@ -584,19 +615,30 @@ function ModelGallery({
           end={GRADIENT_END}
           style={StyleSheet.absoluteFill}
         />
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.backButtonIconWrap}
-          activeOpacity={0.7}>
-          <ChevronLeft size={moderateScale(24)} color="#fff" strokeWidth={2.4} />
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitleMain} numberOfLines={1}>
-            {(environment.name || environment.folderName)}
-          </Text>
-          <Text style={styles.headerSubMain}>
-            {models.length} models
-          </Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={onBack}
+            style={styles.backButtonIconWrap}
+            activeOpacity={0.7}>
+            <ChevronLeft size={moderateScale(22)} color="#fff" strokeWidth={2.4} />
+          </TouchableOpacity>
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerTitleMain} numberOfLines={1}>
+              {(environment.name || environment.folderName)}
+            </Text>
+            <Text style={styles.headerSubMain}>
+              {models.length} models
+            </Text>
+          </View>
+          {isTeacher && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={onGradePress}
+              style={styles.gradePill}>
+              <Text style={styles.gradePillText}>{userGradeId || 'Select Grade'}</Text>
+              <ChevronDown size={moderateScale(12)} color="#fff" strokeWidth={3} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={[styles.curve, { backgroundColor: colors.background }]} />
@@ -644,7 +686,7 @@ function ModelGallery({
 
       )}
     </>
-  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchContainerThemeStyle, searchQuery, onSearchChange]);
+  ), [colors.background, colors.card, colors.text, colors.textSecondary, colors.textTertiary, environment, isDark, models.length, headerPaddingTop, onBack, searchContainerThemeStyle, searchQuery, onSearchChange, isTeacher, userGradeId, onGradePress]);
 
   const renderItem = useCallback(({ item, index }: { item: ARModel, index: number }) => {
     const modelId = item._id || item.id || (item as any).id;
@@ -738,6 +780,13 @@ function ARScreenContent() {
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const { isLandscape } = useResponsiveLayout();
   const snapPoints = useMemo(() => [isLandscape ? '92%' : '62%'], [isLandscape]);
+  const gradeSnapPoints = useMemo(() => ['40%'], []);
+  const gradePickerModalRef = useRef<BottomSheetModal>(null);
+
+  const isTeacher = useMemo(() => {
+    const role = user?.role?.toLowerCase();
+    return role ? PRIVILEGED_ROLES.has(role) : false;
+  }, [user?.role]);
 
   // Force-close sheet helper — dismiss + forceClose + clear state
   const closeSheet = useCallback(() => {
@@ -760,67 +809,109 @@ function ARScreenContent() {
 
 
   const [userGradeId, setUserGradeId] = useState<string | undefined>();
+  const [userGradeName, setUserGradeName] = useState<string | undefined>();
+  const [availableSanGrades, setAvailableSanGrades] = useState<{ _id: string, name: string }[]>([]);
   const [gradeResuming, setGradeResuming] = useState(true);
 
-  // Use the same grade-matching logic as in BooksScreen
+  // Sync grade ID and mapping based on all grades
   useEffect(() => {
-    const fetchGradeId = async () => {
+    const fetchGradeMapping = async () => {
       try {
         const response = await BooksService.getAllGrades();
         const resData = response.data as any;
-        if (resData.success) {
-          const targetGradeName = (user?.gradeName || 'SAN Toddler').trim().toLowerCase();
-          
-          // Match by name similar to BooksScreen logic
-          const match = resData.grades.find((g: any) => {
-            const baseName = g.category.split(' (')[0].trim().toLowerCase();
-            return baseName === targetGradeName;
-          });
+        if (resData.success && Array.isArray(resData.grades)) {
+          // Map of baseName to _id for SAN grades
+          const resolvedSanGrades = SAN_GRADES.map(name => {
+            const match = resData.grades.find((g: any) => {
+              const baseName = g.category.split(' (')[0].trim();
+              return baseName.toLowerCase() === name.toLowerCase();
+            });
+            return match ? { _id: match._id as string, name: name as string } : null;
+          }).filter(Boolean) as { _id: string, name: string }[];
 
-          if (match) {
-            const finalGradeName = match.category.split(' (')[0].trim();
-            setUserGradeId(finalGradeName);
-            console.log('Detected User gradeName for AR:', finalGradeName);
+          setAvailableSanGrades(resolvedSanGrades);
+
+          if (isTeacher) {
+            // By default select first one's Name if not already chosen
+            if (!userGradeId && SAN_GRADES.length > 0) {
+              const defaultName = SAN_GRADES[0];
+              setUserGradeId(defaultName);
+              setUserGradeName(defaultName);
+            }
+          } else {
+            // For students: match their assigned grade
+            const targetGradeName = (user?.gradeName || 'SAN Toddler').trim().toLowerCase();
+            const match = resData.grades.find((g: any) => {
+              const baseName = g.category.split(' (')[0].trim().toLowerCase();
+              return baseName === targetGradeName;
+            });
+
+            if (match) {
+              const finalName = match.category.split(' (')[0].trim();
+              setUserGradeId(finalName);
+              setUserGradeName(finalName);
+            }
           }
         }
       } catch (err) {
-        console.error('Failed to resolve gradeId for AR:', err);
+        console.error('Failed to resolve grade mapping for AR:', err);
       } finally {
         setGradeResuming(false);
       }
     };
-    fetchGradeId();
-  }, [user?.gradeName]);
+    fetchGradeMapping();
+  }, [user?.gradeName, isTeacher]);
 
   const modelsQuery = useQuery({
-    queryKey: ['ar-models', userGradeId],
+    queryKey: ['ar-models', userGradeName],
     queryFn: async () => {
-      const response = await ARService.getALLArModals(userGradeId);
-      return response.data?.arModals || [];
+      console.log('Fetching AR models for gradeName:', userGradeName || 'all');
+      const response = await ARService.getALLArModals(userGradeName);
+      return response.data?.folders || [];
     },
-    enabled: !!userGradeId || !gradeResuming,
+    enabled: !!userGradeName || !gradeResuming,
     staleTime: 0,
     refetchInterval: 30000,
   });
 
 
   const foldersQuery = useQuery({
-    queryKey: ['ar-folders', userGradeId],
+    queryKey: ['ar-folders', userGradeName],
     queryFn: async () => {
-      const response = await ARService.getAllArFolders(userGradeId);
+      const response = await ARService.getAllArFolders(userGradeName);
       console.log('API Response for All Folders:', response.data);
       return response.data?.folders || [];
     },
-    enabled: !!userGradeId || !gradeResuming,
+    enabled: !!userGradeName || !gradeResuming,
     staleTime: 0,
     refetchInterval: 30000,
   });
 
-  const models = useMemo(() => (modelsQuery.data || []) as ARModel[], [modelsQuery.data]);
-  const environments = useMemo(
-    () => getBrowsableEnvironments((foldersQuery.data || []) as ARFolder[], models),
-    [foldersQuery.data, models],
-  );
+  const models = useMemo(() => {
+    const rawFolders = (modelsQuery.data || []) as ARFolderWithModels[];
+    const flat: ARModel[] = [];
+    rawFolders.forEach(folder => {
+      if (Array.isArray(folder.models)) {
+        folder.models.forEach((model: ARModel) => {
+          flat.push({
+            ...model,
+            folder: model.folder || folder.folderId || folder._id // link model to its parent folder
+          });
+        });
+      }
+    });
+    return flat;
+  }, [modelsQuery.data]);
+
+  const environments = useMemo(() => {
+    // Both queries return folders now, we want to ensure we have IDs for match logic
+    const baseFolders = (foldersQuery.data || []) as ARFolderWithModels[];
+    const normalizedFolders = baseFolders.map(f => ({
+      ...f,
+      _id: f._id || f.folderId || `synthetic-${f.folderName}`
+    }));
+    return getBrowsableEnvironments(normalizedFolders, models);
+  }, [foldersQuery.data, models]);
   const selectedEnvironment = useMemo(
     () => environments.find(environment => environment._id === selectedEnvironmentId) || null,
     [environments, selectedEnvironmentId],
@@ -900,6 +991,7 @@ function ARScreenContent() {
       environmentId: selectedEnvironment?._id,
       openPainter: opts?.openPainter,
       initialPaintMode: opts?.initialPaintMode === 'target' ? 'target' : 'model',
+      gradeKey: userGradeName,
     });
   };
 
@@ -967,7 +1059,7 @@ function ARScreenContent() {
           break;
         } catch {
           try {
-            const userModalResponse = await ARService.getUserArModalById(candidateId, userGradeId);
+            const userModalResponse = await ARService.getUserArModalById(candidateId, userGradeName);
             const userModal =
               userModalResponse?.data?.modal ||
               userModalResponse?.data?.arModal ||
@@ -1131,6 +1223,9 @@ function ARScreenContent() {
           topInset={insets.top}
           bottomInset={bottomInset}
           onScroll={handleScroll}
+          isTeacher={isTeacher}
+          userGradeId={userGradeName}
+          onGradePress={() => gradePickerModalRef.current?.present()}
         />
       ) : (
         <EnvironmentGallery
@@ -1142,6 +1237,9 @@ function ARScreenContent() {
           topInset={insets.top}
           bottomInset={bottomInset}
           onScroll={handleScroll}
+          isTeacher={isTeacher}
+          userGradeId={userGradeName}
+          onGradePress={() => gradePickerModalRef.current?.present()}
         />
       )}
 
@@ -1167,6 +1265,48 @@ function ARScreenContent() {
               onScan={() => handleScanModel(selectedModelForOptions)}
             />
           )}
+        </BottomSheetView>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        ref={gradePickerModalRef}
+        index={0}
+        snapPoints={gradeSnapPoints}
+        backdropComponent={renderBackdrop}
+        enablePanDownToClose
+        handleIndicatorStyle={{ backgroundColor: colors.textSecondary }}
+        backgroundStyle={{
+          backgroundColor: colors.card,
+          borderTopLeftRadius: moderateScale(28),
+          borderTopRightRadius: moderateScale(28),
+        }}>
+        <BottomSheetView style={styles.sheetContent}>
+          <Text style={[styles.sheetTitle, { color: colors.text, marginBottom: verticalScale(16), textAlign: 'center' }]}>Switch Grade</Text>
+          {availableSanGrades.map((grade) => (
+            <TouchableOpacity
+              key={grade.name}
+              onPress={() => {
+                setUserGradeId(grade.name);
+                setUserGradeName(grade.name);
+                gradePickerModalRef.current?.dismiss();
+              }}
+              activeOpacity={0.7}
+              style={[
+                styles.gradeOption,
+                userGradeId === grade.name && { backgroundColor: colors.primary + '15' }
+              ]}>
+              <Text style={[
+                styles.gradeOptionText,
+                { color: colors.text },
+                userGradeId === grade.name && { color: colors.primary, fontWeight: '800' }
+              ]}>
+                {grade.name}
+              </Text>
+              {userGradeId === grade.name && (
+                <View style={[styles.checkDot, { backgroundColor: colors.primary }]} />
+              )}
+            </TouchableOpacity>
+          ))}
         </BottomSheetView>
       </BottomSheetModal>
 
@@ -1464,10 +1604,13 @@ const styles = StyleSheet.create({
   headerGallery: {
     paddingHorizontal: H_PAD,
     paddingBottom: verticalScale(30),
+    overflow: 'hidden',
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(5),
-    overflow: 'hidden',
+    width: '100%',
+    zIndex: 10,
   },
   headerTitleMain: {
     fontSize: moderateScale(24),
@@ -1497,6 +1640,41 @@ const styles = StyleSheet.create({
     height: verticalScale(10),
     borderTopLeftRadius: moderateScale(16),
     borderTopRightRadius: moderateScale(16),
+  },
+  gradePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(4),
+    borderRadius: moderateScale(16),
+    gap: scale(4),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  gradePillText: {
+    fontSize: moderateScale(11),
+    fontWeight: '700',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  gradeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: verticalScale(16),
+    paddingHorizontal: scale(16),
+    borderRadius: moderateScale(12),
+    marginBottom: verticalScale(4),
+  },
+  gradeOptionText: {
+    fontSize: moderateScale(16),
+    fontWeight: '600',
+  },
+  checkDot: {
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
   },
   bannerIconWrap: {
     width: scale(64),
