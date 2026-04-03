@@ -2577,7 +2577,22 @@ class ARScannerActivity : AppCompatActivity() {
       val materialCount = renderableInstance?.materialsCount ?: 0
       if (materialCount > 0) {
         for (materialIndex in 0 until materialCount) {
-          renderableInstance?.setMaterial(materialIndex, tintMaterial)
+          val applied =
+              runCatching {
+                    renderableInstance?.setMaterial(materialIndex, tintMaterial)
+                    true
+                  }
+                  .onFailure { error ->
+                    android.util.Log.w(
+                        "ARScannerActivity",
+                        "Failed to set instance tint material at index=$materialIndex count=$materialCount",
+                        error,
+                    )
+                  }
+                  .getOrDefault(false)
+          if (!applied) {
+            break
+          }
         }
         trackedNode.usesTintMaterial = true
         if (!loggedTintMaterialAttach) {
@@ -2608,7 +2623,22 @@ class ARScannerActivity : AppCompatActivity() {
     if (renderableInstance != null && originals.isNotEmpty()) {
       val applyCount = min(renderableInstance.materialsCount, originals.size)
       for (materialIndex in 0 until applyCount) {
-        renderableInstance.setMaterial(materialIndex, originals[materialIndex].makeCopy())
+        val applied =
+            runCatching {
+                  renderableInstance.setMaterial(materialIndex, originals[materialIndex].makeCopy())
+                  true
+                }
+                .onFailure { error ->
+                  android.util.Log.w(
+                      "ARScannerActivity",
+                      "Failed to restore instance material at index=$materialIndex applyCount=$applyCount",
+                      error,
+                  )
+                }
+                .getOrDefault(false)
+        if (!applied) {
+          break
+        }
       }
     }
     val submeshOriginals = trackedNode.originalSubmeshMaterials
@@ -2616,7 +2646,22 @@ class ARScannerActivity : AppCompatActivity() {
     if (submeshOriginals.isNotEmpty() && submeshCount > 0) {
       val applyCount = min(submeshCount, submeshOriginals.size)
       for (materialIndex in 0 until applyCount) {
-        trackedNode.renderable.setMaterial(materialIndex, submeshOriginals[materialIndex].makeCopy())
+        val applied =
+            runCatching {
+                  trackedNode.renderable.setMaterial(materialIndex, submeshOriginals[materialIndex].makeCopy())
+                  true
+                }
+                .onFailure { error ->
+                  android.util.Log.w(
+                      "ARScannerActivity",
+                      "Failed to restore renderable submesh material at index=$materialIndex applyCount=$applyCount",
+                      error,
+                  )
+                }
+                .getOrDefault(false)
+        if (!applied) {
+          break
+        }
       }
     }
     trackedNode.originalRenderableMaterial?.let { originalMaterial ->
