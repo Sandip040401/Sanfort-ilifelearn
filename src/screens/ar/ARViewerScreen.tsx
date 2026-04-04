@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Image,
   NativeModules,
@@ -73,6 +74,8 @@ import Rotate360Icon from '@/components/icons/Rotate360Icon';
 
 type ARViewerRouteProp = RouteProp<MainStackParamList, 'ARViewer'>;
 type ARViewerNavigationProp = StackNavigationProp<MainStackParamList, 'ARViewer'>;
+const IOS_AR_COMING_SOON_MESSAGE =
+  'AR viewing for iPhone and iPad is coming soon. This feature will be available in a future update.';
 
 const LIGHTING_OPTIONS = [
   { name: 'sunset', label: 'Sunset', bgColors: ['#1a0a2e', '#4a1c5c', '#d4576b', '#f4a460'] as string[] },
@@ -82,6 +85,80 @@ const LIGHTING_OPTIONS = [
   { name: 'forest', label: 'Forest', bgColors: ['#0a1d10', '#1a3c28', '#2d5a3d', '#4a7c59'] as string[] },
   { name: 'apartment', label: 'Room', bgColors: ['#f5f5dc', '#d4c4a8', '#c9b896', '#f5f5dc'] as string[] },
 ];
+
+type ViewerModelSource = {
+  id: string;
+  url: string;
+};
+
+function parseViewerModelSources(input: string): ViewerModelSource[] {
+  if (!input) {
+    return [];
+  }
+
+  try {
+    if (input.startsWith('[')) {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(item => item && typeof item.url === 'string')
+          .map(item => ({
+            id: String(item.id || 'default'),
+            url: String(item.url),
+          }));
+      }
+    }
+  } catch {
+    // Fall through to the single-url case below.
+  }
+
+  return [{ id: 'default', url: input }];
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Failed to convert model blob to a data URL'));
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read model blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fetchModelDataUrl(url: string): Promise<string> {
+  if (url.startsWith('data:')) {
+    return url;
+  }
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Model download failed with HTTP ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  return blobToDataUrl(blob);
+}
+
+async function resolveViewerModelSource(input: string): Promise<string> {
+  const sources = parseViewerModelSources(input);
+  if (sources.length === 0) {
+    return '';
+  }
+
+  const resolvedSources = await Promise.all(
+    sources.map(async source => ({
+      ...source,
+      url: await fetchModelDataUrl(source.url),
+    })),
+  );
+
+  return input.startsWith('[') ? JSON.stringify(resolvedSources) : resolvedSources[0]?.url || '';
+}
 
 const CustomSlider = ({
   value,
@@ -233,6 +310,8 @@ export default function ARViewerScreen() {
   const [loadingModel, setLoadingModel] = useState(true);
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [viewerSourceUrl, setViewerSourceUrl] = useState('');
+  const [viewerRetryNonce, setViewerRetryNonce] = useState(0);
   const [animations, setAnimations] = useState<string[]>([]);
   const [selectedAnimation, setSelectedAnimation] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -630,9 +709,52 @@ export default function ARViewerScreen() {
     }
   }, [loadingModel, paintingEnabled, targetTextureDataUrl, textureDisplayMode]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!modelUrl) {
+      setViewerSourceUrl('');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (Platform.OS !== 'ios') {
+      setViewerSourceUrl(modelUrl);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setViewerSourceUrl('');
+    setViewerError(null);
+    setLoadingModel(true);
+    setProgress(0);
+
+    (async () => {
+      try {
+        const resolvedSource = await resolveViewerModelSource(modelUrl);
+        if (cancelled) {
+          return;
+        }
+        setViewerSourceUrl(resolvedSource);
+      } catch (error: any) {
+        if (cancelled) {
+          return;
+        }
+        setViewerError(error?.message || 'Unable to prepare model for the iOS viewer');
+        setLoadingModel(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modelUrl, viewerRetryNonce]);
+
   const viewerHtml = useMemo(
-    () => (modelUrl ? buildARViewerHtml(modelUrl) : ''),
-    [modelUrl],
+    () => (viewerSourceUrl ? buildARViewerHtml(viewerSourceUrl) : ''),
+    [viewerSourceUrl],
   );
 
   const targetUrl = useMemo(() => {
@@ -856,6 +978,10 @@ export default function ARViewerScreen() {
     setLoadingModel(true);
     setViewerError(null);
     setProgress(0);
+    if (Platform.OS === 'ios') {
+      setViewerRetryNonce(current => current + 1);
+      return;
+    }
     webViewRef.current?.reload();
   };
 
@@ -948,6 +1074,11 @@ export default function ARViewerScreen() {
   };
 
   const handleOpenAR = () => {
+    if (Platform.OS === 'ios') {
+      setInstructionVisible(false);
+      Alert.alert('Coming Soon', IOS_AR_COMING_SOON_MESSAGE);
+      return;
+    }
     setInstructionVisible(true);
   };
 
@@ -1052,44 +1183,46 @@ export default function ARViewerScreen() {
       </View>
 
       <View style={[styles.viewerShell, { marginTop: webViewTop, marginBottom: bottomBarHeight }]}>
-        <WebView
-          ref={webViewRef}
-          source={{ html: viewerHtml, baseUrl: Platform.OS === 'android' ? 'file:///android_asset/' : 'https://learn.sanfortschools.com' }}
-          style={styles.webView}
-          userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
-          originWhitelist={['*']}
-          javaScriptEnabled
-          domStorageEnabled
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          allowsFullscreenVideo
-          mixedContentMode="always"
-          allowFileAccess
-          allowUniversalAccessFromFileURLs
-          cacheEnabled
-          scalesPageToFit={Platform.OS !== 'ios'}
-          startInLoadingState={false}
-          onShouldStartLoadWithRequest={(request) => {
-            const { url } = request;
-            return url.startsWith('http') || url.startsWith('about:') || url.startsWith('data:');
-          }}
-          onMessage={handleWebMessage}
-          onLoadEnd={() => {
-            if (loadEndTimeoutRef.current) {
-              clearTimeout(loadEndTimeoutRef.current);
-            }
-            loadEndTimeoutRef.current = setTimeout(() => {
-              setLoadingModel(current => (viewerError ? current : false));
-            }, 10000);
-          }}
-          onError={() => {
-            if (loadEndTimeoutRef.current) {
-              clearTimeout(loadEndTimeoutRef.current);
-              loadEndTimeoutRef.current = null;
-            }
-            setLoadingModel(false);
-          }}
-        />
+        {viewerHtml ? (
+          <WebView
+            ref={webViewRef}
+            source={{ html: viewerHtml, baseUrl: Platform.OS === 'android' ? 'file:///android_asset/' : 'https://learn.sanfortschools.com' }}
+            style={styles.webView}
+            userAgent="Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo
+            mixedContentMode="always"
+            allowFileAccess
+            allowUniversalAccessFromFileURLs
+            cacheEnabled
+            scalesPageToFit={Platform.OS !== 'ios'}
+            startInLoadingState={false}
+            onShouldStartLoadWithRequest={(request) => {
+              const { url } = request;
+              return url.startsWith('http') || url.startsWith('about:') || url.startsWith('data:');
+            }}
+            onMessage={handleWebMessage}
+            onLoadEnd={() => {
+              if (loadEndTimeoutRef.current) {
+                clearTimeout(loadEndTimeoutRef.current);
+              }
+              loadEndTimeoutRef.current = setTimeout(() => {
+                setLoadingModel(current => (viewerError ? current : false));
+              }, 10000);
+            }}
+            onError={() => {
+              if (loadEndTimeoutRef.current) {
+                clearTimeout(loadEndTimeoutRef.current);
+                loadEndTimeoutRef.current = null;
+              }
+              setLoadingModel(false);
+            }}
+          />
+        ) : null}
 
         {loadingModel && (
           <View style={styles.overlay}>
@@ -1303,7 +1436,7 @@ export default function ARViewerScreen() {
         onPress={handleOpenAR}
         style={[styles.arButton, { bottom: verticalScale(bottomBarHeight) }]}>
         <ARIcon width={moderateScale(22)} height={moderateScale(22)} color="#fff" strokeWidth={2.5} />
-        <Text style={styles.arButtonText}>AR</Text>
+        <Text style={styles.arButtonText}>{Platform.OS === 'ios' ? 'Soon' : 'AR'}</Text>
       </TouchableOpacity>
 
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + verticalScale((isLandscape && !isTablet) ? 4 : 8) }]}>

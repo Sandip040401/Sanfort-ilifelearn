@@ -34,6 +34,8 @@ import { withAlpha } from '@/screens/books/books.data';
 import { getReferenceImageSource } from '@/screens/ar/ar.reference';
 
 const isAndroid = Platform.OS === 'android';
+const IOS_AR_COMING_SOON_MESSAGE =
+  'AR Scan for iPhone and iPad is coming soon. This feature will be available in a future update.';
 
 function ModelPreviewImage({
   thumbnailUri,
@@ -146,8 +148,10 @@ function ARModelOptionsSheet({
     },
     {
       id: 'scan',
-      label: 'Scan Drawing → 3D',
-      sub: 'Color on paper, scan it and bring your character to life in 3D.',
+      label: isAndroid ? 'Scan Drawing → 3D' : 'AR Scan Coming Soon',
+      sub: isAndroid
+        ? 'Color on paper, scan it and bring your character to life in 3D.'
+        : 'AR Scan for iPhone and iPad is currently in development.',
       gradient: ['#479bf2', '#47b2c6', '#47da91'] as string[],
       locations: [0, 0.75, 0.9] as number[],
       onPress: onScan,
@@ -440,6 +444,12 @@ export default function ARTab({
 
   const handleScanModel = (model: any) => {
     closeSheet();
+    if (!isAndroid) {
+      setScanningModel(null);
+      setInstructionVisible(false);
+      Alert.alert('Coming Soon', IOS_AR_COMING_SOON_MESSAGE);
+      return;
+    }
     setScanningModel(model);
     setInstructionVisible(true);
   };

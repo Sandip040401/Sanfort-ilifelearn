@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,7 +11,7 @@ import {
 import {scale, verticalScale, moderateScale} from 'react-native-size-matters';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useNavigation} from '@react-navigation/native';
-import {ArrowLeft, ShieldCheck, Mail, MapPin, Globe, FileText} from 'lucide-react-native';
+import {ArrowLeft, ShieldCheck, Mail, MapPin, Globe} from 'lucide-react-native';
 import {useTheme, BorderRadius} from '@/theme';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -18,6 +19,7 @@ export default function PrivacyPolicyScreen() {
   const {colors, isDark} = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const isIOS = Platform.OS === 'ios';
 
   const Section = ({title, children}: {title: string; children: React.ReactNode}) => (
     <View style={styles.section}>
@@ -40,22 +42,30 @@ export default function PrivacyPolicyScreen() {
 
   return (
     <View style={[styles.root, {backgroundColor: colors.background}]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor="transparent"
+        translucent
+      />
+
+
       {/* Premium Header */}
       <LinearGradient
         colors={isDark ? ['#0F172A', '#1E293B'] : ['#2563EB', '#3B82F6']}
-        style={[styles.headerGradient, {paddingTop: insets.top}]}>
-        <View style={styles.headerTop}>
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 1}}
+        style={styles.headerGradient}>
+        <View style={{height: insets.top}} />
+        <View style={styles.headerInner}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
             style={styles.backBtn}>
             <ArrowLeft size={moderateScale(20)} color="#fff" strokeWidth={2.5} />
           </TouchableOpacity>
-          <View style={styles.headerTitleWrap}>
+          <View style={styles.headerTextWrap}>
             <Text style={styles.headerTitle}>Privacy Policy</Text>
-            <Text style={styles.lastUpdated}>Last Updated: 18-03-2026</Text>
+            <Text style={styles.lastUpdated}>Last Updated: 04-04-2026</Text>
           </View>
         </View>
       </LinearGradient>
@@ -63,7 +73,7 @@ export default function PrivacyPolicyScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, {paddingBottom: insets.bottom + verticalScale(40)}]}
         showsVerticalScrollIndicator={false}>
-        
+
         {/* Intro Info Box */}
         <View style={[styles.introCard, {backgroundColor: colors.card, borderColor: colors.border}]}>
           <View style={styles.introHeader}>
@@ -73,7 +83,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={[styles.companyName, {color: colors.textSecondary}]}>
             Learning Integrations for Education Pvt. Ltd.
           </Text>
-          
+
           <View style={styles.contactGrid}>
             <View style={styles.contactItem}>
               <Globe size={14} color={colors.textTertiary} />
@@ -88,7 +98,7 @@ export default function PrivacyPolicyScreen() {
 
         <Section title="1. Introduction">
           <Text style={[styles.bodyText, {color: colors.textSecondary}]}>
-            Welcome to <Text style={{fontWeight: '700', color: colors.text}}>Sanfort Smart Learning</Text>, an AR app designed for children aged 3–8 years, offered by Learning Integrations for Education Pvt. Ltd. ("i-Life," "we," "us," or "our"). We are committed to protecting the privacy of our users, especially children, and comply with the <Text style={{fontWeight: '700', color: colors.text}}>Children’s Online Privacy Protection Act (COPPA), Google Play Store Policies,</Text> and <Text style={{fontWeight: '700', color: colors.text}}>Apple App Store Guidelines</Text>. This Privacy Policy explains how we collect, use, and safeguard information through our app and website.
+            Welcome to <Text style={{fontWeight: '700', color: colors.text}}>Sanfort Smart Learning</Text>, an educational app designed for children aged 3–8 years, offered by Learning Integrations for Education Pvt. Ltd. ("i-Life," "we," "us," or "our"). We are committed to protecting the privacy of our users, especially children, and comply with the <Text style={{fontWeight: '700', color: colors.text}}>Children’s Online Privacy Protection Act (COPPA)</Text> and applicable <Text style={{fontWeight: '700', color: colors.text}}>{isIOS ? 'Apple App Store' : 'app store'}</Text> requirements. This Privacy Policy explains how we collect, use, and safeguard information through our app and website.
           </Text>
         </Section>
 
@@ -96,17 +106,19 @@ export default function PrivacyPolicyScreen() {
           <Text style={[styles.bodyText, {color: colors.textSecondary, marginBottom: verticalScale(12)}]}>
             We collect only the minimal information necessary to provide a secure and engaging learning experience:
           </Text>
-          
-          <Text style={[styles.subHeading, {color: colors.text}]}>Account Creation by Schools:</Text>
-          <BulletPoint text="Parent/Guardian Email Address – " subtext="Schools create accounts using the provided email, which is required for login purposes only." />
-          <BulletPoint text="No other personal information is collected during account creation." />
+
+          <Text style={[styles.subHeading, {color: colors.text}]}>Account and Login Information:</Text>
+          <BulletPoint text="Parent/Guardian Email Address – " subtext="used for email-based account access and communication related to the account." />
+          <BulletPoint text="Phone Number – " subtext="used when a parent, guardian, teacher, or school signs in with OTP-based login." />
+          <BulletPoint text="Account Profile Details – " subtext="such as the account holder's name, role, and grade assignment when provided by the school or account administrator." />
+          <BulletPoint text="Device and App Information – " subtext="including device identifier, device model, device brand, operating system, OS version, app version, emulator status, and timezone during login or OTP verification." />
 
           <Text style={[styles.subHeading, {color: colors.text, marginTop: verticalScale(16)}]}>We do NOT collect:</Text>
           <View style={styles.negativeList}>
-            <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Child's name, birthdate, or any other personal identifiers.</Text>
-            <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Physical addresses or phone numbers.</Text>
+            <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Birthdates, precise location data, or biometric information.</Text>
+            <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Home addresses or payment information through the app.</Text>
             <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Data from third-party platforms (e.g., social media).</Text>
-            <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Usage data, device information, or IP addresses.</Text>
+            <Text style={[styles.negativeItem, {color: colors.textSecondary}]}>- Third-party advertising identifiers or third-party analytics SDK data.</Text>
           </View>
         </Section>
 
@@ -114,19 +126,24 @@ export default function PrivacyPolicyScreen() {
           <Text style={[styles.bodyText, {color: colors.textSecondary, marginBottom: verticalScale(8)}]}>
             We use the collected information solely to:
           </Text>
-          <BulletPoint text="Enable login access " subtext="for parents/guardians." />
+          <BulletPoint text="Authenticate users " subtext="through email/password or OTP-based login flows." />
+          <BulletPoint text="Protect accounts " subtext="by validating the device and app environment used during sign-in." />
+          <BulletPoint text="Deliver the right experience " subtext="based on account role, classroom, or grade assignment." />
+          <BulletPoint text="Maintain active sessions " subtext="by storing authentication tokens securely on the device so users can remain signed in." />
+          <BulletPoint text="Troubleshoot support issues " subtext="and improve compatibility across supported devices." />
         </Section>
 
         <Section title="4. No Third-Party Sharing">
           <Text style={[styles.bodyText, {color: colors.textSecondary, marginBottom: verticalScale(12)}]}>
-            We do <Text style={{fontWeight: '700', color: colors.error}}>NOT</Text> share, sell, or trade user data with third parties for marketing, advertising, or commercial purposes. Exceptions are limited to:
+            We do <Text style={{fontWeight: '700', color: colors.error}}>NOT</Text> share, sell, or trade user data with third parties for marketing, advertising, or commercial purposes. We do not use third-party advertising SDKs or third-party analytics SDKs in the app. Limited disclosures are restricted to:
           </Text>
-          <BulletPoint text="Service Providers: " subtext="Trusted partners (e.g., cloud hosting, customer support tools) who assist in app operations under strict confidentiality agreements." />
+          <BulletPoint text="Service Providers: " subtext="trusted infrastructure providers such as cloud hosting, backend operations, or customer support tools that help us run the service under strict confidentiality obligations." />
           <BulletPoint text="Legal Compliance: " subtext="Disclosures required by law (e.g., court orders)." />
         </Section>
 
         <Section title="5. Data Security">
           <BulletPoint text="Encryption: " subtext="Data is transmitted via HTTPS and stored securely." />
+          <BulletPoint text="Local Session Storage: " subtext="Authentication tokens and account details may be stored securely on the device to keep users signed in." />
           <BulletPoint text="Access Controls: " subtext="Access is restricted to authorized personnel only." />
           <BulletPoint text="Regular Audits: " subtext="We conduct periodic reviews to ensure adherence to security standards." />
         </Section>
@@ -164,13 +181,12 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Section title="8. COPPA Compliance">
-          <BulletPoint text="Verifiable Parental Consent: " subtext="We require email confirmation from parents/guardians before collecting any information from children." />
-          <BulletPoint text="No Behavioral Ads: " subtext="The app does not include third-party ads or trackers." />
+          <BulletPoint text="Adult-Managed Access: " subtext="Account creation and account-related actions are intended to be handled by parents, guardians, teachers, or schools." />
+          <BulletPoint text="No Behavioral Ads: " subtext="The app does not include third-party ads, third-party analytics SDKs, or behavior-based tracking." />
         </Section>
 
-        <Section title="9. Play Store & App Store Compliance">
-          <BulletPoint text="Google Play Store: " subtext="Our app complies with the Families Policy for children's apps." />
-          <BulletPoint text="Apple App Store: " subtext="Our app follows the App Store Review Guidelines for kids' apps, including age-appropriate design and parental controls." />
+        <Section title={isIOS ? '9. App Store Compliance' : '9. App Compliance'}>
+          <BulletPoint text={isIOS ? 'Apple App Store: ' : 'Children’s App Standards: '} subtext={isIOS ? 'Our iOS app follows the App Store Review Guidelines for kids apps, including age-appropriate design, privacy safeguards, and parental controls.' : 'Our app is designed to follow child privacy requirements, age-appropriate design principles, and platform review standards.'} />
         </Section>
 
         <Section title="10. Updates to This Policy">
@@ -183,7 +199,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={[styles.bodyText, {color: colors.textSecondary, marginBottom: verticalScale(16)}]}>
             For privacy-related questions, deletion requests, or other concerns, please contact us at:
           </Text>
-          
+
           <View style={styles.contactLargeCard}>
             <View style={styles.contactRow}>
               <Mail size={18} color={colors.primary} />
@@ -199,7 +215,7 @@ export default function PrivacyPolicyScreen() {
         </Section>
 
         <Text style={[styles.footerNote, {color: colors.textSecondary}]}>
-          Sanfort Smart Learning is committed to providing a safe and enriching reading experience for children. Thank you for trusting us with your child's reading journey!
+          Sanfort Smart Learning is committed to providing a safe and enriching learning experience for children. Thank you for trusting us with your child's learning journey.
         </Text>
 
         <View style={styles.footerSpacing} />
@@ -211,29 +227,32 @@ export default function PrivacyPolicyScreen() {
 const styles = StyleSheet.create({
   root: {flex: 1},
   headerGradient: {
-    paddingHorizontal: scale(20),
-    paddingBottom: verticalScale(24),
+    overflow: 'hidden',
     borderBottomLeftRadius: moderateScale(32),
     borderBottomRightRadius: moderateScale(32),
+    width: '100%',
   },
-  headerTop: {
+  headerInner: {
+    paddingHorizontal: scale(20),
+    paddingTop: verticalScale(10),
+    paddingBottom: verticalScale(20),
+    minHeight: verticalScale(92),
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(16),
-    marginTop: verticalScale(8),
+  },
+  headerTextWrap: {
+    flex: 1,
   },
   backBtn: {
     width: scale(42),
     height: scale(42),
     borderRadius: BorderRadius.lg,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  headerTitleWrap: {
-    flex: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
   },
   headerTitle: {
     fontSize: moderateScale(20),
