@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
 
   hero:       {alignItems:'center', paddingHorizontal:scale(24)},
   logoWrap:   {marginBottom:verticalScale(20), position:'relative'},
-  logoImage:  {width:scale(110), height:scale(110)},
+  logoImage:  {width:scale(110), height:scale(110), borderRadius:scale(55), overflow:'hidden'},
   logoBadge:  {position:'absolute', bottom:verticalScale(0), right:scale(0), width:scale(28), height:scale(28), borderRadius:scale(14), backgroundColor:'#FFB020', alignItems:'center', justifyContent:'center', borderWidth:2, borderColor:'#fff'},
   appName:    {fontSize:moderateScale(28), lineHeight:moderateScale(34), fontWeight:'800', color:'#fff', letterSpacing:0.3, marginBottom:verticalScale(6), textAlign:'center'},
   tagline:    {fontSize:moderateScale(14), color:'rgba(255,255,255,0.7)', letterSpacing:2},

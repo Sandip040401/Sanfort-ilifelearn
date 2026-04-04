@@ -657,8 +657,10 @@ const styles = StyleSheet.create({
 
   heroSection: { alignItems: 'center', marginBottom: verticalScale(20), paddingBottom: verticalScale(10) },
   logoBox: {
-    width: scale(260),
-    height: scale(90),
+    width: scale(100),
+    height: scale(100),
+    borderRadius: scale(50),
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: verticalScale(12),
